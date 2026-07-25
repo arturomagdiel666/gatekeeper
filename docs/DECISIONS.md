@@ -495,3 +495,196 @@ It is now split in two:
   set of scores: it demonstrates the interview refusing to invent what it was
   not told. A second test shows the completion path, where three hypothetical
   follow-up answers yield a weighted total of 3.20 and a `no_go`.
+
+---
+
+## ADR-012 — Gatekeeper is the intake gate of a lifecycle governance model
+
+**Date:** 2026-07-25 · **Commit:** Phase 3 Part A · **Status:** accepted ·
+**Supersedes:** the generic-business framing of ADR-006 through ADR-011
+
+Gatekeeper is no longer a generic AI triage tool. It is the intake gate of a
+lifecycle governance model for an **internal IT AI Agent Hub**: a function that
+evaluates internal business requests for AI agents, approves them with
+pre-agreed success criteria, and retires them when those criteria are not met.
+
+Two consequences drive the whole rebuild:
+
+1. **The rubric is recalibrated for internal IT.** Not generic business, not
+   industrial OT — both of which would want different dimensions. Adoption risk
+   and data governance become first-class.
+2. **Approval is inseparable from its own retirement condition.** A `go` must
+   issue a Measurement Contract (ADR-014) and a deterministic reviewer must
+   later evaluate the agent against it (ADR-015). This is the product's central
+   claim, and it is why `contracts.py` and `review.py` exist at all.
+
+### The seven dimensions and their weights
+
+| Dimension | Axis | Direction | Weight |
+|---|---|---|---|
+| `business_value` | Magnitude of the benefit, annualized | higher | 0.22 |
+| `adoption_risk` | Organisational likelihood users will not change | lower | 0.17 |
+| `data_readiness` | Data exists, is obtainable, output is judgeable | higher | 0.15 |
+| `process_frequency` | Instance volume per year | higher | 0.13 |
+| `implementation_effort` | Total cost to production | lower | 0.13 |
+| `data_governance` | Whether the data may be processed at all | lower | 0.10 |
+| `non_ai_alternative` | How completely a non-AI solution suffices | lower | 0.10 |
+
+`adoption_risk` is deliberately second-heaviest. Internal tools overwhelmingly
+fail because nobody changes how they work, not because the technology fails,
+and it is the dimension almost nobody scores in practice.
+
+**`data_governance` and `non_ai_alternative` carry the two lowest weights
+BECAUSE BOTH ARE GATED AT THEIR EXTREMES.** Their weight only has to express
+the gradient across the non-extreme range; the categorical case is handled by a
+gate, not by arithmetic. A future reweighting must preserve this relationship —
+raising them without removing their gates would double-count the same
+condition. A test asserts the two gated dimensions remain no heavier than the
+lightest ungated one.
+
+---
+
+## ADR-013 — Gates are a general mechanism; five of them ship
+
+**Date:** 2026-07-25 · **Commit:** Phase 3 Part A · **Status:** accepted ·
+**Extends:** ADR-010
+
+A weighted sum cannot express a prohibition. Every dimension in a weighted
+average is compensable by construction, so a weight small enough to be fair to
+an ordinary request is always too small to stop an extreme one. Two
+demonstrations against the shipped rubric, every dimension at its best except
+the one named:
+
+```
+data_readiness = 1    1.10 + 0.85 + 0.15 + 0.65 + 0.65 + 0.50 + 0.50 = 4.40 -> go band
+data_governance = 5   1.10 + 0.85 + 0.75 + 0.65 + 0.65 + 0.10 + 0.50 = 4.60 -> go band
+```
+
+Both are stopped by gates instead, and both facts are asserted by tests that
+also check `match_band()` still returns `go` for those totals — so the gate,
+not the arithmetic, is provably what changed the verdict.
+
+Five gates ship, in precedence order:
+
+| Gate | Condition | Forces | Precedence |
+|---|---|---|---|
+| `existing_capability_covers_it` | anti-pattern `existing_licensed_capability` | `not_ai` | 10 |
+| `non_ai_alternative_suffices` | `non_ai_alternative` ≥ 4, or any *other* hard-block anti-pattern | `not_ai` | 20 |
+| `no_named_business_owner` | intake `business_owner` empty | `no_go` | 30 |
+| `no_usable_data` | `data_readiness` ≤ 1 | `no_go` | 40 |
+| `unacceptable_data_governance` | `data_governance` ≥ 5 | `no_go` | 50 |
+
+`existing_capability_covers_it` outranks the general alternative gate because
+its remediation is the most actionable thing the Hub can say: *the company
+already pays for this*. The general gate carries `exclude_ids:
+[existing_licensed_capability]` so that case is attributed to the specific gate
+rather than to both.
+
+A third condition type was added for the owner gate: **`intake_field`**, a
+predicate on request metadata rather than on a scored dimension. Whether a
+business owner was named is a fact about the form, not a judgement, and has no
+place on a 1-5 scale. `score()` therefore takes an optional `intake`. When it
+is omitted those gates cannot fire — the scorer will not infer that a field is
+empty from its own absence, the same principle that stops a gate firing on an
+unknown dimension.
+
+Cross-file validation was added at import time: a gate naming an anti-pattern
+absent from `patterns.yaml` would simply never fire, which is exactly the kind
+of silent failure this project refuses to ship.
+
+---
+
+## ADR-014 — One axis per dimension, and archetype-conditional evidence
+
+**Date:** 2026-07-25 · **Commit:** Phase 3 Part A · **Status:** accepted ·
+**Carries forward:** ADR-011, re-applied to the recalibrated dimension set
+
+Three anchor-authoring rules, each earned from a defect found in review. Every
+dimension now declares the single `axis` it measures in the YAML itself, so a
+reader can check the rule rather than trust it.
+
+**One axis per dimension.** The Phase 2 `economic_impact` anchors made the
+level 1 / level 3 discriminator *"does a sponsor vouch for it"* rather than
+*"how large is it"* — turning the heaviest-weighted dimension into a partial
+measure of stakeholder engagement. `business_value` now measures magnitude
+alone; where its anchors use "or" it separates *units* of the same magnitude
+(person-hours, currency, cases), never a second construct. Confidence in the
+quantification goes in the `confidence` field the schema already has, and the
+anchor text says so explicitly.
+
+**Evidence requirements are conditional on the archetype.** The Phase 2
+`data_maturity` level 5 required *"labels or an unambiguous outcome variable"*.
+Generative archetypes — `summarization`, `rag_qa`, and drafting requests
+handled as summarization — have no outcome variable and never will, so they
+were capped below 5 **by construction**, carrying a systematic penalty of up to
+0.15 on the largest category of request an internal Hub receives. The construct
+was misidentified: it is **"can you tell whether the output is good"**, not "do
+you have labels". `data_readiness` levels 4 and 5 now name the predictive
+archetypes (labels or an outcome variable) and the generative ones (a curated
+reference set with agreed quality criteria, and someone qualified to apply
+them), cross-referencing `patterns.yaml` ids directly.
+
+This is worth recording beyond the fix. An evaluation instrument that demands
+labels is biased against generative use cases as a class — and generative work
+is the bulk of what an internal Hub is asked for. A biased instrument is a
+finding in its own right, not merely a bug.
+
+**Volume is not heterogeneity.** `process_frequency` measures instances per
+year and nothing else.
+
+### Proposed eighth dimension — `instance_heterogeneity` (NOT adopted)
+
+> How much each instance of the process differs from the last.
+> `lower_is_better`. Level 1: near-identical instances, the same fields in the
+> same places. Level 5: every instance bespoke, little structure carrying over.
+
+It drives feasibility rather than return, which argues for folding it into
+`implementation_effort` instead of adding a dimension. Adopting it means
+rebalancing all seven weights and rerunning every worked example. Recorded for
+decision; deliberately not implemented.
+
+### Fixture and exemplar are now separate artefacts
+
+A fixture needs numbers that exercise the arithmetic; an exemplar needs numbers
+that are defensible. The Phase 2 golden test conflated them, scoring its case
+`economic_impact = 5` from a description naming no figure — which its own level
+1 anchor calls a 1 — and it was the only worked case in the repository, so it
+would inevitably have become the few-shot exemplar, teaching inflation of the
+heaviest-weighted dimension. That bias would never have been caught by a test,
+because the arithmetic was never wrong.
+
+`ARITHMETIC_SCORES` is now explicitly synthetic and documented as unusable as
+an exemplar, with its longhand comment rewritten as
+`raw -> normalized x weight = contribution` with each direction named. The
+reference exemplars are the six files in `examples/` (ADR-017).
+
+---
+
+## ADR-015 — The conversational interview agent is cancelled
+
+**Date:** 2026-07-25 · **Commit:** Phase 3 Part A · **Status:** accepted
+
+The multi-turn discovery interview is **removed from the roadmap**, not
+deferred. `agent.py` is deleted rather than left as a placeholder. Assessment is
+a single-shot constrained-generation call over the request's free text.
+
+The justification is this project's own measurement, not a preference. From
+`evals/spike_schema_shape_20260725_074944.json`:
+
+* the constrained-generation path (`format=` with a JSON schema) returned
+  valid, schema-conformant structured output in **60 of 60 trials**, nested
+  payloads included;
+* the native tool-call path lost **10-20% of attempts to `no_call`** — the
+  model answering in prose instead of invoking the tool at all.
+
+A multi-turn agent loop multiplies that per-turn failure probability across
+every turn, and each turn is an opportunity for the model to drift from the
+schema. A single constrained call has one failure point, one retry, and a
+deterministic parse. The statistical caveat from ADR-004 still applies to the
+*margin* between mechanisms at n=10 per arm; the categorical argument does not
+depend on it, because with no tool offered `no_call` is structurally impossible.
+
+What is lost is the ability to ask clarifying questions. That is handled
+instead by the `incomplete` verdict, which names exactly which dimensions the
+request failed to establish — turning "the agent should have asked" into a
+concrete, auditable list the requester can answer and resubmit.

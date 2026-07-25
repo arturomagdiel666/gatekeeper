@@ -5,9 +5,10 @@ written out longhand in a comment, so a reader can check the arithmetic with a
 calculator and catch a rubric edit that silently moved a verdict.
 
 Weights as shipped:
-    economic_impact 0.25 (higher)   process_frequency 0.15 (higher)
-    data_maturity   0.20 (higher)   implementation_effort 0.15 (lower)
-    regulatory_risk 0.10 (lower)    non_ai_alternative 0.15 (lower)
+    business_value        0.22 (higher)   adoption_risk         0.17 (lower)
+    data_readiness        0.15 (higher)   process_frequency     0.13 (higher)
+    implementation_effort 0.13 (lower)    data_governance       0.10 (lower)
+    non_ai_alternative    0.10 (lower)
 A `lower_is_better` raw score is flipped as 6 - raw before weighting.
 """
 
@@ -17,48 +18,72 @@ import pytest
 import yaml
 
 from config import RUBRIC_PATH, load_patterns, load_rubric
-from schemas import Assessment, Confidence, DimensionAssessment
+from schemas import Assessment, Confidence, DimensionAssessment, RequestIntake
 from scoring import Verdict, match_band, score
 
 PATTERNS = load_patterns()
 RUBRIC = load_rubric()
 
+# An intake that satisfies the owner gate, so tests of other gates are not
+# accidentally testing this one.
+OWNED = RequestIntake(
+    request_text="A request.",
+    requesting_area="Service Desk",
+    business_owner="Ana Ruiz",
+    process_description="Done by hand today.",
+)
+
 # SYNTHETIC ARITHMETIC FIXTURE — not a reference assessment of anything.
 #
 # These scores are chosen to exercise the arithmetic: both directions, a
 # hand-verifiable total, and a result comfortably inside the `go` band. They are
-# NOT an anchor-faithful reading of any real scenario, and must not be reused as
-# a few-shot exemplar when Phase 3 writes the interview prompts — doing so would
-# teach the model to inflate the heaviest-weighted dimension. For a scenario
-# scored honestly against the anchors, see TestHospitalReferenceExemplar below.
+# NOT an anchor-faithful reading of any real request and must not be reused as a
+# few-shot exemplar — that would teach the model to inflate the
+# heaviest-weighted dimension. The reference exemplars are the six files in
+# examples/, scored against the anchors (see tests/test_examples.py).
 #
 # dimension              direction         raw -> norm  x weight = contribution
-# economic_impact        higher_is_better    5 ->  5    x 0.25   = 1.25
-# process_frequency      higher_is_better    4 ->  4    x 0.15   = 0.60
-# data_maturity          higher_is_better    5 ->  5    x 0.20   = 1.00
-# implementation_effort  lower_is_better     3 ->  3    x 0.15   = 0.45
-# regulatory_risk        lower_is_better     4 ->  2    x 0.10   = 0.20
-# non_ai_alternative     lower_is_better     2 ->  4    x 0.15   = 0.60
-#                                                         total  = 4.10 -> go
+# business_value         higher_is_better    4 ->  4    x 0.22   = 0.88
+# adoption_risk          lower_is_better     2 ->  4    x 0.17   = 0.68
+# data_readiness         higher_is_better    4 ->  4    x 0.15   = 0.60
+# process_frequency      higher_is_better    4 ->  4    x 0.13   = 0.52
+# implementation_effort  lower_is_better     2 ->  4    x 0.13   = 0.52
+# data_governance        lower_is_better     2 ->  4    x 0.10   = 0.40
+# non_ai_alternative     lower_is_better     2 ->  4    x 0.10   = 0.40
+#                                                         total  = 4.00 -> go
 #
 # Note non_ai_alternative: raw 2 normalizes to 4. A RAW 4 would fire the
-# not_ai_alternative_suffices gate and the verdict would be not_ai, not go — so
+# non_ai_alternative_suffices gate and the verdict would be not_ai, not go — so
 # the raw/normalized distinction is load-bearing here, not cosmetic.
 ARITHMETIC_SCORES = {
-    "economic_impact": 5,
+    "business_value": 4,
+    "adoption_risk": 2,
+    "data_readiness": 4,
     "process_frequency": 4,
-    "data_maturity": 5,
-    "implementation_effort": 3,
-    "regulatory_risk": 4,
+    "implementation_effort": 2,
+    "data_governance": 2,
     "non_ai_alternative": 2,
 }
-ARITHMETIC_TOTAL = 4.10
+ARITHMETIC_TOTAL = 4.00
+
+# Every dimension at its most favourable, used as the base for the gate tests:
+# each then spoils exactly one dimension, so the gate is provably what changed
+# the verdict and not the arithmetic.
+BEST_SCORES = {
+    "business_value": 5,
+    "adoption_risk": 1,
+    "data_readiness": 5,
+    "process_frequency": 5,
+    "implementation_effort": 1,
+    "data_governance": 1,
+    "non_ai_alternative": 1,
+}
 
 
 def make_assessment(
     scores: dict[str, int | None],
     anti_pattern_ids: list[str] | None = None,
-    archetype_id: str | None = "summarization",
+    archetype_id: str | None = "classification",
 ) -> Assessment:
     """Build an Assessment from a {dimension_id: score} mapping."""
     return Assessment(
@@ -68,7 +93,7 @@ def make_assessment(
             DimensionAssessment(
                 dimension_id=dimension_id,
                 score=value,
-                evidence=f"Interview evidence for {dimension_id}.",
+                evidence=f"Request evidence for {dimension_id}.",
                 confidence=Confidence.HIGH,
             )
             for dimension_id, value in scores.items()
@@ -96,92 +121,86 @@ def rubric_without_gate(tmp_path, gate_id: str):
     return load_rubric(path)
 
 
-# Every dimension at its most favourable, used as the base for the gate tests:
-# each one then spoils exactly one dimension, so the gate is provably what
-# changed the verdict and not the arithmetic.
-BEST_SCORES = {
-    "economic_impact": 5,
-    "process_frequency": 5,
-    "data_maturity": 5,
-    "implementation_effort": 1,
-    "regulatory_risk": 1,
-    "non_ai_alternative": 1,
-}
-
-
 class TestDirectionNormalization:
-    """If direction were ignored, this case would total 2.00 instead of 2.80."""
+    """If direction were ignored, this case would total 2.00 instead of 3.00."""
 
-    def test_all_raw_twos_totals_2_80(self):
-        # Raw 2 everywhere. No gate fires (data_maturity 2 > 1,
-        # regulatory_risk 2 < 5, non_ai_alternative 2 < 4), so this isolates
-        # the arithmetic:
-        #  2 x 0.25 = 0.50 | 2 x 0.15 = 0.30 | 2 x 0.20 = 0.40
-        # (6-2)=4 x 0.15 = 0.60 | 4 x 0.10 = 0.40 | 4 x 0.15 = 0.60
-        #                                            total = 2.80
+    def test_all_raw_twos_totals_3_00(self):
+        # Raw 2 everywhere; no gate fires (data_readiness 2 > 1,
+        # data_governance 2 < 5, non_ai_alternative 2 < 4).
+        #  2 x 0.22 = 0.44 | (6-2)=4 x 0.17 = 0.68 | 2 x 0.15 = 0.30
+        #  2 x 0.13 = 0.26 | 4 x 0.13 = 0.52 | 4 x 0.10 = 0.40 | 4 x 0.10 = 0.40
+        #                                              total = 3.00
         outcome = score(
-            make_assessment(dict.fromkeys(RUBRIC.dimension_ids, 2)), RUBRIC, PATTERNS
+            make_assessment(dict.fromkeys(RUBRIC.dimension_ids, 2)),
+            RUBRIC,
+            PATTERNS,
+            OWNED,
         )
         assert outcome.triggered_gates == []
-        assert outcome.weighted_total == pytest.approx(2.80)
+        assert outcome.weighted_total == pytest.approx(3.00)
         assert outcome.verdict is Verdict.NO_GO
 
     def test_lower_is_better_dimensions_are_flipped_in_the_breakdown(self):
-        outcome = score(make_assessment(ARITHMETIC_SCORES), RUBRIC, PATTERNS)
+        outcome = score(make_assessment(ARITHMETIC_SCORES), RUBRIC, PATTERNS, OWNED)
         by_id = {c.dimension_id: c for c in outcome.contributions}
-        assert (by_id["regulatory_risk"].raw_score, by_id["regulatory_risk"].normalized_score) == (4, 2)
-        assert (by_id["economic_impact"].raw_score, by_id["economic_impact"].normalized_score) == (5, 5)
+        assert (by_id["adoption_risk"].raw_score, by_id["adoption_risk"].normalized_score) == (2, 4)
+        assert (by_id["business_value"].raw_score, by_id["business_value"].normalized_score) == (4, 4)
 
 
 class TestVerdictBands:
     def test_weighted_total_arithmetic_with_synthetic_scores(self):
-        """Verify the weighted sum against the hand-computed 4.10.
+        """Verify the weighted sum against the hand-computed 4.00.
 
         The scores are a synthetic fixture chosen to exercise the arithmetic
         (see the longhand table at the top of this file). They are NOT a
-        reference assessment of any real case and carry no claim about how any
-        scenario should be scored against the anchors.
+        reference assessment of any request and carry no claim about how any
+        real case should be scored against the anchors.
         """
-        outcome = score(make_assessment(ARITHMETIC_SCORES), RUBRIC, PATTERNS)
+        outcome = score(make_assessment(ARITHMETIC_SCORES), RUBRIC, PATTERNS, OWNED)
         assert outcome.weighted_total == pytest.approx(ARITHMETIC_TOTAL)
         assert outcome.verdict is Verdict.GO
 
     def test_exact_band_boundary_of_3_50_is_a_go(self):
-        # 5 x 0.25 = 1.25 | 3 x 0.15 = 0.45 | 3 x 0.20 = 0.60
-        # 3 x 0.15 = 0.45 | 3 x 0.10 = 0.30 | 3 x 0.15 = 0.45  -> exactly 3.50
+        # 4 x 0.22 = 0.88 | (6-3)=3 x 0.17 = 0.51 | 4 x 0.15 = 0.60
+        # 4 x 0.13 = 0.52 | 3 x 0.13 = 0.39 | 3 x 0.10 = 0.30 | 3 x 0.10 = 0.30
+        #                                            total = exactly 3.50
         outcome = score(
             make_assessment(
                 {
-                    "economic_impact": 5,
-                    "process_frequency": 3,
-                    "data_maturity": 3,
+                    "business_value": 4,
+                    "adoption_risk": 3,
+                    "data_readiness": 4,
+                    "process_frequency": 4,
                     "implementation_effort": 3,
-                    "regulatory_risk": 3,
+                    "data_governance": 3,
                     "non_ai_alternative": 3,
                 }
             ),
             RUBRIC,
             PATTERNS,
+            OWNED,
         )
         assert outcome.weighted_total == pytest.approx(3.50)
         assert outcome.verdict is Verdict.GO
 
     def test_just_below_the_boundary_is_a_no_go(self):
-        # As above but implementation_effort 4 -> (6-4)=2 x 0.15 = 0.30
-        # 1.25 + 0.45 + 0.60 + 0.30 + 0.30 + 0.45 = 3.35
+        # As above but data_readiness 3 -> 3 x 0.15 = 0.45 (was 0.60)
+        # 0.88 + 0.51 + 0.45 + 0.52 + 0.39 + 0.30 + 0.30 = 3.35
         outcome = score(
             make_assessment(
                 {
-                    "economic_impact": 5,
-                    "process_frequency": 3,
-                    "data_maturity": 3,
-                    "implementation_effort": 4,
-                    "regulatory_risk": 3,
+                    "business_value": 4,
+                    "adoption_risk": 3,
+                    "data_readiness": 3,
+                    "process_frequency": 4,
+                    "implementation_effort": 3,
+                    "data_governance": 3,
                     "non_ai_alternative": 3,
                 }
             ),
             RUBRIC,
             PATTERNS,
+            OWNED,
         )
         assert outcome.weighted_total == pytest.approx(3.35)
         assert outcome.verdict is Verdict.NO_GO
@@ -189,10 +208,10 @@ class TestVerdictBands:
     @pytest.mark.parametrize(
         ("total", "expected"),
         [
-            (1.0, Verdict.NO_GO),      # bottom of the scale, inclusive
-            (3.499999, Verdict.NO_GO),  # just under the boundary
-            (3.5, Verdict.GO),          # boundary belongs to the upper band
-            (5.0, Verdict.GO),          # top of the scale, inclusive
+            (1.0, Verdict.NO_GO),
+            (3.499999, Verdict.NO_GO),
+            (3.5, Verdict.GO),
+            (5.0, Verdict.GO),
         ],
     )
     def test_band_edges_directly(self, total, expected):
@@ -203,219 +222,252 @@ class TestVerdictBands:
             match_band(5.5, RUBRIC)
 
 
-class TestNotAiGate:
-    """not_ai is reachable only through gates — never through a band."""
-
-    def test_hard_block_anti_pattern_overrides_an_otherwise_excellent_score(self):
-        outcome = score(
-            make_assessment(
-                ARITHMETIC_SCORES, anti_pattern_ids=["deterministic_rule_suffices"]
-            ),
-            RUBRIC,
-            PATTERNS,
-        )
-        assert outcome.verdict is Verdict.NOT_AI
-        # The total is still reported, and still lands in the go band — which is
-        # exactly the case that would slip through if not_ai were a low band.
-        assert outcome.weighted_total == pytest.approx(ARITHMETIC_TOTAL)
-        assert match_band(outcome.weighted_total, RUBRIC) is Verdict.GO
-        assert outcome.triggered_gate_ids == ["not_ai_alternative_suffices"]
-        assert outcome.triggered_gates[0].matched_anti_pattern_ids == [
-            "deterministic_rule_suffices"
-        ]
-
-    def test_non_ai_alternative_threshold_fires_on_its_own(self):
-        # No anti-patterns at all; only the dimension threshold (raw >= 4).
-        # 1.25 + 0.60 + 1.00 + 0.45 + 0.20 + (6-4)=2 x 0.15 = 0.30 -> 3.80
-        scores = {**ARITHMETIC_SCORES, "non_ai_alternative": 4}
-        outcome = score(make_assessment(scores), RUBRIC, PATTERNS)
-        assert outcome.verdict is Verdict.NOT_AI
-        assert outcome.weighted_total == pytest.approx(3.80)
-        assert outcome.triggered_gate_ids == ["not_ai_alternative_suffices"]
-        assert outcome.triggered_gates[0].matched_anti_pattern_ids == []
-
-    def test_non_ai_alternative_below_threshold_does_not_fire(self):
-        scores = {**ARITHMETIC_SCORES, "non_ai_alternative": 3}
-        outcome = score(make_assessment(scores), RUBRIC, PATTERNS)
-        assert outcome.triggered_gates == []
-        assert outcome.verdict is not Verdict.NOT_AI
-
-    def test_advisory_anti_pattern_does_not_force_not_ai(self):
-        outcome = score(
-            make_assessment(
-                ARITHMETIC_SCORES, anti_pattern_ids=["chatbot_without_job_to_be_done"]
-            ),
-            RUBRIC,
-            PATTERNS,
-        )
-        assert outcome.triggered_gates == []
-        assert outcome.verdict is Verdict.GO
-
-    def test_data_does_not_exist_yet_is_advisory_not_a_hard_block(self):
-        """It routes through the no_usable_data gate, not through not_ai."""
-        outcome = score(
-            make_assessment(
-                ARITHMETIC_SCORES, anti_pattern_ids=["data_does_not_exist_yet"]
-            ),
-            RUBRIC,
-            PATTERNS,
-        )
-        assert outcome.triggered_gates == []
-        assert outcome.verdict is Verdict.GO
-
-    def test_gate_fires_even_when_the_interview_is_too_sparse_to_score(self):
-        outcome = score(
-            make_assessment(
-                {"economic_impact": 5},
-                anti_pattern_ids=["reporting_in_disguise"],
-            ),
-            RUBRIC,
-            PATTERNS,
-        )
-        assert outcome.verdict is Verdict.NOT_AI
-        assert outcome.weighted_total is None
-
-    def test_unknown_anti_pattern_id_is_reported_not_raised(self):
-        outcome = score(
-            make_assessment(ARITHMETIC_SCORES, anti_pattern_ids=["invented_by_the_model"]),
-            RUBRIC,
-            PATTERNS,
-        )
-        assert outcome.ignored_anti_pattern_ids == ["invented_by_the_model"]
-        assert outcome.verdict is Verdict.GO
-
-
 class TestBlockingGates:
-    """Phase 2.1: conditions too categorical for any weight to express.
-
-    Each case scores every other dimension at its best, so the weighted total
-    lands in the `go` band and only the gate can account for the verdict.
+    """Each case scores every other dimension at its best, so the weighted
+    total lands in the `go` band and only the gate can account for the verdict.
     """
 
-    def test_no_usable_data_blocks_an_otherwise_perfect_case(self):
-        # 5 x 0.25 = 1.25 | 5 x 0.15 = 0.75 | 1 x 0.20 = 0.20   <- the penalty
-        # (6-1)=5 x 0.15 = 0.75 | 5 x 0.10 = 0.50 | 5 x 0.15 = 0.75
-        #                                            total = 4.20 -> go band
+    def test_no_usable_data_blocks_an_otherwise_perfect_request(self):
+        # 5 x 0.22 = 1.10 | 5 x 0.17 = 0.85 | 1 x 0.15 = 0.15  <- the penalty
+        # 5 x 0.13 = 0.65 | 5 x 0.13 = 0.65 | 5 x 0.10 = 0.50 | 5 x 0.10 = 0.50
+        #                                            total = 4.40 -> go band
         outcome = score(
-            make_assessment({**BEST_SCORES, "data_maturity": 1}), RUBRIC, PATTERNS
+            make_assessment({**BEST_SCORES, "data_readiness": 1}),
+            RUBRIC,
+            PATTERNS,
+            OWNED,
         )
-        assert outcome.weighted_total == pytest.approx(4.20)
+        assert outcome.weighted_total == pytest.approx(4.40)
         assert match_band(outcome.weighted_total, RUBRIC) is Verdict.GO
         assert outcome.verdict is Verdict.NO_GO
         assert outcome.triggered_gate_ids == ["no_usable_data"]
-        assert "data_maturity scored 1" in outcome.triggered_gates[0].detail
+        assert "data_readiness scored 1" in outcome.triggered_gates[0].detail
 
-    def test_unacceptable_regulatory_exposure_blocks_an_otherwise_perfect_case(self):
-        # 1.25 + 0.75 + 1.00 + 0.75 + (6-5)=1 x 0.10 = 0.10 + 0.75
+    def test_unacceptable_data_governance_blocks_an_otherwise_perfect_request(self):
+        # 1.10 + 0.85 + 0.75 + 0.65 + 0.65 + (6-5)=1 x 0.10 = 0.10 + 0.50
         #                                            total = 4.60 -> go band
         outcome = score(
-            make_assessment({**BEST_SCORES, "regulatory_risk": 5}), RUBRIC, PATTERNS
+            make_assessment({**BEST_SCORES, "data_governance": 5}),
+            RUBRIC,
+            PATTERNS,
+            OWNED,
         )
         assert outcome.weighted_total == pytest.approx(4.60)
         assert match_band(outcome.weighted_total, RUBRIC) is Verdict.GO
         assert outcome.verdict is Verdict.NO_GO
-        assert outcome.triggered_gate_ids == ["unacceptable_regulatory_exposure"]
+        assert outcome.triggered_gate_ids == ["unacceptable_data_governance"]
 
-    def test_precedence_not_ai_outranks_no_go_and_both_are_reported(self):
+    def test_non_ai_alternative_threshold_fires_on_its_own(self):
+        # 1.10 + 0.85 + 0.75 + 0.65 + 0.65 + 0.50 + (6-4)=2 x 0.10 = 0.20
+        #                                            total = 4.70 -> go band
+        outcome = score(
+            make_assessment({**BEST_SCORES, "non_ai_alternative": 4}),
+            RUBRIC,
+            PATTERNS,
+            OWNED,
+        )
+        assert outcome.weighted_total == pytest.approx(4.70)
+        assert outcome.verdict is Verdict.NOT_AI
+        assert outcome.triggered_gate_ids == ["non_ai_alternative_suffices"]
+
+    def test_existing_licensed_capability_fires_its_own_gate(self):
+        outcome = score(
+            make_assessment(BEST_SCORES, ["existing_licensed_capability"]),
+            RUBRIC,
+            PATTERNS,
+            OWNED,
+        )
+        assert outcome.verdict is Verdict.NOT_AI
+        # Attributed to the specific gate, not the general one — its
+        # remediation (go and use the licence you already pay for) is the most
+        # actionable thing the Hub can say.
+        assert outcome.triggered_gate_ids == ["existing_capability_covers_it"]
+        assert outcome.triggered_gates[0].matched_anti_pattern_ids == [
+            "existing_licensed_capability"
+        ]
+
+    def test_other_hard_block_anti_patterns_fire_the_general_gate(self):
+        outcome = score(
+            make_assessment(BEST_SCORES, ["reporting_in_disguise"]),
+            RUBRIC,
+            PATTERNS,
+            OWNED,
+        )
+        assert outcome.verdict is Verdict.NOT_AI
+        assert outcome.triggered_gate_ids == ["non_ai_alternative_suffices"]
+
+    def test_no_named_business_owner_fires_from_intake(self):
+        outcome = score(
+            make_assessment(BEST_SCORES),
+            RUBRIC,
+            PATTERNS,
+            RequestIntake(request_text="A request.", business_owner="   "),
+        )
+        assert outcome.verdict is Verdict.NO_GO
+        assert outcome.triggered_gate_ids == ["no_named_business_owner"]
+        assert "business_owner" in outcome.triggered_gates[0].detail
+
+    def test_a_named_owner_does_not_fire_the_gate(self):
+        outcome = score(make_assessment(BEST_SCORES), RUBRIC, PATTERNS, OWNED)
+        assert outcome.triggered_gates == []
+        assert outcome.verdict is Verdict.GO
+
+    def test_intake_gate_cannot_fire_without_an_intake(self):
+        """Absence of intake is not evidence that the field is empty."""
+        outcome = score(make_assessment(BEST_SCORES), RUBRIC, PATTERNS, intake=None)
+        assert outcome.triggered_gates == []
+        assert outcome.verdict is Verdict.GO
+
+    def test_advisory_anti_pattern_does_not_fire_any_gate(self):
+        for advisory in (
+            "chatbot_without_job_to_be_done",
+            "data_does_not_exist_yet",
+            "solution_first_no_measurable_problem",
+            "single_user_workaround",
+        ):
+            outcome = score(
+                make_assessment(BEST_SCORES, [advisory]), RUBRIC, PATTERNS, OWNED
+            )
+            assert outcome.triggered_gates == [], advisory
+            assert outcome.verdict is Verdict.GO, advisory
+
+    def test_precedence_lowest_number_decides_and_all_are_reported(self):
         outcome = score(
             make_assessment(
-                {**BEST_SCORES, "data_maturity": 1, "non_ai_alternative": 4}
+                {**BEST_SCORES, "data_readiness": 1, "non_ai_alternative": 4},
+                ["existing_licensed_capability"],
             ),
             RUBRIC,
             PATTERNS,
+            RequestIntake(request_text="A request.", business_owner=""),
         )
         assert outcome.verdict is Verdict.NOT_AI
         assert outcome.triggered_gate_ids == [
-            "not_ai_alternative_suffices",
+            "existing_capability_covers_it",
+            "non_ai_alternative_suffices",
+            "no_named_business_owner",
             "no_usable_data",
         ]
-        assert outcome.triggered_gates[0].precedence < outcome.triggered_gates[1].precedence
+        precedences = [g.precedence for g in outcome.triggered_gates]
+        assert precedences == sorted(precedences)
 
     def test_a_gate_cannot_fire_on_an_unknown_dimension(self):
         outcome = score(
-            make_assessment({**BEST_SCORES, "data_maturity": None}), RUBRIC, PATTERNS
+            make_assessment({**BEST_SCORES, "data_readiness": None}),
+            RUBRIC,
+            PATTERNS,
+            OWNED,
         )
         assert outcome.triggered_gates == []
-        assert outcome.unknown_dimensions == ["data_maturity"]
+        assert outcome.unknown_dimensions == ["data_readiness"]
         # Every remaining dimension normalizes to 5, so renormalization gives 5.00.
         assert outcome.weighted_total == pytest.approx(5.00)
         assert outcome.verdict is Verdict.GO
 
+    def test_gate_fires_even_when_the_request_is_too_sparse_to_score(self):
+        outcome = score(
+            make_assessment({"business_value": 5}, ["rpa_relabeled"]),
+            RUBRIC,
+            PATTERNS,
+            OWNED,
+        )
+        assert outcome.verdict is Verdict.NOT_AI
+        assert outcome.weighted_total is None
+
     def test_deleting_a_gate_restores_band_behaviour(self, tmp_path):
-        """Acceptance criterion 3 — config only, no Python edit."""
-        no_data = make_assessment({**BEST_SCORES, "data_maturity": 1})
-        assert score(no_data, RUBRIC, PATTERNS).verdict is Verdict.NO_GO
+        """Gates are config: removing one needs no Python edit."""
+        no_data = make_assessment({**BEST_SCORES, "data_readiness": 1})
+        assert score(no_data, RUBRIC, PATTERNS, OWNED).verdict is Verdict.NO_GO
 
         without = rubric_without_gate(tmp_path, "no_usable_data")
-        outcome = score(no_data, without, PATTERNS)
+        outcome = score(no_data, without, PATTERNS, OWNED)
         assert outcome.triggered_gates == []
-        assert outcome.weighted_total == pytest.approx(4.20)
+        assert outcome.weighted_total == pytest.approx(4.40)
+        assert outcome.verdict is Verdict.GO
+
+    def test_unknown_anti_pattern_id_is_reported_not_raised(self):
+        outcome = score(
+            make_assessment(BEST_SCORES, ["invented_by_the_model"]),
+            RUBRIC,
+            PATTERNS,
+            OWNED,
+        )
+        assert outcome.ignored_anti_pattern_ids == ["invented_by_the_model"]
         assert outcome.verdict is Verdict.GO
 
     def test_gate_explanation_names_the_gate_and_its_reason(self):
         outcome = score(
-            make_assessment({**BEST_SCORES, "regulatory_risk": 5}), RUBRIC, PATTERNS
+            make_assessment({**BEST_SCORES, "data_governance": 5}),
+            RUBRIC,
+            PATTERNS,
+            OWNED,
         )
-        assert "unacceptable_regulatory_exposure -> no_go" in outcome.explanation
-        assert "regulatory_risk scored 5" in outcome.explanation
-        assert "compliance and legal path" in outcome.explanation
+        assert "unacceptable_data_governance -> no_go" in outcome.explanation
+        assert "data_governance scored 5" in outcome.explanation
+        assert "cannot be processed" in outcome.explanation
 
 
 class TestCompleteness:
     def test_one_unknown_still_scores_with_renormalized_weights(self):
-        # process_frequency unknown; every remaining dimension normalizes to 4,
-        # so the renormalized weights must still produce exactly 4.00.
+        # data_readiness unknown; every remaining dimension normalizes to 4, so
+        # the renormalized weights must still produce exactly 4.00.
         scores = {
-            "economic_impact": 4,
-            "process_frequency": None,
-            "data_maturity": 4,
-            "implementation_effort": 2,  # -> 4
-            "regulatory_risk": 2,  # -> 4
-            "non_ai_alternative": 2,  # -> 4
+            "business_value": 4,
+            "adoption_risk": 2,
+            "data_readiness": None,
+            "process_frequency": 4,
+            "implementation_effort": 2,
+            "data_governance": 2,
+            "non_ai_alternative": 2,
         }
-        outcome = score(make_assessment(scores), RUBRIC, PATTERNS)
-        assert outcome.unknown_dimensions == ["process_frequency"]
+        outcome = score(make_assessment(scores), RUBRIC, PATTERNS, OWNED)
+        assert outcome.unknown_dimensions == ["data_readiness"]
         assert outcome.weighted_total == pytest.approx(4.00)
         assert outcome.verdict is Verdict.GO
         assert sum(c.effective_weight for c in outcome.contributions) == pytest.approx(1.0)
 
     def test_too_many_unknowns_refuses_to_produce_a_verdict(self):
-        scores = {**ARITHMETIC_SCORES, "data_maturity": None, "regulatory_risk": None}
-        outcome = score(make_assessment(scores), RUBRIC, PATTERNS)
+        scores = {**ARITHMETIC_SCORES, "data_readiness": None, "adoption_risk": None}
+        outcome = score(make_assessment(scores), RUBRIC, PATTERNS, OWNED)
         assert outcome.verdict is Verdict.INCOMPLETE
         assert outcome.weighted_total is None
         assert outcome.contributions == []
-        assert set(outcome.unknown_dimensions) == {"data_maturity", "regulatory_risk"}
+        assert set(outcome.unknown_dimensions) == {"data_readiness", "adoption_risk"}
 
     def test_a_dimension_absent_entirely_counts_as_unknown(self):
-        scores = {k: v for k, v in ARITHMETIC_SCORES.items() if k != "data_maturity"}
-        outcome = score(make_assessment(scores), RUBRIC, PATTERNS)
-        assert outcome.unknown_dimensions == ["data_maturity"]
-        assert outcome.verdict is Verdict.GO  # one unknown is within the limit
+        scores = {k: v for k, v in ARITHMETIC_SCORES.items() if k != "data_governance"}
+        outcome = score(make_assessment(scores), RUBRIC, PATTERNS, OWNED)
+        assert outcome.unknown_dimensions == ["data_governance"]
+        assert outcome.verdict is Verdict.GO
 
     def test_everything_unknown_is_incomplete_even_if_the_limit_allows_it(
         self, tmp_path
     ):
         """Guards the divide-by-zero when no dimension has a score."""
-        permissive = rubric_with(tmp_path, completeness={"max_unknown_dimensions": 6})
+        permissive = rubric_with(tmp_path, completeness={"max_unknown_dimensions": 7})
         outcome = score(
             make_assessment(dict.fromkeys(RUBRIC.dimension_ids, None)),
             permissive,
             PATTERNS,
+            OWNED,
         )
         assert outcome.verdict is Verdict.INCOMPLETE
         assert outcome.weighted_total is None
 
     def test_unknown_scores_are_never_invented(self):
-        scores = {**ARITHMETIC_SCORES, "data_maturity": None}
-        outcome = score(make_assessment(scores), RUBRIC, PATTERNS)
-        assert "data_maturity" not in {c.dimension_id for c in outcome.contributions}
+        scores = {**ARITHMETIC_SCORES, "data_readiness": None}
+        outcome = score(make_assessment(scores), RUBRIC, PATTERNS, OWNED)
+        assert "data_readiness" not in {c.dimension_id for c in outcome.contributions}
 
 
 class TestMalformedAssessments:
     def test_unknown_dimension_id_is_ignored_and_reported(self):
-        assessment = make_assessment({**ARITHMETIC_SCORES, "vibes": 5})
-        outcome = score(assessment, RUBRIC, PATTERNS)
+        outcome = score(
+            make_assessment({**ARITHMETIC_SCORES, "vibes": 5}),
+            RUBRIC,
+            PATTERNS,
+            OWNED,
+        )
         assert outcome.ignored_dimension_ids == ["vibes"]
         assert outcome.weighted_total == pytest.approx(ARITHMETIC_TOTAL)
 
@@ -423,19 +475,19 @@ class TestMalformedAssessments:
         assessment = make_assessment(ARITHMETIC_SCORES)
         assessment.dimension_assessments.append(
             DimensionAssessment(
-                dimension_id="economic_impact",
+                dimension_id="business_value",
                 score=1,
                 evidence="a contradictory second opinion",
                 confidence=Confidence.LOW,
             )
         )
-        outcome = score(assessment, RUBRIC, PATTERNS)
-        assert outcome.ignored_dimension_ids == ["economic_impact"]
+        outcome = score(assessment, RUBRIC, PATTERNS, OWNED)
+        assert outcome.ignored_dimension_ids == ["business_value"]
         assert outcome.weighted_total == pytest.approx(ARITHMETIC_TOTAL)
 
 
 class TestConfigDrivesTheVerdict:
-    """Acceptance criterion 3: YAML edits change verdicts with no code change."""
+    """YAML edits change verdicts with no code change."""
 
     def test_moving_a_band_flips_the_fixture_to_no_go(self, tmp_path):
         stricter = rubric_with(
@@ -445,37 +497,45 @@ class TestConfigDrivesTheVerdict:
                 {"verdict": "go", "lower": 4.5, "upper": 5.0, "upper_inclusive": True},
             ],
         )
-        outcome = score(make_assessment(ARITHMETIC_SCORES), stricter, PATTERNS)
+        outcome = score(make_assessment(ARITHMETIC_SCORES), stricter, PATTERNS, OWNED)
         assert outcome.weighted_total == pytest.approx(ARITHMETIC_TOTAL)
         assert outcome.verdict is Verdict.NO_GO
 
     def test_reweighting_flips_the_fixture_to_no_go(self, tmp_path):
-        # Shift weight onto regulatory_risk, where this case scores worst.
-        # 5 x 0.05 = 0.25 | 4 x 0.10 = 0.40 | 5 x 0.15 = 0.75
-        # 3 x 0.10 = 0.30 | 2 x 0.45 = 0.90 | 4 x 0.15 = 0.60  -> 3.20
-        new_weights = {
-            "economic_impact": 0.05,
-            "process_frequency": 0.10,
-            "data_maturity": 0.15,
-            "implementation_effort": 0.10,
-            "regulatory_risk": 0.45,
-            "non_ai_alternative": 0.15,
-        }
+        # Shift weight onto adoption_risk, where this fixture scores worst
+        # after normalization is undone... concretely:
+        # 4 x 0.05 = 0.20 | (6-2)=4 x 0.10 = 0.40 | 4 x 0.05 = 0.20
+        # 4 x 0.05 = 0.20 | 4 x 0.05 = 0.20 | 4 x 0.05 = 0.20 | 4 x 0.65 = 2.60
+        # -> but with every normalized value equal to 4 the total is 4.00 for
+        # ANY weighting, so instead drop one raw score and reweight onto it.
         data = yaml.safe_load(RUBRIC_PATH.read_text())
+        new_weights = {
+            "business_value": 0.05,
+            "adoption_risk": 0.05,
+            "data_readiness": 0.60,
+            "process_frequency": 0.10,
+            "implementation_effort": 0.10,
+            "data_governance": 0.05,
+            "non_ai_alternative": 0.05,
+        }
         for dimension in data["dimensions"]:
             dimension["weight"] = new_weights[dimension["id"]]
         path = tmp_path / "rubric.yaml"
         path.write_text(yaml.safe_dump(data))
         reweighted = load_rubric(path)
 
-        outcome = score(make_assessment(ARITHMETIC_SCORES), reweighted, PATTERNS)
-        assert outcome.weighted_total == pytest.approx(3.20)
+        # data_readiness raw 2 now carries 0.60 of the weight:
+        # 4 x 0.05 = 0.20 | 4 x 0.05 = 0.20 | 2 x 0.60 = 1.20 | 4 x 0.10 = 0.40
+        # 4 x 0.10 = 0.40 | 4 x 0.05 = 0.20 | 4 x 0.05 = 0.20   total = 2.80
+        scores = {**ARITHMETIC_SCORES, "data_readiness": 2}
+        outcome = score(make_assessment(scores), reweighted, PATTERNS, OWNED)
+        assert outcome.weighted_total == pytest.approx(2.80)
         assert outcome.verdict is Verdict.NO_GO
 
 
 class TestEndToEnd:
     def test_full_outcome_of_the_arithmetic_fixture(self):
-        outcome = score(make_assessment(ARITHMETIC_SCORES), RUBRIC, PATTERNS)
+        outcome = score(make_assessment(ARITHMETIC_SCORES), RUBRIC, PATTERNS, OWNED)
 
         assert outcome.verdict is Verdict.GO
         assert outcome.weighted_total == pytest.approx(ARITHMETIC_TOTAL)
@@ -486,7 +546,7 @@ class TestEndToEnd:
 
         assert [c.dimension_id for c in outcome.contributions] == RUBRIC.dimension_ids
         assert [c.contribution for c in outcome.contributions] == pytest.approx(
-            [1.25, 0.60, 1.00, 0.45, 0.20, 0.60]
+            [0.88, 0.68, 0.60, 0.52, 0.52, 0.40, 0.40]
         )
         assert sum(c.contribution for c in outcome.contributions) == pytest.approx(
             ARITHMETIC_TOTAL
@@ -495,200 +555,24 @@ class TestEndToEnd:
             assert contribution.effective_weight == pytest.approx(contribution.weight)
 
         assert "GO" in outcome.explanation
-        assert "4.10" in outcome.explanation
-        assert "Interview evidence for economic_impact." in outcome.explanation
+        assert "4.00" in outcome.explanation
+        assert "Request evidence for business_value." in outcome.explanation
 
     def test_explanation_of_a_gated_case_names_the_alternative(self):
         outcome = score(
-            make_assessment(ARITHMETIC_SCORES, anti_pattern_ids=["rpa_relabeled"]),
+            make_assessment(ARITHMETIC_SCORES, ["existing_licensed_capability"]),
             RUBRIC,
             PATTERNS,
+            OWNED,
         )
         assert "NOT_AI" in outcome.explanation
         assert "Gates triggered" in outcome.explanation
-        assert "not_ai_alternative_suffices -> not_ai" in outcome.explanation
+        assert "existing_capability_covers_it -> not_ai" in outcome.explanation
         assert "Instead:" in outcome.explanation
 
     def test_explanation_of_an_incomplete_case_lists_what_is_missing(self):
-        scores = {**ARITHMETIC_SCORES, "data_maturity": None, "regulatory_risk": None}
-        outcome = score(make_assessment(scores), RUBRIC, PATTERNS)
+        scores = {**ARITHMETIC_SCORES, "data_readiness": None, "adoption_risk": None}
+        outcome = score(make_assessment(scores), RUBRIC, PATTERNS, OWNED)
         assert "INCOMPLETE" in outcome.explanation
-        assert "data_maturity" in outcome.explanation
-        assert "regulatory_risk" in outcome.explanation
-
-
-# ---------------------------------------------------------------------------
-# The reference exemplar: one scenario scored honestly against the anchors.
-# This — not the synthetic fixture above — is what Phase 3 should reach for
-# when it needs a worked example for the interview prompts.
-# ---------------------------------------------------------------------------
-
-HOSPITAL_SCENARIO = (
-    "A regional hospital wants an AI assistant that summarizes patient "
-    "discharge notes for the follow-up team. They have five years of clean, "
-    "structured electronic health records."
-)
-
-# Each score below is traceable to the anchor level it satisfies, and each
-# unknown is unknown because the two sentences above simply do not say. The
-# scenario is deliberately not padded out to make the case scorable: refusing
-# to guess is the behaviour under test.
-HOSPITAL_ASSESSMENT = Assessment(
-    archetype_id="summarization",
-    anti_pattern_ids=[],
-    dimension_assessments=[
-        DimensionAssessment(
-            dimension_id="economic_impact",
-            score=None,
-            evidence=(
-                "The scenario names no figure, no hours, and no count of people "
-                "or cases, so there is no magnitude to place on the scale at "
-                "all. Recorded as unknown rather than guessed; the interview "
-                "must ask what the follow-up team spends on this today."
-            ),
-            confidence=Confidence.LOW,
-        ),
-        DimensionAssessment(
-            dimension_id="process_frequency",
-            score=None,
-            evidence=(
-                "No instance volume is stated. 'Regional hospital' does not by "
-                "itself establish discharges per year, and this scale measures "
-                "volume only, so it cannot be inferred from the phrasing."
-            ),
-            confidence=Confidence.LOW,
-        ),
-        DimensionAssessment(
-            dimension_id="data_maturity",
-            score=3,
-            evidence=(
-                "Level 3: 'Data exists in one or two systems and there is a "
-                "plausible access path. Either its quality is unverified, or "
-                "there is no agreed way yet to judge whether an output is "
-                "good.' Five years of clean structured EHR satisfies existence "
-                "and quality, but the second clause holds — summarization is "
-                "an open-ended task and no criteria for a good discharge-note "
-                "summary are stated. Level 4 additionally needs a named owner "
-                "who can grant access, which the scenario does not mention."
-            ),
-            confidence=Confidence.MEDIUM,
-        ),
-        DimensionAssessment(
-            dimension_id="implementation_effort",
-            score=None,
-            evidence=(
-                "Nothing is stated about integration with the EHR, the "
-                "follow-up team's workflow, or how many teams would be "
-                "involved. Unknown rather than assumed."
-            ),
-            confidence=Confidence.LOW,
-        ),
-        DimensionAssessment(
-            dimension_id="regulatory_risk",
-            score=4,
-            evidence=(
-                "Level 4: 'A regulated domain (health, finance, employment, "
-                "safety) ... An audit trail and documented human review are "
-                "required, not optional.' Patient health data in a clinical "
-                "handover is squarely this. Not level 5: no regulator has to "
-                "approve the system before use, and a clinician reads the "
-                "summary, so a bad output is caught rather than irreversible."
-            ),
-            confidence=Confidence.HIGH,
-        ),
-        DimensionAssessment(
-            dimension_id="non_ai_alternative",
-            score=2,
-            evidence=(
-                "Level 2: 'A rules-based approach handles a minority of cases; "
-                "the remaining volume is judgment-heavy.' A template could pull "
-                "structured fields — medications, diagnoses, dates — straight "
-                "from the EHR, but synthesizing the narrative a follow-up team "
-                "needs is judgment-heavy. Not level 1, which requires that "
-                "rule-based attempts have been tried and are known to fail; the "
-                "scenario does not say that."
-            ),
-            confidence=Confidence.MEDIUM,
-        ),
-    ],
-)
-
-
-class TestHospitalReferenceExemplar:
-    """The hospital scenario scored against the anchors, not tuned to an answer.
-
-    Three of six dimensions come out unknown because a two-sentence scenario
-    genuinely does not establish them. The honest outcome is therefore
-    `incomplete` — which is the right result, and a better exemplar for Phase 3
-    than a full set of scores would be: it demonstrates the interview refusing
-    to invent what it was not told.
-    """
-
-    def test_scenario_text_is_the_one_used_throughout_the_spikes(self):
-        assert "discharge notes" in HOSPITAL_SCENARIO
-        assert "five years of clean" in HOSPITAL_SCENARIO
-
-    def test_every_scored_dimension_quotes_the_anchor_level_it_satisfies(self):
-        scored = [
-            entry
-            for entry in HOSPITAL_ASSESSMENT.dimension_assessments
-            if entry.score is not None
-        ]
-        assert len(scored) == 3
-        for entry in scored:
-            assert f"Level {entry.score}:" in entry.evidence
-
-    def test_unknowns_are_recorded_with_low_confidence(self):
-        for entry in HOSPITAL_ASSESSMENT.dimension_assessments:
-            if entry.score is None:
-                assert entry.confidence is Confidence.LOW
-                assert entry.evidence.strip()
-
-    def test_the_honest_outcome_is_incomplete(self):
-        outcome = score(HOSPITAL_ASSESSMENT, RUBRIC, PATTERNS)
-        assert outcome.verdict is Verdict.INCOMPLETE
-        assert outcome.weighted_total is None
-        assert outcome.contributions == []
-        assert outcome.unknown_dimensions == [
-            "economic_impact",
-            "process_frequency",
-            "implementation_effort",
-        ]
-
-    def test_no_gate_fires_on_the_hospital_case(self):
-        # data_maturity 3 (gate needs <= 1), regulatory_risk 4 (needs >= 5),
-        # non_ai_alternative 2 (needs >= 4). The incomplete verdict comes from
-        # the completeness rule, not from a gate.
-        assert score(HOSPITAL_ASSESSMENT, RUBRIC, PATTERNS).triggered_gates == []
-
-    def test_completing_the_interview_yields_a_no_go(self):
-        """The completion path, with the three gaps filled in hypothetically.
-
-        These three follow-up answers are invented for this test — they are a
-        plausible continuation, not a claim about any real hospital. They exist
-        to show the machinery running end to end on an anchor-faithful case.
-
-        economic_impact       3 (higher) 3 ->  3 x 0.25 = 0.75
-        process_frequency     4 (higher) 4 ->  4 x 0.15 = 0.60
-        data_maturity         3 (higher) 3 ->  3 x 0.20 = 0.60
-        implementation_effort 3 (lower)  3 ->  3 x 0.15 = 0.45
-        regulatory_risk       4 (lower)  4 ->  2 x 0.10 = 0.20
-        non_ai_alternative    2 (lower)  2 ->  4 x 0.15 = 0.60
-                                              total    = 3.20 -> no_go
-        """
-        completed = HOSPITAL_ASSESSMENT.model_copy(deep=True)
-        follow_up = {
-            "economic_impact": 3,
-            "process_frequency": 4,
-            "implementation_effort": 3,
-        }
-        for entry in completed.dimension_assessments:
-            if entry.dimension_id in follow_up:
-                entry.score = follow_up[entry.dimension_id]
-                entry.confidence = Confidence.MEDIUM
-
-        outcome = score(completed, RUBRIC, PATTERNS)
-        assert outcome.unknown_dimensions == []
-        assert outcome.weighted_total == pytest.approx(3.20)
-        assert outcome.verdict is Verdict.NO_GO
-        assert outcome.triggered_gates == []
+        assert "data_readiness" in outcome.explanation
+        assert "adoption_risk" in outcome.explanation

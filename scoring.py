@@ -35,8 +35,14 @@ from enum import Enum
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from config import DimensionThresholdCondition, Patterns, Rubric
-from schemas import Assessment, DimensionAssessment
+from config import (
+    AntiPatternCondition,
+    DimensionThresholdCondition,
+    IntakeFieldCondition,
+    Patterns,
+    Rubric,
+)
+from schemas import Assessment, DimensionAssessment, RequestIntake
 
 __all__ = [
     "Verdict",
@@ -215,24 +221,32 @@ def _evaluate_gates(
     indexed: dict[str, DimensionAssessment],
     rubric: Rubric,
     patterns: Patterns,
+    intake: RequestIntake | None,
 ) -> tuple[list[TriggeredGate], list[str]]:
     """Evaluate every blocking gate declared in the rubric.
 
-    A gate fires when any one of its conditions is met. A condition on a
-    dimension the interview left unknown can never be met — an unknown is not
-    evidence, and treating it as one would defeat the point of recording it.
+    A gate fires when any one of its conditions is met. Two kinds of condition
+    can never be met rather than being treated as false-by-default:
+
+    * a dimension the assessment left unknown — an unknown is not evidence, and
+      treating it as one would defeat the point of recording it;
+    * an intake field when no ``intake`` was supplied, since the scorer then
+      has no way to know whether the field was empty or simply not passed.
 
     Returns the gates that fired, ordered by precedence (so the first decides
     the verdict), plus any matched anti-pattern ids absent from the patterns
     file.
     """
     ignored_anti_patterns: list[str] = []
+    matched_all: list[str] = []
     matched_hard_blocks: list[str] = []
     for anti_pattern_id in assessment.anti_pattern_ids:
         anti_pattern = patterns.anti_pattern_by_id(anti_pattern_id)
         if anti_pattern is None:
             ignored_anti_patterns.append(anti_pattern_id)
-        elif anti_pattern.hard_block:
+            continue
+        matched_all.append(anti_pattern_id)
+        if anti_pattern.hard_block:
             matched_hard_blocks.append(anti_pattern_id)
 
     triggered: list[TriggeredGate] = []
@@ -246,12 +260,18 @@ def _evaluate_gates(
                     continue
                 if condition.is_met(entry.score):
                     details.append(condition.describe(entry.score))
-            elif matched_hard_blocks:
-                contributing_anti_patterns.extend(matched_hard_blocks)
-                details.append(
-                    "hard-blocking anti-pattern(s) matched: "
-                    + ", ".join(matched_hard_blocks)
-                )
+            elif isinstance(condition, AntiPatternCondition):
+                hits = condition.matches(matched_hard_blocks, matched_all)
+                if hits:
+                    contributing_anti_patterns.extend(hits)
+                    details.append(
+                        "anti-pattern(s) matched: " + ", ".join(hits)
+                    )
+            elif isinstance(condition, IntakeFieldCondition):
+                if intake is None:
+                    continue
+                if condition.is_met(getattr(intake, condition.field, None)):
+                    details.append(condition.describe())
         if details:
             triggered.append(
                 TriggeredGate(
@@ -382,13 +402,21 @@ def _build_explanation(
     return "\n".join(lines)
 
 
-def score(assessment: Assessment, rubric: Rubric, patterns: Patterns) -> Outcome:
-    """Turn an interview assessment into an auditable verdict.
+def score(
+    assessment: Assessment,
+    rubric: Rubric,
+    patterns: Patterns,
+    intake: RequestIntake | None = None,
+) -> Outcome:
+    """Turn an assessment into an auditable verdict.
 
     Args:
-        assessment: The structured output of a discovery interview.
+        assessment: The structured output of a single-shot assessment.
         rubric: Validated rubric supplying weights, bands, and gates.
         patterns: Validated pattern library supplying anti-pattern definitions.
+        intake: The originating request, required only by gates with
+            ``intake_field`` conditions. When omitted, those gates cannot fire —
+            the scorer will not infer that a field is empty from its absence.
 
     Returns:
         An :class:`Outcome` whose ``weighted_total`` is reproducible by hand
@@ -397,7 +425,7 @@ def score(assessment: Assessment, rubric: Rubric, patterns: Patterns) -> Outcome
     """
     indexed, ignored_dimension_ids = _index_assessments(assessment, rubric)
     triggered_gates, ignored_anti_pattern_ids = _evaluate_gates(
-        assessment, indexed, rubric, patterns
+        assessment, indexed, rubric, patterns, intake
     )
 
     unknown_dimensions = [

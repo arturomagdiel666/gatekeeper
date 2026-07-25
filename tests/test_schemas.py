@@ -11,7 +11,15 @@ import pytest
 from pydantic import ValidationError
 
 from config import load_rubric
-from schemas import SCORE_MAX, SCORE_MIN, Assessment, Confidence, DimensionAssessment
+from schemas import (
+    SCORE_MAX,
+    SCORE_MIN,
+    Assessment,
+    Confidence,
+    DimensionAssessment,
+    RequestIntake,
+    banned_synonyms,
+)
 
 
 def property_names(schema: dict) -> set[str]:
@@ -74,7 +82,7 @@ class TestAssessmentValidation:
         with pytest.raises(ValidationError):
             DimensionAssessment.model_validate(
                 {
-                    "dimension_id": "economic_impact",
+                    "dimension_id": "business_value",
                     "score": 4,
                     "evidence": "e",
                     "confidence": "high",
@@ -84,7 +92,7 @@ class TestAssessmentValidation:
 
     def test_score_may_be_unknown(self):
         entry = DimensionAssessment(
-            dimension_id="data_maturity",
+            dimension_id="data_readiness",
             score=None,
             evidence="The interviewee did not know.",
             confidence=Confidence.LOW,
@@ -95,7 +103,7 @@ class TestAssessmentValidation:
     def test_scores_outside_the_scale_are_rejected(self, bad_score):
         with pytest.raises(ValidationError):
             DimensionAssessment(
-                dimension_id="data_maturity",
+                dimension_id="data_readiness",
                 score=bad_score,
                 evidence="e",
                 confidence=Confidence.HIGH,
@@ -104,7 +112,7 @@ class TestAssessmentValidation:
     def test_confidence_is_restricted_to_the_enum(self):
         with pytest.raises(ValidationError):
             DimensionAssessment(
-                dimension_id="data_maturity",
+                dimension_id="data_readiness",
                 score=3,
                 evidence="e",
                 confidence="pretty sure",
@@ -115,3 +123,44 @@ def test_score_bounds_match_the_rubric_scale():
     """Catch drift between the static schema bounds and the tunable rubric."""
     scale = load_rubric().scale
     assert (SCORE_MIN, SCORE_MAX) == (scale.min, scale.max)
+
+
+class TestRequestIntake:
+    def test_minimal_intake_needs_only_request_text(self):
+        intake = RequestIntake(request_text="We want an agent.")
+        assert intake.business_owner == ""
+        assert intake.stated_benefit is None
+
+    def test_extra_fields_are_forbidden(self):
+        with pytest.raises(ValidationError):
+            RequestIntake(request_text="x", budget="lots")
+
+
+class TestMetricProposalFields:
+    """The model's only role in the Measurement Contract."""
+
+    def test_metric_proposal_is_optional(self):
+        assessment = Assessment()
+        assert assessment.proposed_metric_id is None
+        assert assessment.stated_baseline_value is None
+
+    def test_metric_proposal_round_trips(self):
+        assessment = Assessment(
+            proposed_metric_id="hours_reclaimed_per_month",
+            stated_baseline_value=120.0,
+        )
+        assert assessment.proposed_metric_id == "hours_reclaimed_per_month"
+        assert assessment.stated_baseline_value == 120.0
+
+
+class TestBannedSynonymList:
+    def test_every_banned_word_is_lower_case_and_non_empty(self):
+        assert banned_synonyms()
+        for word in banned_synonyms():
+            assert word == word.lower()
+            assert word.strip()
+
+    def test_no_banned_word_is_itself_a_field_name(self):
+        """A field name must never appear on its own banned list."""
+        names = property_names(Assessment.model_json_schema())
+        assert names.isdisjoint(set(banned_synonyms()))

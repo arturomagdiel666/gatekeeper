@@ -1,41 +1,50 @@
 # =============================================================================
-# Gatekeeper scoring rubric
+# Gatekeeper scoring rubric — internal IT AI Agent Hub
 # =============================================================================
-# This file is the single source of truth for how a use case is scored. Weights,
-# anchors, thresholds and verdict bands all live here — Python only reads and
-# validates them (see config.py) and does the arithmetic (see scoring.py).
+# This file is the single source of truth for how a request is scored. Weights,
+# anchors, gates and verdict bands all live here. Python only reads and
+# validates them (config.py) and does the arithmetic (scoring.py). The
+# assessment prompt is generated FROM this file (assess.py), so tuning the
+# rubric tunes the prompt — there is no second copy of the anchors to drift.
 #
-# You can tune this file without touching any code. Doing so changes verdicts.
-# `pytest` will tell you if you break an invariant (weights must sum to 1.0,
-# bands must tile the scale with no gap or overlap, every level needs an anchor).
+# Calibrated for internal IT requests: a business area asks the Hub to build an
+# AI agent, and the Hub decides whether to approve it, reject it, or tell them
+# it is not an AI problem. It is NOT calibrated for consumer products or for
+# industrial/OT, both of which would want different dimensions.
 #
 # HOW SCORING WORKS
-#   1. The interview produces a raw 1-5 integer per dimension, plus evidence.
-#      A dimension that could not be determined is recorded as unknown (null) —
-#      never guessed.
-#   2. Each raw score is normalized so that 5 always means "good for this use
-#      case". For a `lower_is_better` dimension the raw score is flipped:
-#          normalized = scale.min + scale.max - raw     (with a 1-5 scale: 6 - raw)
-#      So implementation_effort=1 (cheap) normalizes to 5, and =5 (a year of
-#      work) normalizes to 1.
-#   3. weighted_total = sum(normalized * weight) over the KNOWN dimensions, with
-#      weights renormalized to sum to 1.0 across those known dimensions. The
-#      total therefore always lies on the same 1.0-5.0 scale.
-#   4. The total is rounded to 6 decimal places before band matching, so an
-#      exact boundary value like 3.5 lands predictably instead of being lost to
+#   1. The assessment produces a raw 1-5 integer per dimension plus evidence.
+#      A dimension that cannot be determined from the request is recorded as
+#      unknown (null) — never guessed.
+#   2. Each raw score is normalized so 5 always means "good for this request".
+#      A `lower_is_better` dimension is flipped about the scale:
+#          normalized = scale.min + scale.max - raw     (on 1-5: 6 - raw)
+#   3. weighted_total = sum(normalized * weight) over the KNOWN dimensions,
+#      with weights renormalized to sum to 1.0 across those. The total always
+#      lands on the 1.0-5.0 scale.
+#   4. The total is rounded to 6 decimal places before band matching so an
+#      exact boundary like 3.5 behaves predictably instead of being lost to
 #      binary floating-point error.
-#   5. Gates are evaluated BEFORE the bands. See `blocking_gates` below.
+#   5. Gates are evaluated BEFORE completeness and BEFORE the bands. See
+#      `blocking_gates`.
 #
-# WRITING ANCHORS
-#   Anchors are what make scoring reproducible between two different
-#   interviewers, or between a human and the model. Each level must describe an
-#   observable situation, not an intensity. "3 = medium effort" is useless;
-#   "3 = about one quarter, new pipeline plus a workflow change, two or three
-#   teams to coordinate" is something two people can agree on. If you edit these,
-#   keep them concrete and keep the levels mutually exclusive.
+# WRITING ANCHORS — three rules, each earned from a defect found in review
+#   ONE AXIS PER DIMENSION. Every dimension states the single axis it measures,
+#   above its anchors. A descriptor using "or" to admit a genuinely different
+#   case is usually smuggling in a second construct. (Where "or" appears below
+#   it separates UNITS of the same axis — hours, currency, cases — not
+#   different constructs.)
+#
+#   EVIDENCE REQUIREMENTS ARE CONDITIONAL ON THE ARCHETYPE. Requiring labels of
+#   everything caps generative requests below the top of data_readiness by
+#   construction, penalising the largest category an internal Hub receives.
+#
+#   OBSERVABLE, NOT INTENSITY. "3 = medium effort" is useless. "3 = about one
+#   quarter, two or three teams to coordinate" is something two people can
+#   agree on. Keep levels mutually exclusive.
 # =============================================================================
 
-version: "1.0.0"
+version: "2.0.0"
 
 # The integer scale every dimension is scored on. Normalization of
 # `lower_is_better` dimensions derives from these two numbers.
@@ -43,193 +52,263 @@ scale:
   min: 1
   max: 5
 
+# -----------------------------------------------------------------------------
+# WEIGHT RATIONALE — read before retuning
+#
+# business_value (0.22) is the largest because it is the reason to build at all.
+#
+# adoption_risk (0.17) is deliberately second. Internal tools overwhelmingly
+# fail because nobody changes how they work, not because the technology fails,
+# and this is the dimension almost nobody scores in practice.
+#
+# data_governance (0.10) and non_ai_alternative (0.10) carry the two LOWEST
+# weights BECAUSE BOTH ARE GATED AT THEIR EXTREMES. Their weight only has to
+# express the gradient across the non-extreme range; the categorical case is
+# handled by a gate, not by arithmetic. A future reweighting must preserve this
+# relationship — raising them without removing their gates would double-count
+# the same condition.
+# -----------------------------------------------------------------------------
 dimensions:
 
   # ---------------------------------------------------------------------------
-  - id: economic_impact
-    label: Economic impact
+  - id: business_value
+    label: Business value
+    axis: >-
+      MAGNITUDE of the benefit, annualized. Nothing else. The units below
+      (person-hours, currency, cases, tickets) are alternative denominations of
+      the same magnitude — pick whichever the request supports.
     description: >-
-      The size of the upside if the system works as intended: money saved,
-      money earned, or loss avoided, annualized. Judge the prize, not the
-      probability of winning it — the cost side is captured by
-      implementation_effort and the odds by data_maturity.
-      MAGNITUDE IS THE ONLY AXIS HERE. Whether anyone has yet quantified the
-      benefit is a question of *confidence*, not of size: if no figure has been
-      named, estimate the order of magnitude anyway and record
-      `confidence: low` on the assessment. A missing number must never pull
-      this score down — that would make the rubric's heaviest dimension partly
-      a measure of stakeholder engagement rather than of impact.
-    weight: 0.25
+      The size of the benefit if this works as intended: hours reclaimed, cost
+      avoided, cycle time reduced, tickets deflected, or revenue influenced.
+      Judge the size of the prize, not the probability of winning it — the cost
+      side is implementation_effort and the odds are data_readiness.
+      Whether anyone has yet QUANTIFIED the benefit is a question of confidence,
+      not of size. If the request names no figure, estimate the order of
+      magnitude from the process described and record `confidence: low`. A
+      missing number must never pull this score down: that would turn the
+      heaviest-weighted dimension into a partial measure of how well the
+      requester writes a business case.
+    weight: 0.22
     direction: higher_is_better
-    # The currency bands are the main thing to retune for a different
-    # organization: what is transformational for a 50-person firm is a rounding
-    # error for a large one. Scale them, keep the structure. Each level gives a
-    # non-monetary equivalent at the same order of magnitude, for benefits that
-    # are real but not denominated in currency.
+    # Retune these bands for the organisation's size. What is transformational
+    # for a 200-person company is a rounding error for a 50,000-person one.
     anchors:
       1: >-
-        Under roughly 10k USD a year — equivalently, under about 200
-        person-hours a year, or a handful of people or cases affected.
+        Under about 200 person-hours a year reclaimed, under about 10k USD
+        avoided, or fewer than about 50 cases or tickets a year affected.
       2: >-
-        Roughly 10k-50k USD a year — equivalently, about 200-1,000 person-hours
-        a year, or a few dozen people or cases affected.
+        About 200-1,000 person-hours a year (roughly 0.1-0.5 FTE), about
+        10k-50k USD, or about 50-500 cases or tickets a year.
       3: >-
-        Roughly 50k-250k USD a year — equivalently, about 1,000-5,000
-        person-hours a year (very roughly 0.5-2.5 full-time equivalents), or
-        hundreds of people or cases affected.
+        About 1,000-5,000 person-hours a year (roughly 0.5-2.5 FTE), about
+        50k-250k USD, or about 500-5,000 cases or tickets a year.
       4: >-
-        Roughly 250k-1M USD a year — equivalently, about 5,000-20,000
-        person-hours a year (very roughly 2.5-10 full-time equivalents),
-        thousands of people or cases affected, or several serious incidents
-        avoided a year.
+        About 5,000-20,000 person-hours a year (roughly 2.5-10 FTE), about
+        250k-1M USD, about 5,000-50,000 cases or tickets a year, or a
+        cycle-time reduction on a process the business already reports on.
       5: >-
-        Over roughly 1M USD a year — equivalently, more than about 20,000
-        person-hours a year (10+ full-time equivalents), tens of thousands of
-        people or cases affected, or the avoidance of incidents carrying
-        regulatory or safety consequences.
+        More than about 20,000 person-hours a year (10+ FTE), more than about
+        1M USD, tens of thousands of cases a year, or direct influence on
+        revenue or on a regulatory obligation the company already reports.
+
+  # ---------------------------------------------------------------------------
+  - id: adoption_risk
+    label: Adoption risk
+    axis: >-
+      The ORGANISATIONAL likelihood that the intended users will not change how
+      they work. Not technical risk, not delivery risk.
+    description: >-
+      Score this on observable facts about the people, not on optimism: were
+      the intended users consulted, does the change fit a workflow they already
+      have or does it require a new one, what happened to the last tool built
+      for these same users, and has a named owner committed to driving
+      adoption. An agent nobody opens has an ROI of zero regardless of how well
+      it works.
+    weight: 0.17
+    direction: lower_is_better
+    anchors:
+      1: >-
+        The intended users asked for this themselves. It sits inside a workflow
+        they already use daily, a named owner has committed to driving
+        adoption, and a previous tool built for these same users was adopted
+        and is still in use.
+      2: >-
+        Users were consulted and are supportive. The change fits an existing
+        workflow with minor adjustment, and an owner has committed to driving
+        adoption.
+      3: >-
+        Users were consulted but did not shape it. It adds a new step to an
+        existing workflow, and adoption depends on a manager asking people to
+        use it.
+      4: >-
+        The intended users were not consulted, or the change requires them to
+        adopt a new tool or a new workflow, or a previous tool built for these
+        same users was quietly abandoned.
+      5: >-
+        The intended users were not consulted and have not been told. It
+        replaces or overrides a way of working they chose themselves, no owner
+        has committed to driving adoption, and a previous tool for these users
+        was rejected or abandoned.
+
+  # ---------------------------------------------------------------------------
+  - id: data_readiness
+    label: Data readiness
+    axis: >-
+      Whether the data EXISTS, is OBTAINABLE by this team, and whether you can
+      TELL A GOOD OUTPUT FROM A BAD ONE. Permission to use the data is a
+      different dimension (data_governance).
+    description: >-
+      The construct is "can you evaluate it", not "do you have labels". What
+      counts as evidence depends on the archetype in patterns.yaml. Predictive
+      archetypes — classification, extraction, forecasting, anomaly_detection,
+      recommendation — need labels or an unambiguous outcome variable.
+      Generative archetypes — summarization, rag_qa, and drafting requests
+      handled as summarization — have no outcome variable and never will; for
+      them the equivalent evidence is a curated reference set plus agreed
+      quality criteria. Requiring labels of everything would cap generative
+      requests below the top of this scale by construction.
+      This is the dimension requesters most consistently overestimate. Score
+      what has been seen, not what is believed to exist.
+    weight: 0.15
+    direction: higher_is_better
+    anchors:
+      1: >-
+        The data does not exist in retrievable form. It is in people's heads,
+        in undigitized paper, or it would have to be collected from scratch
+        before any work could begin.
+      2: >-
+        Data exists but is spread across systems nobody has joined, or is
+        locked inside attachments and free text with no access path. Obtaining
+        it is a project with its own budget.
+      3: >-
+        Data exists in one or two systems and a plausible access path exists,
+        but its quality has not been checked on real records, or there is no
+        agreed way yet to tell whether an output is good.
+      4: >-
+        Data is centralized, its quality has been checked on a real sample, and
+        a named owner can grant access. A partial way to judge output quality
+        exists: for a predictive archetype, some labelled examples or a usable
+        proxy for the outcome; for a generative archetype, a handful of
+        reference outputs or draft quality criteria.
+      5: >-
+        Sufficient clean, accessible history with verified quality and an owner
+        who can grant access this quarter without an exception, plus a settled
+        way to judge an output: for a predictive archetype, labels or an
+        unambiguous outcome variable; for a generative archetype, a curated
+        reference set with agreed quality criteria (for example, what a good
+        ticket handover summary must contain) and someone qualified to apply
+        them.
 
   # ---------------------------------------------------------------------------
   - id: process_frequency
     label: Process frequency
+    axis: >-
+      VOLUME of the target process, in instances per year. Nothing else.
     description: >-
-      How often the target process actually runs, measured in instances per
-      year. Frequency is what lets a fixed build cost compound into a return: a
-      rare process can be extremely valuable per instance and still be a poor
-      automation target, because there are too few instances to repay the build
-      or to learn from.
-      VOLUME IS THE ONLY AXIS HERE. How much each instance differs from the
-      last — heterogeneity — is a separate construct that drives feasibility
-      rather than return, and it is deliberately not measured on this scale.
-      See the proposed seventh dimension in docs/DECISIONS.md.
-    weight: 0.15
+      Frequency is what lets a fixed build cost compound into a return. A rare
+      process can be valuable per instance and still be a poor agent target,
+      because there are too few instances to repay the build or to learn from.
+      How much each instance DIFFERS from the last is a separate construct that
+      drives feasibility rather than return, and is deliberately not measured
+      here. See the proposed eighth dimension in docs/DECISIONS.md.
+    weight: 0.13
     direction: higher_is_better
     anchors:
       1: >-
         Fewer than about a dozen instances a year.
       2: >-
-        Roughly monthly — about 12 to 100 instances a year.
+        About 12 to 100 instances a year — roughly monthly.
       3: >-
-        Roughly weekly — about 100 to 1,000 instances a year.
+        About 100 to 1,000 instances a year — roughly weekly.
       4: >-
-        Roughly daily — about 1,000 to 10,000 instances a year.
+        About 1,000 to 10,000 instances a year — roughly daily.
       5: >-
-        Many times an hour, or continuous — more than about 10,000 instances a
-        year.
-
-  # ---------------------------------------------------------------------------
-  - id: data_maturity
-    label: Data maturity
-    description: >-
-      Whether the data needed to build this exists today, can actually be
-      obtained by this team this quarter, and whether you can tell a good
-      output from a bad one.
-      THE CONSTRUCT IS "CAN YOU EVALUATE IT", NOT "DO YOU HAVE LABELS". What
-      counts as evidence depends on the archetype (see patterns.yaml). Tasks
-      with a right answer — classification, extraction, forecasting,
-      anomaly_detection, recommendation — need labels or an unambiguous outcome
-      variable. Open-ended tasks — summarization, rag_qa — have no outcome
-      variable and never will; for them the equivalent evidence is a curated
-      reference or evaluation set plus agreed quality criteria. Requiring
-      labels of everything would cap generative use cases below the top of this
-      scale by construction, penalizing exactly the cases most often brought to
-      triage.
-      This is the dimension teams most consistently overestimate — score what
-      has been seen, not what is believed to exist.
-    weight: 0.20
-    direction: higher_is_better
-    anchors:
-      1: >-
-        The data does not exist. It lives in people's heads, in undigitized
-        paper, or it would have to be collected from scratch before any work
-        could start.
-      2: >-
-        Data exists but is scattered across systems nobody has joined, or is
-        locked in free text or documents with no access path. Getting to it is
-        its own project with its own budget.
-      3: >-
-        Data exists in one or two systems and there is a plausible access path.
-        Either its quality is unverified, or there is no agreed way yet to
-        judge whether an output is good.
-      4: >-
-        Data is centralized, reasonably clean, and has a named owner who can
-        grant access. A partial means of judging output quality exists: for a
-        task with a right answer, some labeled examples or a usable proxy for
-        the outcome; for an open-ended task, a few reference examples or draft
-        quality criteria.
-      5: >-
-        Several years of clean, structured, accessible history, plus an owner
-        who can grant access this quarter without an escalation, plus a settled
-        way to judge an output: for a task with a right answer, labels or an
-        unambiguous outcome variable; for an open-ended task, a curated
-        evaluation set with agreed quality criteria (e.g. what a good
-        discharge-note summary must contain) and someone qualified to apply
-        them.
+        More than about 10,000 instances a year — many times an hour, or
+        continuous.
 
   # ---------------------------------------------------------------------------
   - id: implementation_effort
     label: Implementation effort
+    axis: >-
+      TOTAL COST to reach production and stay there: build, integration, and
+      the change management needed for people to actually use it.
     description: >-
-      Total cost to get to production and keep it there: build, integration with
-      the systems of record, and the change management needed for people to
-      actually use it. Score the whole path to production, not the prototype.
-    weight: 0.15
+      Score the whole path to production, not the prototype. An agent that
+      demos in an afternoon and needs two quarters of integration work is a
+      level 4, not a level 1.
+    weight: 0.13
     direction: lower_is_better
     anchors:
       1: >-
-        Days to a couple of weeks. One integration against an existing API, no
-        new infrastructure, one team affected.
+        Days to two weeks. Configuration of a platform already licensed, or one
+        integration against an API that already exists. No new infrastructure,
+        one team affected.
       2: >-
-        Roughly one to two months. A couple of integrations, minor data
-        plumbing, one existing process to adjust.
+        Two to six weeks. A couple of integrations, minor data plumbing, one
+        existing process to adjust, no new vendor or licence needed.
       3: >-
-        Roughly one quarter. A new data pipeline plus a UI or workflow change,
-        with two or three teams to coordinate.
+        About one quarter. A new data pipeline plus a UI or workflow change,
+        two or three teams to coordinate, or a new licence to procure.
       4: >-
-        Two or more quarters. Multiple system integrations, a new platform
-        component to stand up, or a real retraining of how people work.
+        Two or more quarters. Several system integrations, a new platform
+        component to stand up, or retraining how a whole team works.
       5: >-
         A year or more, or blocked on something outside this team's control:
-        replacing a legacy system, a vendor negotiation, an org change, or a
-        labeling effort measured in person-months.
+        replacing a system of record, a vendor negotiation, an organisational
+        change, or a labelling effort measured in person-months.
 
   # ---------------------------------------------------------------------------
-  - id: regulatory_risk
-    label: Regulatory and liability risk
+  - id: data_governance
+    label: Data governance exposure
+    axis: >-
+      Whether the data MAY BE PROCESSED at all by the available model platform,
+      and at what cost in controls. Not the quality of the data — that is
+      data_readiness.
     description: >-
-      Exposure from compliance, privacy, and liability if the system is wrong or
-      is misused. Score the consequence of a bad output reaching a person, not
-      the probability of it happening.
+      Score on three observable things: the classification of the data, whether
+      processing by the approved model platform is contractually permitted, and
+      whether an access path exists that does not require an exception. Level 5
+      is a gate: if the data cannot lawfully or contractually be processed,
+      no amount of business value compensates.
     weight: 0.10
     direction: lower_is_better
     anchors:
       1: >-
-        Internal, non-personal data. A wrong output is embarrassing at worst and
-        trivially reversible by the person who sees it.
+        Public or internal-unclassified data with no personal data. Processing
+        by the approved model platform is already covered, and an access path
+        exists that needs no exception.
       2: >-
-        Internal data with some personal fields. Standard privacy handling
-        covers it, and errors are caught and corrected inside the team.
+        Internal data with limited personal fields such as names and work
+        contact details. Covered by existing processing agreements; access is
+        granted through a standard request.
       3: >-
-        Personal or commercially sensitive data, or a decision that shapes a
-        customer's experience without affecting their money, rights, or access.
+        Confidential business data, or personal data beyond basic identifiers.
+        Processing is permitted but requires a documented assessment, and
+        access needs the data owner's approval.
       4: >-
-        A regulated domain (health, finance, employment, safety) or a decision
-        affecting money or access. An audit trail and documented human review
-        are required, not optional.
+        Restricted data — regulated personal data, financial records, HR or
+        health information. Processing externally requires a specific
+        contractual clause or an impact assessment that is not yet in place,
+        and access requires a formal exception.
       5: >-
-        Decisions carrying legal force or safety consequences, protected-class
-        exposure, or a regulator who must approve the system before it is used.
-        A bad output can cause harm that cannot be undone.
+        The data may not be processed by the available model platform at all:
+        a prohibited classification, a contractual bar, a residency
+        restriction, or a regulator or works council approval that has not been
+        obtained. No compliant access path exists today.
 
   # ---------------------------------------------------------------------------
   - id: non_ai_alternative
     label: Strength of the non-AI alternative
+    axis: >-
+      How COMPLETELY a non-AI solution would solve the same problem — a rule, a
+      query, a report, a process fix, or a capability the company already
+      licenses.
     description: >-
-      How completely a deterministic rule, a SQL query, a report, or a fix to
-      the upstream process would solve the same problem. This is the dimension
-      that makes Gatekeeper worth running: a strong non-AI alternative is a
-      reason NOT to build AI, no matter how attractive the rest of the score.
-      A high raw score here also fires the not_ai gate below.
-    weight: 0.15
+      This is the dimension that makes the Hub worth running. A strong non-AI
+      alternative is a reason not to build an agent, however attractive the
+      rest of the score. A high raw score here fires the
+      non_ai_alternative_suffices gate.
+    weight: 0.10
     direction: lower_is_better
     anchors:
       1: >-
@@ -237,25 +316,26 @@ dimensions:
         genuinely ambiguous, and rule-based attempts have been tried and are
         known to fail.
       2: >-
-        A rules-based approach handles a minority of cases; the remaining volume
-        is judgment-heavy in a way rules have not captured.
+        A rules-based approach handles a minority of cases; the remaining
+        volume is judgement-heavy in a way rules have not captured.
       3: >-
-        Rules or a query would cover roughly half the cases. AI would extend
-        coverage rather than create the capability.
+        Rules, a query, or a report would cover roughly half the cases. An
+        agent would extend coverage rather than create the capability.
       4: >-
-        A well-written query, a report, or a documented process change would
-        solve most of it. AI would mostly add convenience.
+        A well-written query, a report, a process change, or configuration of a
+        tool the company already owns would solve most of it. An agent would
+        mostly add convenience.
       5: >-
-        A deterministic rule, a lookup table, a new form field, or fixing an
-        upstream process solves it completely — and more cheaply, more
-        predictably, and with less to maintain.
+        A deterministic rule, a lookup, a form field, an upstream process fix,
+        or an already-licensed capability solves it completely — more cheaply,
+        more predictably, and with less to maintain.
 
 # =============================================================================
 # VERDICT BANDS
 # =============================================================================
-# Bands map the weighted 1.0-5.0 total onto a verdict. Only `go` and `no_go` may
-# appear here, and config.py enforces that: `not_ai` is a gate, never a band
-# (see below), and `incomplete` is a refusal to score, not a score.
+# Bands map the weighted 1.0-5.0 total onto a verdict. Only `go` and `no_go`
+# may appear here, and config.py enforces it: `not_ai` is a gate, never a band,
+# and `incomplete` is a refusal to score rather than a score.
 #
 # BOUNDARY CONVENTION: a band matches when   lower <= total < upper
 # EXCEPT the single band flagged `upper_inclusive: true` — which must be the
@@ -274,90 +354,122 @@ verdict_bands:
 # =============================================================================
 # BLOCKING GATES
 # =============================================================================
-# Some conditions are categorical, not gradual. A weighted average cannot
-# express "this is disqualifying" — no weight small enough to be fair to a
-# normal case is large enough to stop an extreme one. When a condition is
-# binary, it belongs here rather than in the weights.
+# Some conditions are categorical, not gradual. A WEIGHTED SUM CANNOT EXPRESS A
+# PROHIBITION — every dimension in a weighted average is compensable by
+# construction, so a weight small enough to be fair to an ordinary request is
+# always too small to stop an extreme one. Two demonstrations with this rubric,
+# every dimension at its best except the one named:
 #
-# Gates are evaluated BEFORE the completeness check and BEFORE the bands, and
-# they win outright. They are checked first because they are positive findings:
-# knowing "a rule already solves this" is enough to stop, even when half the
-# interview is still unanswered.
+#   data_readiness = 1   -> weighted total 4.40, which bands as `go`
+#   data_governance = 5  -> weighted total 4.60, which bands as `go`
 #
-# A gate fires when ANY of its conditions is met (`any_of`). Two condition
+# Both are stopped by gates instead.
+#
+# Gates evaluate BEFORE the completeness check and BEFORE the bands, and they
+# win outright. They are checked first because they are positive findings:
+# knowing "the company already licenses this" is enough to stop, even when half
+# the assessment is unknown.
+#
+# A gate fires when ANY of its conditions is met (`any_of`). Three condition
 # types exist:
 #
-#   type: dimension_threshold      — a raw score on `dimension`, compared with
-#                                    `at_least` or `at_most` against `threshold`
-#   type: hard_block_anti_pattern  — any anti-pattern in patterns.yaml carrying
-#                                    `hard_block: true` was matched
+#   type: dimension_threshold  — a raw score on `dimension`, compared with
+#                                `at_least` or `at_most` against `threshold`
+#   type: anti_pattern         — either `hard_block_any: true` (any anti-pattern
+#                                with hard_block: true, minus `exclude_ids`), or
+#                                an explicit `anti_pattern_ids` list
+#   type: intake_field         — a predicate on request metadata rather than on
+#                                a scored dimension: `is_empty` or `is_present`
 #
-# A gate CANNOT fire on a dimension the interview left unknown. An unknown is
-# not evidence of anything, and inventing one here would defeat the point of
-# recording it as unknown.
+# A gate CANNOT fire on a dimension the assessment left unknown, or on an
+# intake field when no intake was supplied. An unknown is not evidence, and
+# treating it as one would defeat the point of recording it as unknown.
 #
-# `precedence` breaks ties when several gates fire: the LOWEST number decides
-# the verdict, and every gate that fired is still reported in the outcome. Gates
-# sharing a precedence are resolved in the order they appear below.
-#
-# `verdict` may only be `no_go` or `not_ai` — a gate can never force a Go.
-# Deleting a gate from this list restores ordinary band behaviour for that
-# condition, with no code change.
+# `precedence` breaks ties when several fire: the LOWEST number decides the
+# verdict, and every gate that fired is still reported. `verdict` may only be
+# `no_go` or `not_ai` — a gate can never force a Go. Deleting a gate restores
+# ordinary band behaviour for that condition, with no code change.
 blocking_gates:
 
-  # The core of the product. A use case can score 4.6 and still be Not-AI
-  # because a SQL query already solves it. If Not-AI were merely the bottom
-  # band, that case would come out as Go — precisely the mistake Gatekeeper
-  # exists to prevent. Outranks every other gate: if a rule solves it AND the
-  # data does not exist, the useful answer is still "this is not an AI problem".
-  - id: not_ai_alternative_suffices
+  # The highest-value check in the whole model, and first for that reason: its
+  # remediation is the most actionable thing the Hub can say — the company
+  # already pays for this, go and use it.
+  - id: existing_capability_covers_it
     verdict: not_ai
-    precedence: 1
+    precedence: 10
+    reason: >-
+      A capability the company already licenses covers this. Route the
+      requester to whoever owns that licence rather than building an agent.
+    any_of:
+      - type: anti_pattern
+        anti_pattern_ids:
+          - existing_licensed_capability
+
+  # The core of the product. A request can score 4.6 and still be Not-AI
+  # because a query already solves it. If Not-AI were merely the bottom band,
+  # that request would come out as Go — precisely the mistake the Hub exists to
+  # prevent. Excludes existing_licensed_capability so that case is attributed
+  # to the more actionable gate above.
+  - id: non_ai_alternative_suffices
+    verdict: not_ai
+    precedence: 20
     reason: >-
       A non-AI solution would do this job. Build that instead — it will be
-      cheaper, exactly auditable, and it will not drift.
+      cheaper, exactly auditable, and it will not drift or need retraining.
     any_of:
       - type: dimension_threshold
         dimension: non_ai_alternative
         comparison: at_least
         threshold: 4
-      - type: hard_block_anti_pattern
+      - type: anti_pattern
+        hard_block_any: true
+        exclude_ids:
+          - existing_licensed_capability
+
+  # An agent with no named business owner has nobody to agree the Measurement
+  # Contract with, nobody to drive adoption, and nobody to answer at the review
+  # date. This is an intake gate, not a scored one: it is a fact about the
+  # request form, not a judgement about the use case.
+  - id: no_named_business_owner
+    verdict: no_go
+    precedence: 30
+    reason: >-
+      No named business owner. The Hub cannot approve an agent without someone
+      accountable for its adoption and for its measurement contract. Resubmit
+      with a named owner who has agreed to the role.
+    any_of:
+      - type: intake_field
+        field: business_owner
+        predicate: is_empty
 
   # Without data there is nothing to learn from or ground answers in, at any
-  # budget. This is a sequencing verdict, not a permanent one: instrument the
-  # process, then come back. It is a gate because data_maturity carries 0.20 of
-  # weight, which cannot offset a strong score everywhere else — a case with no
-  # data at all but excellent everything else totals 4.20 and would otherwise
-  # band as Go.
+  # budget. A sequencing verdict, not a permanent one: instrument the process,
+  # then come back.
   - id: no_usable_data
     verdict: no_go
-    precedence: 2
+    precedence: 40
     reason: >-
       The data this depends on does not exist in usable form yet. Instrument
-      the process and capture the outcome from today onward, then re-triage.
+      the process and capture the outcome from today onward, then resubmit.
     any_of:
       - type: dimension_threshold
-        dimension: data_maturity
+        dimension: data_readiness
         comparison: at_most
         threshold: 1
 
-  # Exposure at the top of the regulatory scale — legal force, safety
-  # consequences, irreversible harm, or a regulator who must approve first — is
-  # a stop condition, not a penalty to be averaged away. regulatory_risk carries
-  # the smallest weight in the rubric (0.10), so the entire distance from
-  # "embarrassing but reversible" to "a regulator must approve" is a 0.40 swing;
-  # an otherwise strong case at level 5 totals 4.60 and would band as Go.
-  - id: unacceptable_regulatory_exposure
+  # If the data cannot lawfully or contractually be processed, no amount of
+  # business value compensates. Re-triage once the scope is narrowed or the
+  # contractual path exists.
+  - id: unacceptable_data_governance
     verdict: no_go
-    precedence: 2
+    precedence: 50
     reason: >-
-      Regulatory, safety, or liability exposure is at the top of the scale.
-      This needs a compliance and legal path agreed before any build, not a
-      triage score. Re-triage once the scope is narrowed or the review path is
-      in place.
+      The data cannot be processed by the available model platform under
+      current classification, contract, or residency constraints. Narrow the
+      scope to permitted data, or obtain the contractual path first.
     any_of:
       - type: dimension_threshold
-        dimension: regulatory_risk
+        dimension: data_governance
         comparison: at_least
         threshold: 5
 
@@ -368,6 +480,6 @@ blocking_gates:
 # max_unknown_dimensions may be unknown and still produce a verdict — the
 # remaining weights are renormalized to sum to 1.0. Above that limit the scorer
 # refuses and returns `incomplete` with the list of what is missing, because a
-# verdict from a mostly-empty interview is worse than no verdict at all.
+# verdict from a mostly-empty request is worse than no verdict at all.
 completeness:
   max_unknown_dimensions: 1

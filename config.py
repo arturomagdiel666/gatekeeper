@@ -1,30 +1,33 @@
 """Loading and validation of Gatekeeper's YAML configuration.
 
 ``rubric.yaml`` and ``patterns.yaml`` are the tunable source of truth for how a
-use case is scored: weights, anchors, verdict bands, and the Not-AI gate all
-live there so a domain expert can retune Gatekeeper without touching Python,
-and so the same case can be run against several rubric configurations without a
-code change.
+request is scored: weights, anchors, verdict bands, and the blocking gates all
+live there so a domain expert can retune the Hub's intake criteria without
+touching Python, and so the same request can be run against several rubric
+configurations without a code change. The assessment prompt is generated from
+these files too, so there is no second copy of the anchors to drift.
 
 That flexibility is only safe if a malformed config can never reach the scorer,
 so this module validates aggressively at load time and fails with a specific,
 actionable message. Enforced invariants:
 
-* dimension, archetype, and anti-pattern ids are unique
+* dimension, archetype, anti-pattern, and gate ids are unique
 * dimension weights sum to 1.0 (within ``WEIGHT_EPSILON``)
-* every dimension has exactly one anchor per level on the declared scale
+* every dimension has exactly one anchor per level on the declared scale, and
+  declares the single ``axis`` it measures
 * ``direction`` is one of the two known values
 * verdict bands tile the scale exactly — no gap, no overlap, full coverage —
   and only the highest band may include its upper bound
 * verdict bands contain only ``go`` and ``no_go``; ``not_ai`` is a gate and
   ``incomplete`` is a refusal to score, so neither may be reached by a band
-* blocking gate ids are unique, every gate condition names a dimension that
-  actually exists, and every threshold lies on the scale
+* every gate condition names a dimension, an anti-pattern, or an intake field
+  that actually exists, and every threshold lies on the scale
 * a blocking gate forces only ``no_go`` or ``not_ai`` — never ``go``
 * the unknown-dimension limit cannot exceed the number of dimensions
 
-``RUBRIC`` and ``PATTERNS`` are loaded and validated at import time, so a broken
-config breaks loudly and immediately rather than halfway through an interview.
+``RUBRIC`` and ``PATTERNS`` are loaded, validated, and cross-checked against
+each other at import time, so a broken config breaks loudly and immediately
+rather than halfway through an assessment.
 """
 
 from __future__ import annotations
@@ -41,7 +44,8 @@ __all__ = [
     "Dimension",
     "VerdictBand",
     "DimensionThresholdCondition",
-    "HardBlockAntiPatternCondition",
+    "AntiPatternCondition",
+    "IntakeFieldCondition",
     "BlockingGate",
     "Completeness",
     "Rubric",
@@ -50,6 +54,7 @@ __all__ = [
     "Patterns",
     "load_rubric",
     "load_patterns",
+    "validate_cross_references",
     "RUBRIC",
     "PATTERNS",
     "RUBRIC_PATH",
@@ -66,10 +71,25 @@ WEIGHT_EPSILON = 1e-6
 
 Direction = Literal["higher_is_better", "lower_is_better"]
 
-#: A blocking gate may only stop a case, never wave one through.
+#: A blocking gate may only stop a request, never wave one through.
 GateVerdict = Literal["no_go", "not_ai"]
 
 Comparison = Literal["at_least", "at_most"]
+
+#: Predicates available to an intake-field gate condition.
+IntakePredicate = Literal["is_empty", "is_present"]
+
+#: Intake fields a gate is allowed to test. Kept explicit so a typo in the
+#: config is caught at load time rather than silently never firing.
+INTAKE_GATE_FIELDS = frozenset(
+    {
+        "business_owner",
+        "requesting_area",
+        "process_description",
+        "stated_benefit",
+        "request_text",
+    }
+)
 
 
 class ConfigError(RuntimeError):
@@ -110,12 +130,19 @@ class Scale(BaseModel):
 
 
 class Dimension(BaseModel):
-    """One scored dimension of the rubric."""
+    """One scored dimension of the rubric.
+
+    ``axis`` states the single construct this dimension measures. It exists to
+    make "one dimension, one axis" checkable by a reader rather than a matter
+    of trust: a dimension whose anchors drift into a second construct will
+    visibly contradict its own axis line.
+    """
 
     model_config = ConfigDict(extra="forbid")
 
     id: str
     label: str
+    axis: str
     description: str
     weight: float = Field(gt=0.0, le=1.0)
     direction: Direction
@@ -129,8 +156,8 @@ class VerdictBand(BaseModel):
     ``upper_inclusive`` is set (permitted only on the highest band).
 
     Only ``go`` and ``no_go`` are accepted here: ``not_ai`` must be reachable
-    solely through the gate, and ``incomplete`` is a refusal to score rather
-    than a band. Widening this ``Literal`` would silently break that guarantee.
+    solely through a gate, and ``incomplete`` is a refusal to score rather than
+    a band. Widening this ``Literal`` would silently break that guarantee.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -172,16 +199,76 @@ class DimensionThresholdCondition(BaseModel):
         return f"{self.dimension} scored {raw_score}, {comparison} {self.threshold}"
 
 
-class HardBlockAntiPatternCondition(BaseModel):
-    """A gate condition met when any hard-blocking anti-pattern matched."""
+class AntiPatternCondition(BaseModel):
+    """A gate condition met when particular anti-patterns were matched.
+
+    Either ``hard_block_any`` (any anti-pattern flagged ``hard_block`` in
+    ``patterns.yaml``, minus ``exclude_ids``) or an explicit
+    ``anti_pattern_ids`` list — exactly one of the two.
+    """
 
     model_config = ConfigDict(extra="forbid")
 
-    type: Literal["hard_block_anti_pattern"]
+    type: Literal["anti_pattern"]
+    hard_block_any: bool = False
+    anti_pattern_ids: list[str] = Field(default_factory=list)
+    exclude_ids: list[str] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def _check_exactly_one_form(self) -> "AntiPatternCondition":
+        if self.hard_block_any and self.anti_pattern_ids:
+            raise ValueError(
+                "an anti_pattern condition sets both hard_block_any and "
+                "anti_pattern_ids; use exactly one (add exclude_ids to "
+                "hard_block_any if you need to carve ids out)"
+            )
+        if not self.hard_block_any and not self.anti_pattern_ids:
+            raise ValueError(
+                "an anti_pattern condition must set either hard_block_any: "
+                "true or a non-empty anti_pattern_ids list"
+            )
+        if self.exclude_ids and not self.hard_block_any:
+            raise ValueError(
+                "exclude_ids only applies to hard_block_any conditions"
+            )
+        return self
+
+    def matches(self, matched_hard_blocks: list[str], matched_all: list[str]) -> list[str]:
+        """Return the matched anti-pattern ids that satisfy this condition."""
+        if self.hard_block_any:
+            excluded = set(self.exclude_ids)
+            return [i for i in matched_hard_blocks if i not in excluded]
+        wanted = set(self.anti_pattern_ids)
+        return [i for i in matched_all if i in wanted]
+
+
+class IntakeFieldCondition(BaseModel):
+    """A gate condition on request metadata rather than on a scored dimension.
+
+    Needed for facts about the request form itself — most importantly whether a
+    business owner was named — which are not judgements and so have no place on
+    a 1-5 scale.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    type: Literal["intake_field"]
+    field: str
+    predicate: IntakePredicate
+
+    def is_met(self, value: object) -> bool:
+        """Evaluate the predicate against an intake field's value."""
+        present = value is not None and str(value).strip() != ""
+        return not present if self.predicate == "is_empty" else present
+
+    def describe(self) -> str:
+        """Explain, for the outcome, why this condition fired."""
+        wording = "is empty or absent" if self.predicate == "is_empty" else "is present"
+        return f"intake field {self.field} {wording}"
 
 
 GateCondition = Annotated[
-    DimensionThresholdCondition | HardBlockAntiPatternCondition,
+    DimensionThresholdCondition | AntiPatternCondition | IntakeFieldCondition,
     Field(discriminator="type"),
 ]
 
@@ -190,9 +277,9 @@ class BlockingGate(BaseModel):
     """A categorical condition that forces a verdict, overriding the bands.
 
     Fires when *any* of its conditions is met. A gate can never force a ``go``:
-    gates exist to stop a case, not to wave one through. When several fire, the
-    lowest ``precedence`` decides the verdict and every gate that fired is still
-    reported; ties are broken by declaration order in the config.
+    gates exist to stop a request, not to wave one through. When several fire,
+    the lowest ``precedence`` decides the verdict and every gate that fired is
+    still reported; ties are broken by declaration order in the config.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -205,7 +292,7 @@ class BlockingGate(BaseModel):
 
 
 class Completeness(BaseModel):
-    """How much of the interview may be missing and still yield a verdict."""
+    """How much of the assessment may be missing and still yield a verdict."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -271,20 +358,26 @@ class Rubric(BaseModel):
         known_ids = {d.id for d in self.dimensions}
         for gate in self.blocking_gates:
             for condition in gate.any_of:
-                if not isinstance(condition, DimensionThresholdCondition):
-                    continue
-                if condition.dimension not in known_ids:
-                    raise ValueError(
-                        f"blocking gate {gate.id!r} names dimension "
-                        f"{condition.dimension!r}, which is not a declared "
-                        f"dimension. Known ids: {sorted(known_ids)}"
-                    )
-                if condition.threshold not in known_levels:
-                    raise ValueError(
-                        f"blocking gate {gate.id!r} has threshold "
-                        f"{condition.threshold}, outside the scale "
-                        f"{sorted(known_levels)}"
-                    )
+                if isinstance(condition, DimensionThresholdCondition):
+                    if condition.dimension not in known_ids:
+                        raise ValueError(
+                            f"blocking gate {gate.id!r} names dimension "
+                            f"{condition.dimension!r}, which is not a declared "
+                            f"dimension. Known ids: {sorted(known_ids)}"
+                        )
+                    if condition.threshold not in known_levels:
+                        raise ValueError(
+                            f"blocking gate {gate.id!r} has threshold "
+                            f"{condition.threshold}, outside the scale "
+                            f"{sorted(known_levels)}"
+                        )
+                elif isinstance(condition, IntakeFieldCondition):
+                    if condition.field not in INTAKE_GATE_FIELDS:
+                        raise ValueError(
+                            f"blocking gate {gate.id!r} tests intake field "
+                            f"{condition.field!r}, which is not a gateable "
+                            f"intake field. Known: {sorted(INTAKE_GATE_FIELDS)}"
+                        )
 
     def _validate_bands(self) -> None:
         """Require the bands to tile the scale with no gap or overlap."""
@@ -356,7 +449,7 @@ class Rubric(BaseModel):
 
 
 class Archetype(BaseModel):
-    """A canonical shape an AI use case can take."""
+    """A canonical shape an internal AI agent can take."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -411,9 +504,40 @@ class Patterns(BaseModel):
         return next((a for a in self.anti_patterns if a.id == anti_pattern_id), None)
 
     @property
+    def archetype_ids(self) -> list[str]:
+        """Every archetype id, in declared order."""
+        return [a.id for a in self.archetypes]
+
+    @property
     def hard_block_ids(self) -> list[str]:
-        """Ids of every anti-pattern that forces a ``not_ai`` verdict."""
+        """Ids of every anti-pattern that fires a hard-block gate condition."""
         return [a.id for a in self.anti_patterns if a.hard_block]
+
+
+def validate_cross_references(rubric: Rubric, patterns: Patterns) -> None:
+    """Check references that span the two config files.
+
+    A gate naming an anti-pattern that does not exist would simply never fire —
+    a silent failure of exactly the kind this project refuses to ship.
+
+    Raises:
+        ConfigError: If a gate references an unknown anti-pattern id.
+    """
+    known = {a.id for a in patterns.anti_patterns}
+    for gate in rubric.blocking_gates:
+        for condition in gate.any_of:
+            if not isinstance(condition, AntiPatternCondition):
+                continue
+            for anti_pattern_id in [
+                *condition.anti_pattern_ids,
+                *condition.exclude_ids,
+            ]:
+                if anti_pattern_id not in known:
+                    raise ConfigError(
+                        f"blocking gate {gate.id!r} references anti-pattern "
+                        f"{anti_pattern_id!r}, which is not defined in "
+                        f"patterns.yaml. Known ids: {sorted(known)}"
+                    )
 
 
 def _load_yaml(path: Path) -> dict:
@@ -439,8 +563,8 @@ def load_rubric(path: Path | str | None = None) -> Rubric:
 
     Args:
         path: Rubric to load; defaults to the project's ``rubric.yaml``. Pass an
-            alternative here to score the same case against a different rubric
-            configuration without changing any code.
+            alternative here to score the same request against a different
+            rubric configuration without changing any code.
 
     Returns:
         The validated :class:`Rubric`.
@@ -481,3 +605,4 @@ def load_patterns(path: Path | str | None = None) -> Patterns:
 #: Validated at import time so a broken config fails immediately and loudly.
 RUBRIC: Rubric = load_rubric()
 PATTERNS: Patterns = load_patterns()
+validate_cross_references(RUBRIC, PATTERNS)

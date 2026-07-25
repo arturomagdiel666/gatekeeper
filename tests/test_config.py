@@ -18,7 +18,18 @@ from config import (
     ConfigError,
     load_patterns,
     load_rubric,
+    validate_cross_references,
 )
+
+EXPECTED_DIMENSIONS = {
+    "business_value",
+    "adoption_risk",
+    "data_readiness",
+    "process_frequency",
+    "implementation_effort",
+    "data_governance",
+    "non_ai_alternative",
+}
 
 
 @pytest.fixture
@@ -47,22 +58,22 @@ def write_patterns(tmp_path, data: dict):
     return load_patterns(path)
 
 
+def gate_by_id(rubric_data: dict, gate_id: str) -> dict:
+    """Find a gate in the raw config dict."""
+    return next(g for g in rubric_data["blocking_gates"] if g["id"] == gate_id)
+
+
 class TestShippedConfigLoads:
-    def test_rubric_has_six_dimensions_with_weights_summing_to_one(self):
+    def test_seven_dimensions_with_weights_summing_to_one(self):
         rubric = load_rubric()
-        assert len(rubric.dimensions) == 6
+        assert set(rubric.dimension_ids) == EXPECTED_DIMENSIONS
         assert sum(d.weight for d in rubric.dimensions) == pytest.approx(1.0)
         assert rubric.version
 
-    def test_rubric_dimension_ids_are_the_documented_set(self):
-        assert set(load_rubric().dimension_ids) == {
-            "economic_impact",
-            "process_frequency",
-            "data_maturity",
-            "implementation_effort",
-            "regulatory_risk",
-            "non_ai_alternative",
-        }
+    def test_every_dimension_declares_a_single_axis(self):
+        """Acceptance criterion 4 — the axis line is mandatory, not optional."""
+        for dimension in load_rubric().dimensions:
+            assert dimension.axis.strip()
 
     def test_every_dimension_has_an_anchor_for_every_level(self):
         rubric = load_rubric()
@@ -71,27 +82,41 @@ class TestShippedConfigLoads:
             for text in dimension.anchors.values():
                 assert text.strip()
 
+    def test_the_two_gated_dimensions_carry_the_lowest_weights(self):
+        """The weight rationale, asserted so a retune cannot silently break it.
+
+        data_governance and non_ai_alternative are gated at their extremes, so
+        their weight only expresses the non-extreme gradient.
+        """
+        rubric = load_rubric()
+        weights = {d.id: d.weight for d in rubric.dimensions}
+        gated = {"data_governance", "non_ai_alternative"}
+        ungated_min = min(w for i, w in weights.items() if i not in gated)
+        assert all(weights[i] <= ungated_min for i in gated)
+
+    def test_adoption_risk_is_the_second_heaviest_dimension(self):
+        weights = sorted(
+            ((d.weight, d.id) for d in load_rubric().dimensions), reverse=True
+        )
+        assert weights[0][1] == "business_value"
+        assert weights[1][1] == "adoption_risk"
+
     def test_bands_only_produce_go_and_no_go(self):
         assert {b.verdict for b in load_rubric().verdict_bands} == {"go", "no_go"}
 
-    def test_the_three_shipped_gates_are_present_in_precedence_order(self):
+    def test_the_five_shipped_gates_are_present_in_precedence_order(self):
         rubric = load_rubric()
         assert [(g.id, g.verdict) for g in rubric.gates_by_precedence] == [
-            ("not_ai_alternative_suffices", "not_ai"),
+            ("existing_capability_covers_it", "not_ai"),
+            ("non_ai_alternative_suffices", "not_ai"),
+            ("no_named_business_owner", "no_go"),
             ("no_usable_data", "no_go"),
-            ("unacceptable_regulatory_exposure", "no_go"),
+            ("unacceptable_data_governance", "no_go"),
         ]
-
-    def test_not_ai_outranks_no_go(self):
-        by_id = {g.id: g for g in load_rubric().blocking_gates}
-        assert (
-            by_id["not_ai_alternative_suffices"].precedence
-            < by_id["no_usable_data"].precedence
-        )
 
     def test_patterns_load_with_archetypes_and_anti_patterns(self):
         patterns = load_patterns()
-        assert {a.id for a in patterns.archetypes} == {
+        assert set(patterns.archetype_ids) == {
             "classification",
             "extraction",
             "summarization",
@@ -100,10 +125,11 @@ class TestShippedConfigLoads:
             "rag_qa",
             "recommendation",
         }
-        assert len(patterns.anti_patterns) >= 7
+        assert len(patterns.anti_patterns) >= 9
 
     def test_the_expected_anti_patterns_hard_block(self):
         assert set(load_patterns().hard_block_ids) == {
+            "existing_licensed_capability",
             "deterministic_rule_suffices",
             "reporting_in_disguise",
             "rpa_relabeled",
@@ -116,22 +142,30 @@ class TestShippedConfigLoads:
             "chatbot_without_job_to_be_done",
             "data_does_not_exist_yet",
             "solution_first_no_measurable_problem",
+            "single_user_workaround",
         ):
             assert patterns.anti_pattern_by_id(anti_pattern_id).hard_block is False
 
+    def test_existing_licensed_capability_signals_name_categories_not_products(self):
+        """It must not name vendors, which differ by org and date faster than YAML."""
+        anti_pattern = load_patterns().anti_pattern_by_id(
+            "existing_licensed_capability"
+        )
+        joined = " ".join(anti_pattern.signals).lower()
+        for vendor in ("microsoft", "copilot", "servicenow", "salesforce", "google"):
+            assert vendor not in joined
+
 
 class TestDirectionNormalization:
-    """The single most likely bug in the phase, isolated from the scorer."""
-
     def test_higher_is_better_passes_through(self):
         rubric = load_rubric()
-        dimension = rubric.dimension_by_id("economic_impact")
+        dimension = rubric.dimension_by_id("business_value")
         assert dimension.direction == "higher_is_better"
         assert [rubric.normalize(dimension, raw) for raw in (1, 3, 5)] == [1, 3, 5]
 
     def test_lower_is_better_is_flipped_about_the_scale(self):
         rubric = load_rubric()
-        dimension = rubric.dimension_by_id("implementation_effort")
+        dimension = rubric.dimension_by_id("adoption_risk")
         assert dimension.direction == "lower_is_better"
         assert [rubric.normalize(dimension, raw) for raw in (1, 3, 5)] == [5, 3, 1]
 
@@ -147,6 +181,11 @@ class TestRubricValidationFailures:
         with pytest.raises(ConfigError, match="anchor"):
             write_rubric(tmp_path, rubric_data)
 
+    def test_missing_axis_is_rejected(self, tmp_path, rubric_data):
+        del rubric_data["dimensions"][0]["axis"]
+        with pytest.raises(ConfigError, match="axis"):
+            write_rubric(tmp_path, rubric_data)
+
     def test_unknown_direction_is_rejected(self, tmp_path, rubric_data):
         rubric_data["dimensions"][0]["direction"] = "sideways"
         with pytest.raises(ConfigError, match="direction"):
@@ -158,12 +197,12 @@ class TestRubricValidationFailures:
             write_rubric(tmp_path, rubric_data)
 
     def test_gapped_bands_are_rejected(self, tmp_path, rubric_data):
-        rubric_data["verdict_bands"][0]["upper"] = 3.0  # go still starts at 3.5
+        rubric_data["verdict_bands"][0]["upper"] = 3.0
         with pytest.raises(ConfigError, match="gap"):
             write_rubric(tmp_path, rubric_data)
 
     def test_overlapping_bands_are_rejected(self, tmp_path, rubric_data):
-        rubric_data["verdict_bands"][0]["upper"] = 4.0  # go also starts at 3.5
+        rubric_data["verdict_bands"][0]["upper"] = 4.0
         with pytest.raises(ConfigError, match="overlap"):
             write_rubric(tmp_path, rubric_data)
 
@@ -180,7 +219,7 @@ class TestRubricValidationFailures:
             write_rubric(tmp_path, rubric_data)
 
     def test_not_ai_cannot_be_a_verdict_band(self, tmp_path, rubric_data):
-        """Acceptance criterion 4, enforced at config-load time."""
+        """Acceptance criterion: not_ai is reachable only through a gate."""
         rubric_data["verdict_bands"][0]["verdict"] = "not_ai"
         with pytest.raises(ConfigError, match="not_ai"):
             write_rubric(tmp_path, rubric_data)
@@ -189,42 +228,6 @@ class TestRubricValidationFailures:
         rubric_data["verdict_bands"][0]["verdict"] = "incomplete"
         with pytest.raises(ConfigError):
             write_rubric(tmp_path, rubric_data)
-
-    def test_gate_naming_an_unknown_dimension_is_rejected(self, tmp_path, rubric_data):
-        rubric_data["blocking_gates"][0]["any_of"][0]["dimension"] = "no_such_dimension"
-        with pytest.raises(ConfigError, match="not a declared dimension"):
-            write_rubric(tmp_path, rubric_data)
-
-    def test_gate_threshold_off_the_scale_is_rejected(self, tmp_path, rubric_data):
-        rubric_data["blocking_gates"][0]["any_of"][0]["threshold"] = 9
-        with pytest.raises(ConfigError, match="outside the scale"):
-            write_rubric(tmp_path, rubric_data)
-
-    def test_duplicate_gate_ids_are_rejected(self, tmp_path, rubric_data):
-        rubric_data["blocking_gates"][1]["id"] = rubric_data["blocking_gates"][0]["id"]
-        with pytest.raises(ConfigError, match="duplicate blocking gate ids"):
-            write_rubric(tmp_path, rubric_data)
-
-    def test_a_gate_cannot_force_a_go(self, tmp_path, rubric_data):
-        """Gates exist to stop a case, never to wave one through."""
-        rubric_data["blocking_gates"][0]["verdict"] = "go"
-        with pytest.raises(ConfigError):
-            write_rubric(tmp_path, rubric_data)
-
-    def test_a_gate_needs_at_least_one_condition(self, tmp_path, rubric_data):
-        rubric_data["blocking_gates"][0]["any_of"] = []
-        with pytest.raises(ConfigError):
-            write_rubric(tmp_path, rubric_data)
-
-    def test_unknown_condition_type_is_rejected(self, tmp_path, rubric_data):
-        rubric_data["blocking_gates"][0]["any_of"][0]["type"] = "vibes"
-        with pytest.raises(ConfigError):
-            write_rubric(tmp_path, rubric_data)
-
-    def test_removing_every_gate_is_allowed(self, tmp_path, rubric_data):
-        """Gates are optional: an empty list leaves pure band behaviour."""
-        rubric_data["blocking_gates"] = []
-        assert write_rubric(tmp_path, rubric_data).blocking_gates == []
 
     def test_unknown_limit_above_dimension_count_is_rejected(
         self, tmp_path, rubric_data
@@ -247,6 +250,93 @@ class TestRubricValidationFailures:
         path.write_text("dimensions: [unclosed\n")
         with pytest.raises(ConfigError, match="not valid YAML"):
             load_rubric(path)
+
+
+class TestGateValidationFailures:
+    def test_gate_naming_an_unknown_dimension_is_rejected(self, tmp_path, rubric_data):
+        gate_by_id(rubric_data, "no_usable_data")["any_of"][0]["dimension"] = "nope"
+        with pytest.raises(ConfigError, match="not a declared dimension"):
+            write_rubric(tmp_path, rubric_data)
+
+    def test_gate_threshold_off_the_scale_is_rejected(self, tmp_path, rubric_data):
+        gate_by_id(rubric_data, "no_usable_data")["any_of"][0]["threshold"] = 9
+        with pytest.raises(ConfigError, match="outside the scale"):
+            write_rubric(tmp_path, rubric_data)
+
+    def test_gate_on_an_ungateable_intake_field_is_rejected(
+        self, tmp_path, rubric_data
+    ):
+        gate_by_id(rubric_data, "no_named_business_owner")["any_of"][0]["field"] = (
+            "favourite_colour"
+        )
+        with pytest.raises(ConfigError, match="not a gateable"):
+            write_rubric(tmp_path, rubric_data)
+
+    def test_duplicate_gate_ids_are_rejected(self, tmp_path, rubric_data):
+        rubric_data["blocking_gates"][1]["id"] = rubric_data["blocking_gates"][0]["id"]
+        with pytest.raises(ConfigError, match="duplicate blocking gate ids"):
+            write_rubric(tmp_path, rubric_data)
+
+    def test_a_gate_cannot_force_a_go(self, tmp_path, rubric_data):
+        """Gates exist to stop a request, never to wave one through."""
+        rubric_data["blocking_gates"][0]["verdict"] = "go"
+        with pytest.raises(ConfigError):
+            write_rubric(tmp_path, rubric_data)
+
+    def test_a_gate_needs_at_least_one_condition(self, tmp_path, rubric_data):
+        rubric_data["blocking_gates"][0]["any_of"] = []
+        with pytest.raises(ConfigError):
+            write_rubric(tmp_path, rubric_data)
+
+    def test_unknown_condition_type_is_rejected(self, tmp_path, rubric_data):
+        rubric_data["blocking_gates"][0]["any_of"][0]["type"] = "vibes"
+        with pytest.raises(ConfigError):
+            write_rubric(tmp_path, rubric_data)
+
+    def test_anti_pattern_condition_needs_exactly_one_form(
+        self, tmp_path, rubric_data
+    ):
+        condition = gate_by_id(rubric_data, "existing_capability_covers_it")["any_of"][0]
+        condition["hard_block_any"] = True  # already has anti_pattern_ids
+        with pytest.raises(ConfigError, match="exactly one"):
+            write_rubric(tmp_path, rubric_data)
+
+    def test_anti_pattern_condition_with_neither_form_is_rejected(
+        self, tmp_path, rubric_data
+    ):
+        condition = gate_by_id(rubric_data, "existing_capability_covers_it")["any_of"][0]
+        condition["anti_pattern_ids"] = []
+        with pytest.raises(ConfigError, match="must set either"):
+            write_rubric(tmp_path, rubric_data)
+
+    def test_removing_every_gate_is_allowed(self, tmp_path, rubric_data):
+        """Gates are optional: an empty list leaves pure band behaviour."""
+        rubric_data["blocking_gates"] = []
+        assert write_rubric(tmp_path, rubric_data).blocking_gates == []
+
+
+class TestCrossReferenceValidation:
+    def test_shipped_config_cross_references_cleanly(self):
+        validate_cross_references(load_rubric(), load_patterns())
+
+    def test_gate_referencing_an_unknown_anti_pattern_is_rejected(
+        self, tmp_path, rubric_data
+    ):
+        gate_by_id(rubric_data, "existing_capability_covers_it")["any_of"][0][
+            "anti_pattern_ids"
+        ] = ["no_such_anti_pattern"]
+        rubric = write_rubric(tmp_path, rubric_data)
+        with pytest.raises(ConfigError, match="not defined in patterns.yaml"):
+            validate_cross_references(rubric, load_patterns())
+
+    def test_gate_excluding_an_unknown_anti_pattern_is_rejected(
+        self, tmp_path, rubric_data
+    ):
+        condition = gate_by_id(rubric_data, "non_ai_alternative_suffices")["any_of"][1]
+        condition["exclude_ids"] = ["ghost"]
+        rubric = write_rubric(tmp_path, rubric_data)
+        with pytest.raises(ConfigError, match="not defined in patterns.yaml"):
+            validate_cross_references(rubric, load_patterns())
 
 
 class TestPatternsValidationFailures:

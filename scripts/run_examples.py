@@ -128,9 +128,15 @@ def main() -> int:
     completed = 0
     for row in rows:
         # A TIMEOUT is its own outcome class. It is an infrastructure result,
-        # not a model result, and counting it as a wrong verdict would repeat
-        # the wrong-unit error this project has now made three times: it would
+        # not a model result, and counting it as a wrong verdict would
         # aggregate over two things that are not interchangeable.
+        #
+        # NOTE (ADR-024): the match rate below has the same defect one level
+        # down, and is NOT fixed — the build is frozen. It counts a false
+        # `no_go` (a rejection) and an `incomplete` (a request for more
+        # information) as one mismatch each, though only the second is
+        # recoverable by the process that produced it. Read the number with
+        # that attached; the caveat is printed with it for the same reason.
         if row["timed_out"]:
             timeouts += 1
             print(
@@ -172,6 +178,12 @@ def main() -> int:
     print(
         "A mismatch is information: it shows where the model reads a request "
         "differently from a human assessor."
+    )
+    print(
+        "CAVEAT (ADR-024): this count weights every mismatch equally. A false "
+        "no_go rejects a request; an incomplete sends it back for more "
+        "information. Only the second is recoverable, so the count can trade "
+        "a severe error for a mild one and read as an improvement."
     )
     print("=" * 92)
 

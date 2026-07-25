@@ -1345,9 +1345,111 @@ precisely the **wrong-unit error this project has now made three times**
 report of a bimodal latency as a mean). Having named the pattern, the cheap
 thing is to stop repeating it where it is foreseeable.
 
+> **Amended by ADR-024:** the count of three was itself incomplete. A fourth
+> instance — the match rate this very paragraph is reasoning about — was
+> identified afterwards. The irony is instructive and is left standing rather
+> than edited away: this paragraph correctly refused to fold timeouts into the
+> match rate while not noticing that the match rate was already folding
+> together mismatches of unequal cost.
+
 `app.py` treats it the same way in the language it shows the user: the message
 says plainly that this says nothing about the request, and where an exemplar is
 loaded it falls back automatically to that exemplar's stored assessment,
 **labelled visibly as offline** — the engine, gates and contract shown are real,
 the dimension scores were written by hand. With no exemplar loaded it shows the
 message alone rather than inventing something to display.
+
+---
+
+## ADR-024 — The match rate is the fourth wrong-unit error
+
+**Date:** 2026-07-25 · **Status:** accepted, **not fixed** · **Amends the count in:** ADR-023
+
+`scripts/run_examples.py` reports "4/6 verdicts match". That count aggregates
+mismatches of unequal cost into one number. A false `no_go` and an `incomplete`
+each score as one mismatch, but they do different things to the requester:
+
+* **`incomplete`** routes the request back and names what is missing. The
+  requester answers and resubmits. The error is **compensable** — the next turn
+  corrects it.
+* **`no_go`** rejects the request. There is no next turn unless someone appeals.
+  The error is **not compensable** by the process that produced it.
+
+Counting them as one unit says they are interchangeable. They are not.
+
+### The evidence is inside this project's own measurements
+
+`ticket_handover_summaries` — the exemplar whose anchor-faithful reading is
+`go`:
+
+| | Verdict | Headline |
+|---|---|---|
+| Phase 3.1 (`evals/run_examples_after_partB.json`) | `incomplete` | 3/6 |
+| Phase 3.2 (`evals/run_examples_final_phase32.json`) | `no_go`, via `no_usable_data`, total 3.24 | **4/6** |
+
+The headline improved while **that specific case became more harmful**: a
+request that had been sent back for more information was now being rejected
+outright, on a `data_readiness = 1` score the request plainly contradicts. The
+metric has no way to express that, so an improvement and a regression were
+reported as a single upward number — and were reported that way, by me, in the
+Phase 3.2 deliverable.
+
+### The lineage — this is ADR-020 applied to the harness
+
+ADR-020 established, for the product, that **non-compensable errors cost more
+than compensable ones**, and therefore that gates need a higher evidentiary
+standard than dimensions. The match rate is the same asymmetry in the
+evaluation harness: it treats a rejection and a request for information as
+equivalent outcomes, exactly as the pre-3.1 code treated a gate input and a
+dimension input as equivalent evidence.
+
+**The harness inherited the defect the product was corrected for.** That is the
+uncomfortable part and the reason this is worth a numbered decision rather than
+a footnote: the correction was applied where it was being looked for and not
+where it was not. A fix that does not generalise past the place it was found is
+half a fix.
+
+This is the fourth instance in this project, and the count in ADR-023 ("three
+times") is superseded by this one:
+
+1. **ADR-004** — `fully-valid` collapsed call-emission and key-fidelity, two
+   independent failure layers, into one rate.
+2. **ADR-022** — `max_unknown_dimensions` counted dimensions of unequal weight.
+3. **ADR-022** — a bimodal latency reported as a mean, hiding a 416s outlier
+   behind a 74s average.
+4. **ADR-024** — the match rate counts mismatches of unequal cost.
+
+Four occurrences, across metrics, config, reporting and evaluation, in code
+written carefully each time. The common tell is unchanged and worth stating as
+a check rather than a lesson: **before reporting an aggregate, ask whether the
+things being summed are interchangeable for the decision the number will
+inform.** Each of the four passes review comfortably until that question is
+asked.
+
+### Not fixed, and what fixing it would take
+
+The build is frozen. This is recorded so the number is read with its limitation
+attached, not as a deferred task.
+
+For whoever picks it up: the replacement is not a weighted score, which would
+reintroduce the same problem one level up. It is a **confusion matrix over
+verdicts** — six expected × six actual — read alongside a stated cost ordering,
+something like:
+
+```
+false go      : worst  (approves what should have been stopped)
+false no_go   : severe (rejects, no next turn)
+false not_ai  : severe (rejects with a stronger claim)
+false incomplete : mild (sends back, recoverable)
+```
+
+Reported as a matrix rather than a scalar, because the scalar is what caused
+this. A single number will always be able to trade a severe error for two mild
+ones and call it progress.
+
+### Consequence for the recorded results
+
+Every match rate in this log — 2/6, 3/6, 4/6 — should be read as "how many
+verdicts matched", never as "how good the system is". The Phase 3.2 improvement
+from 3/6 to 4/6 is real in the first sense and unproven in the second, and the
+`ticket_handover_summaries` row is the specific reason to doubt it.

@@ -1,0 +1,1892 @@
+{
+  "meta": {
+    "started_at": "2026-07-25T07:48:27-06:00",
+    "provider": "OllamaProvider (direct; LLM_PROVIDER ignored)",
+    "model": "qwen2.5:7b",
+    "ollama_client_version": "0.6.2",
+    "temperature": 0.2,
+    "trials_per_arm": 10,
+    "baseline": "Phase 1.5 scenario D = arm D2 (commit 2ce12d3)",
+    "prompts": {
+      "system (tools arms)": "You are a helpful assistant. Use the provided tools when they apply to the user's request.",
+      "system (format arms)": "You are a helpful assistant. Respond only with a single JSON object that matches the requested schema.",
+      "D1 nested+clean": "Triage this AI use case and record your assessment with the score_use_case tool: 'A regional hospital wants an AI assistant that summarizes patient discharge notes for the follow-up team. They have five years of clean, structured electronic health records.' The data readiness is high — rate it 4 out of 5. Your verdict is that this is a good AI use case (go). In the rationale, provide the summary and the risks, with at least two risks.",
+      "D2 nested+colliding (verbatim Phase 1.5)": "Triage this AI use case and record your assessment with the score_use_case tool: 'A regional hospital wants an AI assistant that summarizes patient discharge notes for the follow-up team. They have five years of clean, structured electronic health records.' The data readiness is high — rate it 4 out of 5. Your verdict is that this is a good AI use case (go). In the rationale, give a one-paragraph summary and list at least two risks.",
+      "D3 flat+colliding": "Triage this AI use case and record your assessment with the score_use_case tool: 'A regional hospital wants an AI assistant that summarizes patient discharge notes for the follow-up team. They have five years of clean, structured electronic health records.' The data readiness is high — rate it 4 out of 5. Your verdict is that this is a good AI use case (go). In the rationale, give a one-paragraph summary and list at least two risks.",
+      "D4 flat+clean": "Triage this AI use case and record your assessment with the score_use_case tool: 'A regional hospital wants an AI assistant that summarizes patient discharge notes for the follow-up team. They have five years of clean, structured electronic health records.' The data readiness is high — rate it 4 out of 5. Your verdict is that this is a good AI use case (go). Provide the rationale_summary and the risks, with at least two risks.",
+      "S1 nested+clean (format=)": "Triage this AI use case and respond with your assessment as a single JSON object: 'A regional hospital wants an AI assistant that summarizes patient discharge notes for the follow-up team. They have five years of clean, structured electronic health records.' The data readiness is high — rate it 4 out of 5. Your verdict is that this is a good AI use case (go). In the rationale, provide the summary and the risks, with at least two risks.",
+      "S2 flat+clean (format=)": "Triage this AI use case and respond with your assessment as a single JSON object: 'A regional hospital wants an AI assistant that summarizes patient discharge notes for the follow-up team. They have five years of clean, structured electronic health records.' The data readiness is high — rate it 4 out of 5. Your verdict is that this is a good AI use case (go). Provide the rationale_summary and the risks, with at least two risks."
+    }
+  },
+  "outcome": {
+    "replication_ok": true,
+    "d2_rate": 0.0,
+    "conclusion": "PATTERN UNMATCHED — raw rates: D1=80%, D2=0%, D3=100%, D4=90%, S1=100%, S2=100%. Read the JSON artifact."
+  },
+  "summaries": {
+    "D1": {
+      "key": "D1",
+      "shape": "nested",
+      "prose": "clean",
+      "mechanism": "tools",
+      "trials": 10,
+      "fully_valid": 8,
+      "fully_valid_rate": 0.8,
+      "failure_histogram": {
+        "no_call": 2
+      },
+      "median_latency_s": 1.34
+    },
+    "D2": {
+      "key": "D2",
+      "shape": "nested",
+      "prose": "colliding",
+      "mechanism": "tools",
+      "trials": 10,
+      "fully_valid": 0,
+      "fully_valid_rate": 0.0,
+      "failure_histogram": {
+        "structure_error": 4,
+        "key_renamed": 6
+      },
+      "median_latency_s": 1.44
+    },
+    "D3": {
+      "key": "D3",
+      "shape": "flat",
+      "prose": "colliding",
+      "mechanism": "tools",
+      "trials": 10,
+      "fully_valid": 10,
+      "fully_valid_rate": 1.0,
+      "failure_histogram": {},
+      "median_latency_s": 1.33
+    },
+    "D4": {
+      "key": "D4",
+      "shape": "flat",
+      "prose": "clean",
+      "mechanism": "tools",
+      "trials": 10,
+      "fully_valid": 9,
+      "fully_valid_rate": 0.9,
+      "failure_histogram": {
+        "no_call": 1
+      },
+      "median_latency_s": 1.32
+    },
+    "S1": {
+      "key": "S1",
+      "shape": "nested",
+      "prose": "clean",
+      "mechanism": "format",
+      "trials": 10,
+      "fully_valid": 10,
+      "fully_valid_rate": 1.0,
+      "failure_histogram": {},
+      "median_latency_s": 1.48
+    },
+    "S2": {
+      "key": "S2",
+      "shape": "flat",
+      "prose": "clean",
+      "mechanism": "format",
+      "trials": 10,
+      "fully_valid": 10,
+      "fully_valid_rate": 1.0,
+      "failure_histogram": {},
+      "median_latency_s": 1.49
+    }
+  },
+  "trials": [
+    {
+      "arm": "D1",
+      "fully_valid": false,
+      "failure_class": "no_call",
+      "failure_detail": "no tool call emitted",
+      "tool_name": null,
+      "emitted_key_sets": null,
+      "raw_args": null,
+      "malformed_flag": false,
+      "latency_s": 1.325,
+      "error": null
+    },
+    {
+      "arm": "D1",
+      "fully_valid": true,
+      "failure_class": null,
+      "failure_detail": null,
+      "tool_name": "score_use_case",
+      "emitted_key_sets": {
+        "root": [
+          "data_readiness",
+          "rationale",
+          "use_case",
+          "verdict"
+        ],
+        "rationale": [
+          "risks",
+          "summary"
+        ]
+      },
+      "raw_args": {
+        "use_case": "An AI assistant summarizes patient discharge notes for follow-up teams in a regional hospital.",
+        "data_readiness": 4,
+        "verdict": "go",
+        "rationale": {
+          "risks": [
+            "Potential for errors in summary generation which could lead to miscommunication or incorrect treatment plans.",
+            "Privacy concerns if the summaries are not handled securely, potentially exposing sensitive patient data."
+          ],
+          "summary": "The use case involves developing an AI system to assist healthcare professionals by summarizing patient discharge notes. This can improve efficiency and ensure important information is not overlooked during the follow-up process."
+        }
+      },
+      "malformed_flag": false,
+      "latency_s": 1.384,
+      "error": null
+    },
+    {
+      "arm": "D1",
+      "fully_valid": false,
+      "failure_class": "no_call",
+      "failure_detail": "no tool call emitted",
+      "tool_name": null,
+      "emitted_key_sets": null,
+      "raw_args": null,
+      "malformed_flag": false,
+      "latency_s": 1.156,
+      "error": null
+    },
+    {
+      "arm": "D1",
+      "fully_valid": true,
+      "failure_class": null,
+      "failure_detail": null,
+      "tool_name": "score_use_case",
+      "emitted_key_sets": {
+        "root": [
+          "data_readiness",
+          "rationale",
+          "use_case",
+          "verdict"
+        ],
+        "rationale": [
+          "risks",
+          "summary"
+        ]
+      },
+      "raw_args": {
+        "use_case": "An AI assistant summarizes patient discharge notes for follow-up teams in a regional hospital.",
+        "data_readiness": 4,
+        "verdict": "go",
+        "rationale": {
+          "risks": [
+            "Potential for inaccuracies in summaries leading to misinterpretation of patient conditions",
+            "Risk of data privacy breaches if not properly secured"
+          ],
+          "summary": "The use case involves developing an AI system to automatically summarize patient discharge notes. This will help the follow-up team quickly understand key information from each patient's record without having to read through lengthy documents."
+        }
+      },
+      "malformed_flag": false,
+      "latency_s": 1.336,
+      "error": null
+    },
+    {
+      "arm": "D1",
+      "fully_valid": true,
+      "failure_class": null,
+      "failure_detail": null,
+      "tool_name": "score_use_case",
+      "emitted_key_sets": {
+        "root": [
+          "data_readiness",
+          "rationale",
+          "use_case",
+          "verdict"
+        ],
+        "rationale": [
+          "risks",
+          "summary"
+        ]
+      },
+      "raw_args": {
+        "data_readiness": 4,
+        "verdict": "go",
+        "rationale": {
+          "risks": [
+            "Potential for misinterpretation of medical jargon or context in summaries",
+            "Risk of data privacy breaches if not properly secured"
+          ],
+          "summary": "The use case involves developing an AI system to automatically summarize patient discharge notes. This will help the follow-up team quickly understand key information from each patient's discharge record, improving efficiency and patient care."
+        },
+        "use_case": "An AI assistant summarizes patient discharge notes for follow-up teams in a regional hospital."
+      },
+      "malformed_flag": false,
+      "latency_s": 1.314,
+      "error": null
+    },
+    {
+      "arm": "D1",
+      "fully_valid": true,
+      "failure_class": null,
+      "failure_detail": null,
+      "tool_name": "score_use_case",
+      "emitted_key_sets": {
+        "root": [
+          "data_readiness",
+          "rationale",
+          "use_case",
+          "verdict"
+        ],
+        "rationale": [
+          "risks",
+          "summary"
+        ]
+      },
+      "raw_args": {
+        "use_case": "A regional hospital wants an AI assistant that summarizes patient discharge notes for the follow-up team.",
+        "data_readiness": 4,
+        "verdict": "go",
+        "rationale": {
+          "risks": [
+            "Potential inaccuracies in summaries could lead to misdiagnosis or delayed treatment.",
+            "Patient privacy concerns if the AI system is not properly secured."
+          ],
+          "summary": "The system will automate the process of summarizing patient discharge notes, improving efficiency and consistency in follow-up care."
+        }
+      },
+      "malformed_flag": false,
+      "latency_s": 1.205,
+      "error": null
+    },
+    {
+      "arm": "D1",
+      "fully_valid": true,
+      "failure_class": null,
+      "failure_detail": null,
+      "tool_name": "score_use_case",
+      "emitted_key_sets": {
+        "root": [
+          "data_readiness",
+          "rationale",
+          "use_case",
+          "verdict"
+        ],
+        "rationale": [
+          "risks",
+          "summary"
+        ]
+      },
+      "raw_args": {
+        "verdict": "go",
+        "rationale": {
+          "risks": [
+            "Potential for inaccuracy in summaries leading to miscommunication or incorrect treatment decisions.",
+            "Patient privacy concerns if the summarization process is not properly secured and anonymized."
+          ],
+          "summary": "The proposed use case involves developing an AI system to automatically summarize patient discharge notes. This will help the follow-up team quickly understand key information from previous consultations without manually reviewing full records."
+        },
+        "use_case": "A regional hospital wants an AI assistant that summarizes patient discharge notes for the follow-up team.",
+        "data_readiness": 4
+      },
+      "malformed_flag": false,
+      "latency_s": 1.38,
+      "error": null
+    },
+    {
+      "arm": "D1",
+      "fully_valid": true,
+      "failure_class": null,
+      "failure_detail": null,
+      "tool_name": "score_use_case",
+      "emitted_key_sets": {
+        "root": [
+          "data_readiness",
+          "rationale",
+          "use_case",
+          "verdict"
+        ],
+        "rationale": [
+          "risks",
+          "summary"
+        ]
+      },
+      "raw_args": {
+        "data_readiness": 4,
+        "verdict": "go",
+        "rationale": {
+          "risks": [
+            "Potential for inaccuracy in summaries leading to miscommunication or incorrect treatment decisions.",
+            "Patient privacy concerns if the AI system is not properly secured and data breaches occur."
+          ],
+          "summary": "The use case involves developing an AI system to automatically summarize patient discharge notes. This will help the follow-up team quickly understand key information from previous consultations without manually reading full records."
+        },
+        "use_case": "An AI assistant summarizes patient discharge notes for follow-up teams in a regional hospital."
+      },
+      "malformed_flag": false,
+      "latency_s": 1.351,
+      "error": null
+    },
+    {
+      "arm": "D1",
+      "fully_valid": true,
+      "failure_class": null,
+      "failure_detail": null,
+      "tool_name": "score_use_case",
+      "emitted_key_sets": {
+        "root": [
+          "data_readiness",
+          "rationale",
+          "use_case",
+          "verdict"
+        ],
+        "rationale": [
+          "risks",
+          "summary"
+        ]
+      },
+      "raw_args": {
+        "use_case": "A regional hospital wants an AI assistant that summarizes patient discharge notes for the follow-up team.",
+        "data_readiness": 4,
+        "verdict": "go",
+        "rationale": {
+          "risks": [
+            "Potential inaccuracies or misinterpretations in summaries could lead to medical errors if not carefully managed.",
+            "Patient privacy concerns may arise due to handling sensitive health data, requiring robust security measures."
+          ],
+          "summary": "The proposed use case involves developing an AI system to automatically summarize patient discharge notes for a follow-up team in a regional hospital. This can improve efficiency and ensure important information is not overlooked during the transition of care."
+        }
+      },
+      "malformed_flag": false,
+      "latency_s": 1.48,
+      "error": null
+    },
+    {
+      "arm": "D1",
+      "fully_valid": true,
+      "failure_class": null,
+      "failure_detail": null,
+      "tool_name": "score_use_case",
+      "emitted_key_sets": {
+        "root": [
+          "data_readiness",
+          "rationale",
+          "use_case",
+          "verdict"
+        ],
+        "rationale": [
+          "risks",
+          "summary"
+        ]
+      },
+      "raw_args": {
+        "data_readiness": 4,
+        "verdict": "go",
+        "rationale": {
+          "risks": [
+            "Potential for misinterpretation of medical jargon or context in summaries, leading to errors in follow-up care.",
+            "Privacy concerns if the summaries are not anonymized properly, risking patient confidentiality."
+          ],
+          "summary": "The proposed use case involves developing an AI system to summarize patient discharge notes. This will help the follow-up team quickly access key information from previous patient interactions."
+        },
+        "use_case": "A regional hospital wants an AI assistant that summarizes patient discharge notes for the follow-up team."
+      },
+      "malformed_flag": false,
+      "latency_s": 1.385,
+      "error": null
+    },
+    {
+      "arm": "D2",
+      "fully_valid": false,
+      "failure_class": "structure_error",
+      "failure_detail": "'rationale' is not an object (str)",
+      "tool_name": "score_use_case",
+      "emitted_key_sets": {
+        "root": [
+          "data_readiness",
+          "rationale",
+          "use_case",
+          "verdict"
+        ]
+      },
+      "raw_args": {
+        "use_case": "An AI assistant summarizes patient discharge notes for follow-up teams in a regional hospital.",
+        "data_readiness": 4,
+        "verdict": "go",
+        "rationale": "The use case involves summarizing patient discharge notes to assist follow-up teams. With four out of five data readiness points due to clean and structured electronic health records over five years, the data is well-prepared for AI processing. However, risks include potential privacy concerns with handling sensitive medical information and ensuring the AI system accurately captures critical details."
+      },
+      "malformed_flag": false,
+      "latency_s": 1.27,
+      "error": null
+    },
+    {
+      "arm": "D2",
+      "fully_valid": false,
+      "failure_class": "structure_error",
+      "failure_detail": "'rationale' is not an object (str)",
+      "tool_name": "score_use_case",
+      "emitted_key_sets": {
+        "root": [
+          "data_readiness",
+          "rationale",
+          "use_case",
+          "verdict"
+        ]
+      },
+      "raw_args": {
+        "verdict": "go",
+        "rationale": "The use case involves summarizing patient discharge notes to assist follow-up teams. With high data readiness (4 out of 5), the structured electronic health records provide a solid foundation for AI processing. However, risks include potential inaccuracies in summaries and privacy concerns related to handling sensitive medical information.",
+        "use_case": "An AI assistant summarizes patient discharge notes for follow-up teams in a regional hospital.",
+        "data_readiness": 4
+      },
+      "malformed_flag": false,
+      "latency_s": 1.178,
+      "error": null
+    },
+    {
+      "arm": "D2",
+      "fully_valid": false,
+      "failure_class": "key_renamed",
+      "failure_detail": "summary → paragraph",
+      "tool_name": "score_use_case",
+      "emitted_key_sets": {
+        "root": [
+          "data_readiness",
+          "rationale",
+          "use_case",
+          "verdict"
+        ],
+        "rationale": [
+          "paragraph",
+          "risks"
+        ]
+      },
+      "raw_args": {
+        "data_readiness": 4,
+        "verdict": "go",
+        "rationale": {
+          "paragraph": "The proposed use case involves developing an AI assistant to summarize patient discharge notes for follow-up teams at a regional hospital. With five years of clean and structured electronic health records available, the data readiness is high (rated as 4 out of 5). However, two risks include potential inaccuracies in summaries leading to miscommunication between healthcare providers, and privacy concerns related to handling sensitive patient information.",
+          "risks": [
+            "Inaccurate summaries could lead to miscommunication among healthcare professionals",
+            "Handling sensitive patient information poses significant privacy risks"
+          ]
+        },
+        "use_case": "An AI assistant summarizes patient discharge notes for follow-up teams in a regional hospital."
+      },
+      "malformed_flag": false,
+      "latency_s": 1.665,
+      "error": null
+    },
+    {
+      "arm": "D2",
+      "fully_valid": false,
+      "failure_class": "key_renamed",
+      "failure_detail": "summary → paragraph",
+      "tool_name": "score_use_case",
+      "emitted_key_sets": {
+        "root": [
+          "data_readiness",
+          "rationale",
+          "use_case",
+          "verdict"
+        ],
+        "rationale": [
+          "paragraph",
+          "risks"
+        ]
+      },
+      "raw_args": {
+        "use_case": "A regional hospital wants an AI assistant that summarizes patient discharge notes for the follow-up team.",
+        "data_readiness": 4,
+        "verdict": "go",
+        "rationale": {
+          "paragraph": "The proposed use case involves developing an AI system to summarize patient discharge notes for a follow-up team at a regional hospital. Given the high data readiness with five years of clean and structured electronic health records, this project has strong potential. However, risks include the complexity of medical language and ensuring the summaries are accurate enough for clinical decision-making.",
+          "risks": [
+            "Complexity of Medical Language",
+            "Ensuring Accuracy for Clinical Decision-Making"
+          ]
+        }
+      },
+      "malformed_flag": false,
+      "latency_s": 1.518,
+      "error": null
+    },
+    {
+      "arm": "D2",
+      "fully_valid": false,
+      "failure_class": "key_renamed",
+      "failure_detail": "summary → paragraph",
+      "tool_name": "score_use_case",
+      "emitted_key_sets": {
+        "root": [
+          "data_readiness",
+          "rationale",
+          "use_case",
+          "verdict"
+        ],
+        "rationale": [
+          "paragraph",
+          "risks"
+        ]
+      },
+      "raw_args": {
+        "use_case": "A regional hospital wants an AI assistant that summarizes patient discharge notes for the follow-up team.",
+        "data_readiness": 4,
+        "verdict": "go",
+        "rationale": {
+          "paragraph": "The proposed use case of creating an AI assistant to summarize patient discharge notes is well-suited given the high data readiness. However, there are risks such as potential inaccuracies in summaries and privacy concerns related to handling sensitive health information.",
+          "risks": [
+            "Inaccurate summaries could lead to miscommunication or incorrect follow-up actions.",
+            "Handling sensitive patient data poses significant privacy risks if not properly managed."
+          ]
+        }
+      },
+      "malformed_flag": false,
+      "latency_s": 1.451,
+      "error": null
+    },
+    {
+      "arm": "D2",
+      "fully_valid": false,
+      "failure_class": "structure_error",
+      "failure_detail": "'rationale' is not an object (str)",
+      "tool_name": "score_use_case",
+      "emitted_key_sets": {
+        "root": [
+          "data_readiness",
+          "rationale",
+          "use_case",
+          "verdict"
+        ]
+      },
+      "raw_args": {
+        "rationale": "The use case involves summarizing patient discharge notes to assist follow-up teams. High data readiness (4 out of 5) ensures the availability and quality of structured electronic health records. However, risks include potential inaccuracies in summaries and privacy concerns related to handling sensitive medical information.",
+        "use_case": "An AI assistant summarizes patient discharge notes for follow-up teams in a regional hospital.",
+        "data_readiness": 4,
+        "verdict": "go"
+      },
+      "malformed_flag": false,
+      "latency_s": 1.154,
+      "error": null
+    },
+    {
+      "arm": "D2",
+      "fully_valid": false,
+      "failure_class": "key_renamed",
+      "failure_detail": "summary → paragraph",
+      "tool_name": "score_use_case",
+      "emitted_key_sets": {
+        "root": [
+          "data_readiness",
+          "rationale",
+          "use_case",
+          "verdict"
+        ],
+        "rationale": [
+          "paragraph",
+          "risks"
+        ]
+      },
+      "raw_args": {
+        "use_case": "An AI assistant that summarizes patient discharge notes for follow-up teams in a regional hospital.",
+        "data_readiness": 4,
+        "verdict": "go",
+        "rationale": {
+          "paragraph": "This use case is well-suited for an AI solution as it leverages structured electronic health records to provide valuable insights. However, risks include potential inaccuracies in summaries which could affect patient care and the need for robust data governance to ensure privacy.",
+          "risks": [
+            "Risk of inaccurate summaries impacting patient care",
+            "Need for strict data governance to protect patient privacy"
+          ]
+        }
+      },
+      "malformed_flag": false,
+      "latency_s": 1.365,
+      "error": null
+    },
+    {
+      "arm": "D2",
+      "fully_valid": false,
+      "failure_class": "structure_error",
+      "failure_detail": "'rationale' is not an object (str)",
+      "tool_name": "score_use_case",
+      "emitted_key_sets": {
+        "root": [
+          "data_readiness",
+          "rationale",
+          "use_case",
+          "verdict"
+        ]
+      },
+      "raw_args": {
+        "data_readiness": 4,
+        "verdict": "go",
+        "rationale": "The use case involves summarizing patient discharge notes to assist follow-up teams. High data readiness (4/5) due to clean and structured electronic health records over five years. Benefits include improved efficiency and consistency in patient care summaries. Risks include potential inaccuracies in summaries, which could lead to miscommunication or incorrect treatment decisions; also, there is a risk of privacy breaches if the AI system mishandles sensitive patient information.",
+        "use_case": "An AI assistant summarizes patient discharge notes for follow-up teams in a regional hospital."
+      },
+      "malformed_flag": false,
+      "latency_s": 1.434,
+      "error": null
+    },
+    {
+      "arm": "D2",
+      "fully_valid": false,
+      "failure_class": "key_renamed",
+      "failure_detail": "summary → paragraph",
+      "tool_name": "score_use_case",
+      "emitted_key_sets": {
+        "root": [
+          "data_readiness",
+          "rationale",
+          "use_case",
+          "verdict"
+        ],
+        "rationale": [
+          "paragraph",
+          "risks"
+        ]
+      },
+      "raw_args": {
+        "data_readiness": 4,
+        "verdict": "go",
+        "rationale": {
+          "paragraph": "This use case is suitable for an AI solution as it involves summarizing structured data from electronic health records. It can improve efficiency and accuracy in patient care by providing quick summaries to the follow-up teams. However, risks include potential inaccuracies in summaries which could lead to misdiagnosis or delayed treatment, and privacy concerns related to handling sensitive patient information.",
+          "risks": [
+            "Inaccurate summaries leading to misdiagnosis",
+            "Privacy breaches due to handling sensitive data"
+          ]
+        },
+        "use_case": "A regional hospital wants an AI assistant that summarizes patient discharge notes for the follow-up team."
+      },
+      "malformed_flag": false,
+      "latency_s": 1.573,
+      "error": null
+    },
+    {
+      "arm": "D2",
+      "fully_valid": false,
+      "failure_class": "key_renamed",
+      "failure_detail": "summary → paragraph",
+      "tool_name": "score_use_case",
+      "emitted_key_sets": {
+        "root": [
+          "data_readiness",
+          "rationale",
+          "use_case",
+          "verdict"
+        ],
+        "rationale": [
+          "paragraph",
+          "risks"
+        ]
+      },
+      "raw_args": {
+        "verdict": "go",
+        "rationale": {
+          "paragraph": "The proposed use case of creating an AI assistant to summarize patient discharge notes is well-suited given the high data readiness and structured electronic health records. However, risks include potential inaccuracies in summaries leading to miscommunication and confidentiality breaches if not handled properly.",
+          "risks": [
+            "Inaccurate summaries could lead to misunderstandings or errors in patient care.",
+            "Confidentiality issues may arise if the AI system is not adequately secured."
+          ]
+        },
+        "use_case": "A regional hospital wants an AI assistant that summarizes patient discharge notes for the follow-up team.",
+        "data_readiness": 4
+      },
+      "malformed_flag": false,
+      "latency_s": 1.51,
+      "error": null
+    },
+    {
+      "arm": "D3",
+      "fully_valid": true,
+      "failure_class": null,
+      "failure_detail": null,
+      "tool_name": "score_use_case",
+      "emitted_key_sets": {
+        "root": [
+          "data_readiness",
+          "rationale_summary",
+          "risks",
+          "use_case",
+          "verdict"
+        ]
+      },
+      "raw_args": {
+        "use_case": "A regional hospital wants an AI assistant that summarizes patient discharge notes for the follow-up team.",
+        "data_readiness": 4,
+        "verdict": "go",
+        "rationale_summary": "The use case is well-suited for AI due to the high quality and structured nature of the data, which will enable efficient summarization of patient records. This can improve operational efficiency and patient care by providing quick access to critical information.",
+        "risks": [
+          "Potential inaccuracies in summaries could lead to miscommunication or incorrect treatment decisions.",
+          "Patient privacy risks if the AI system is not properly secured."
+        ]
+      },
+      "malformed_flag": false,
+      "latency_s": 1.456,
+      "error": null
+    },
+    {
+      "arm": "D3",
+      "fully_valid": true,
+      "failure_class": null,
+      "failure_detail": null,
+      "tool_name": "score_use_case",
+      "emitted_key_sets": {
+        "root": [
+          "data_readiness",
+          "rationale_summary",
+          "risks",
+          "use_case",
+          "verdict"
+        ]
+      },
+      "raw_args": {
+        "use_case": "A regional hospital wants an AI assistant that summarizes patient discharge notes for the follow-up team.",
+        "data_readiness": 4,
+        "verdict": "go",
+        "rationale_summary": "The use case is well-suited for AI due to the high-quality and structured data available over five years. This will significantly improve efficiency in healthcare by automating the summarization process.",
+        "risks": [
+          "Potential privacy concerns with handling sensitive patient information.",
+          "Dependence on the accuracy of input data, which could lead to misinterpretations."
+        ]
+      },
+      "malformed_flag": false,
+      "latency_s": 1.327,
+      "error": null
+    },
+    {
+      "arm": "D3",
+      "fully_valid": true,
+      "failure_class": null,
+      "failure_detail": null,
+      "tool_name": "score_use_case",
+      "emitted_key_sets": {
+        "root": [
+          "data_readiness",
+          "rationale_summary",
+          "risks",
+          "use_case",
+          "verdict"
+        ]
+      },
+      "raw_args": {
+        "rationale_summary": "The use case is well-suited for AI as it involves summarizing structured data from electronic health records. This can significantly improve efficiency and accuracy in healthcare follow-ups.",
+        "risks": [
+          "Potential inaccuracies in summaries could lead to misdiagnosis or delayed treatment.",
+          "Patient confidentiality risks if the system is not properly secured."
+        ],
+        "use_case": "A regional hospital wants an AI assistant that summarizes patient discharge notes for the follow-up team.",
+        "data_readiness": 4,
+        "verdict": "go"
+      },
+      "malformed_flag": false,
+      "latency_s": 1.28,
+      "error": null
+    },
+    {
+      "arm": "D3",
+      "fully_valid": true,
+      "failure_class": null,
+      "failure_detail": null,
+      "tool_name": "score_use_case",
+      "emitted_key_sets": {
+        "root": [
+          "data_readiness",
+          "rationale_summary",
+          "risks",
+          "use_case",
+          "verdict"
+        ]
+      },
+      "raw_args": {
+        "verdict": "go",
+        "rationale_summary": "The high data readiness score of 4 out of 5 indicates a robust dataset with clean and structured electronic health records. This will facilitate effective training of an AI model to summarize patient discharge notes for the follow-up team.",
+        "risks": [
+          "Potential inaccuracies in summaries could lead to miscommunication or incorrect treatment plans.",
+          "Patient privacy risks if data is not handled securely."
+        ],
+        "use_case": "A regional hospital wants an AI assistant that summarizes patient discharge notes for the follow-up team.",
+        "data_readiness": 4
+      },
+      "malformed_flag": false,
+      "latency_s": 1.376,
+      "error": null
+    },
+    {
+      "arm": "D3",
+      "fully_valid": true,
+      "failure_class": null,
+      "failure_detail": null,
+      "tool_name": "score_use_case",
+      "emitted_key_sets": {
+        "root": [
+          "data_readiness",
+          "rationale_summary",
+          "risks",
+          "use_case",
+          "verdict"
+        ]
+      },
+      "raw_args": {
+        "data_readiness": 4,
+        "verdict": "go",
+        "rationale_summary": "The use case is well-suited for AI due to the high quality and structured nature of the data, which will enable efficient and accurate summarization of patient records. This can improve patient care by ensuring that follow-up teams have quick access to critical information.",
+        "risks": [
+          "Dependence on technology could lead to issues if the system fails or is unavailable.",
+          "Potential for misinterpretation of notes due to variability in medical terminology usage."
+        ],
+        "use_case": "A regional hospital wants an AI assistant that summarizes patient discharge notes for the follow-up team."
+      },
+      "malformed_flag": false,
+      "latency_s": 1.511,
+      "error": null
+    },
+    {
+      "arm": "D3",
+      "fully_valid": true,
+      "failure_class": null,
+      "failure_detail": null,
+      "tool_name": "score_use_case",
+      "emitted_key_sets": {
+        "root": [
+          "data_readiness",
+          "rationale_summary",
+          "risks",
+          "use_case",
+          "verdict"
+        ]
+      },
+      "raw_args": {
+        "verdict": "go",
+        "rationale_summary": "The use case is well-suited for AI due to the high-quality and structured data available over a five-year period. This will significantly aid in improving patient care through efficient summarization of discharge notes.",
+        "risks": [
+          "Potential inaccuracies in summaries could lead to miscommunication or incorrect follow-up actions.",
+          "Dependence on the system might reduce the skills of medical staff if not properly integrated into their workflow."
+        ],
+        "use_case": "A regional hospital wants an AI assistant that summarizes patient discharge notes for the follow-up team.",
+        "data_readiness": 4
+      },
+      "malformed_flag": false,
+      "latency_s": 1.456,
+      "error": null
+    },
+    {
+      "arm": "D3",
+      "fully_valid": true,
+      "failure_class": null,
+      "failure_detail": null,
+      "tool_name": "score_use_case",
+      "emitted_key_sets": {
+        "root": [
+          "data_readiness",
+          "rationale_summary",
+          "risks",
+          "use_case",
+          "verdict"
+        ]
+      },
+      "raw_args": {
+        "risks": [
+          "Data privacy concerns",
+          "Risk of inaccurate summary generation"
+        ],
+        "use_case": "A regional hospital wants an AI assistant that summarizes patient discharge notes for the follow-up team.",
+        "data_readiness": 4,
+        "verdict": "go",
+        "rationale_summary": "The use case is well-suited for AI due to the high quality and structured nature of the data, which will enable efficient summarization and improve follow-up care. However, there are risks related to data privacy and potential inaccuracies in summaries."
+      },
+      "malformed_flag": false,
+      "latency_s": 1.274,
+      "error": null
+    },
+    {
+      "arm": "D3",
+      "fully_valid": true,
+      "failure_class": null,
+      "failure_detail": null,
+      "tool_name": "score_use_case",
+      "emitted_key_sets": {
+        "root": [
+          "data_readiness",
+          "rationale_summary",
+          "risks",
+          "use_case",
+          "verdict"
+        ]
+      },
+      "raw_args": {
+        "rationale_summary": "The use case is well-suited to leverage existing clean and structured data, improving efficiency in healthcare by automating summary generation. However, potential risks include privacy concerns with handling sensitive patient information and the need for continuous model updates.",
+        "risks": [
+          "Privacy breaches due to handling sensitive health records",
+          "Dependence on model accuracy leading to miscommunication"
+        ],
+        "use_case": "A regional hospital wants an AI assistant that summarizes patient discharge notes for the follow-up team.",
+        "data_readiness": 4,
+        "verdict": "go"
+      },
+      "malformed_flag": false,
+      "latency_s": 1.334,
+      "error": null
+    },
+    {
+      "arm": "D3",
+      "fully_valid": true,
+      "failure_class": null,
+      "failure_detail": null,
+      "tool_name": "score_use_case",
+      "emitted_key_sets": {
+        "root": [
+          "data_readiness",
+          "rationale_summary",
+          "risks",
+          "use_case",
+          "verdict"
+        ]
+      },
+      "raw_args": {
+        "rationale_summary": "The use case is well-suited for AI due to the high-quality and structured data available over five years. This will significantly improve efficiency in patient follow-ups.",
+        "risks": [
+          "Potential inaccuracies in summaries leading to miscommunication between healthcare providers.",
+          "Patient privacy concerns if data handling practices are not stringent enough."
+        ],
+        "use_case": "A regional hospital wants an AI assistant that summarizes patient discharge notes for the follow-up team.",
+        "data_readiness": 4,
+        "verdict": "go"
+      },
+      "malformed_flag": false,
+      "latency_s": 1.264,
+      "error": null
+    },
+    {
+      "arm": "D3",
+      "fully_valid": true,
+      "failure_class": null,
+      "failure_detail": null,
+      "tool_name": "score_use_case",
+      "emitted_key_sets": {
+        "root": [
+          "data_readiness",
+          "rationale_summary",
+          "risks",
+          "use_case",
+          "verdict"
+        ]
+      },
+      "raw_args": {
+        "use_case": "A regional hospital wants an AI assistant that summarizes patient discharge notes for the follow-up team.",
+        "data_readiness": 4,
+        "verdict": "go",
+        "rationale_summary": "The use case is well-suited for AI due to the high quality and structured nature of the data, which will enable accurate and timely summaries. However, there are risks related to patient privacy and potential inaccuracies in the summaries.",
+        "risks": [
+          "Privacy concerns with handling sensitive health information",
+          "Risk of summary errors affecting clinical decisions"
+        ]
+      },
+      "malformed_flag": false,
+      "latency_s": 1.298,
+      "error": null
+    },
+    {
+      "arm": "D4",
+      "fully_valid": true,
+      "failure_class": null,
+      "failure_detail": null,
+      "tool_name": "score_use_case",
+      "emitted_key_sets": {
+        "root": [
+          "data_readiness",
+          "rationale_summary",
+          "risks",
+          "use_case",
+          "verdict"
+        ]
+      },
+      "raw_args": {
+        "risks": [
+          "Potential inaccuracies in summaries could lead to miscommunication between healthcare providers.",
+          "Dependence on the AI system might reduce the skills development of human staff."
+        ],
+        "use_case": "A regional hospital wants an AI assistant that summarizes patient discharge notes for the follow-up team.",
+        "data_readiness": 4,
+        "verdict": "go",
+        "rationale_summary": "The data is clean and structured, which will facilitate accurate summarization. The use case has clear benefits in terms of efficiency and consistency in patient care."
+      },
+      "malformed_flag": false,
+      "latency_s": 1.306,
+      "error": null
+    },
+    {
+      "arm": "D4",
+      "fully_valid": true,
+      "failure_class": null,
+      "failure_detail": null,
+      "tool_name": "score_use_case",
+      "emitted_key_sets": {
+        "root": [
+          "data_readiness",
+          "rationale_summary",
+          "risks",
+          "use_case",
+          "verdict"
+        ]
+      },
+      "raw_args": {
+        "use_case": "A regional hospital wants an AI assistant that summarizes patient discharge notes for the follow-up team.",
+        "data_readiness": 4,
+        "verdict": "go",
+        "rationale_summary": "The data is clean and structured, which will facilitate accurate summarization. The use case addresses a clear need in healthcare to improve efficiency and ensure no critical information is missed during patient handover.",
+        "risks": [
+          "Potential inaccuracies in summaries could lead to miscommunication or errors in patient care.",
+          "Dependence on the AI system may reduce the skills of human staff in summarizing notes over time."
+        ]
+      },
+      "malformed_flag": false,
+      "latency_s": 1.433,
+      "error": null
+    },
+    {
+      "arm": "D4",
+      "fully_valid": true,
+      "failure_class": null,
+      "failure_detail": null,
+      "tool_name": "score_use_case",
+      "emitted_key_sets": {
+        "root": [
+          "data_readiness",
+          "rationale_summary",
+          "risks",
+          "use_case",
+          "verdict"
+        ]
+      },
+      "raw_args": {
+        "use_case": "A regional hospital wants an AI assistant that summarizes patient discharge notes for the follow-up team.",
+        "data_readiness": 4,
+        "verdict": "go",
+        "rationale_summary": "The data is clean and structured, which will facilitate accurate summarization. The use case can improve efficiency in healthcare by automating a time-consuming task.",
+        "risks": [
+          "Potential inaccuracies in summaries could lead to misdiagnosis or delayed treatment.",
+          "Patient privacy risks if the AI system is not properly secured."
+        ]
+      },
+      "malformed_flag": false,
+      "latency_s": 1.272,
+      "error": null
+    },
+    {
+      "arm": "D4",
+      "fully_valid": true,
+      "failure_class": null,
+      "failure_detail": null,
+      "tool_name": "score_use_case",
+      "emitted_key_sets": {
+        "root": [
+          "data_readiness",
+          "rationale_summary",
+          "risks",
+          "use_case",
+          "verdict"
+        ]
+      },
+      "raw_args": {
+        "risks": [
+          "Potential inaccuracies in summaries could lead to misdiagnosis or delayed treatment.",
+          "Dependence on AI may reduce the skills development of medical staff."
+        ],
+        "use_case": "A regional hospital wants an AI assistant that summarizes patient discharge notes for the follow-up team.",
+        "data_readiness": 4,
+        "verdict": "go",
+        "rationale_summary": "The data is clean and structured, which will facilitate efficient training of the summarization model. The use case has clear benefits in terms of improving workflow efficiency and reducing human error in patient follow-ups."
+      },
+      "malformed_flag": false,
+      "latency_s": 1.367,
+      "error": null
+    },
+    {
+      "arm": "D4",
+      "fully_valid": true,
+      "failure_class": null,
+      "failure_detail": null,
+      "tool_name": "score_use_case",
+      "emitted_key_sets": {
+        "root": [
+          "data_readiness",
+          "rationale_summary",
+          "risks",
+          "use_case",
+          "verdict"
+        ]
+      },
+      "raw_args": {
+        "use_case": "A regional hospital wants an AI assistant that summarizes patient discharge notes for the follow-up team.",
+        "data_readiness": 4,
+        "verdict": "go",
+        "rationale_summary": "The data is clean and structured, which will facilitate accurate summarization. The use case can improve efficiency in healthcare by automating a time-consuming task.",
+        "risks": [
+          "Potential inaccuracies in summaries could lead to miscommunication between the follow-up team and patients.",
+          "Dependence on AI may reduce critical thinking skills among staff if they rely too heavily on automated summaries."
+        ]
+      },
+      "malformed_flag": false,
+      "latency_s": 1.378,
+      "error": null
+    },
+    {
+      "arm": "D4",
+      "fully_valid": true,
+      "failure_class": null,
+      "failure_detail": null,
+      "tool_name": "score_use_case",
+      "emitted_key_sets": {
+        "root": [
+          "data_readiness",
+          "rationale_summary",
+          "risks",
+          "use_case",
+          "verdict"
+        ]
+      },
+      "raw_args": {
+        "use_case": "A regional hospital wants an AI assistant that summarizes patient discharge notes for the follow-up team.",
+        "data_readiness": 4,
+        "verdict": "go",
+        "rationale_summary": "The data is clean and structured, which will facilitate accurate summarization. The use case aligns with improving efficiency in healthcare delivery.",
+        "risks": [
+          "Potential inaccuracies in summaries could lead to misdiagnosis or delayed treatment.",
+          "Patient privacy concerns if the AI system is not properly secured."
+        ]
+      },
+      "malformed_flag": false,
+      "latency_s": 1.226,
+      "error": null
+    },
+    {
+      "arm": "D4",
+      "fully_valid": true,
+      "failure_class": null,
+      "failure_detail": null,
+      "tool_name": "score_use_case",
+      "emitted_key_sets": {
+        "root": [
+          "data_readiness",
+          "rationale_summary",
+          "risks",
+          "use_case",
+          "verdict"
+        ]
+      },
+      "raw_args": {
+        "use_case": "A regional hospital wants an AI assistant that summarizes patient discharge notes for the follow-up team.",
+        "data_readiness": 4,
+        "verdict": "go",
+        "rationale_summary": "The data is clean and structured, which will facilitate efficient training of the summarization model. The use case directly supports clinical workflow optimization.",
+        "risks": [
+          "Potential inaccuracies in summaries could lead to miscommunication or incorrect patient care.",
+          "Dependence on AI might reduce the skills development of human staff."
+        ]
+      },
+      "malformed_flag": false,
+      "latency_s": 1.25,
+      "error": null
+    },
+    {
+      "arm": "D4",
+      "fully_valid": true,
+      "failure_class": null,
+      "failure_detail": null,
+      "tool_name": "score_use_case",
+      "emitted_key_sets": {
+        "root": [
+          "data_readiness",
+          "rationale_summary",
+          "risks",
+          "use_case",
+          "verdict"
+        ]
+      },
+      "raw_args": {
+        "data_readiness": 4,
+        "verdict": "go",
+        "rationale_summary": "The data is clean and structured, which will facilitate training of the summarization model. The use case directly addresses a need in healthcare to improve efficiency and accuracy in patient handover.",
+        "risks": [
+          "Potential inaccuracies in summaries could lead to miscommunication or medical errors.",
+          "Dependence on AI might reduce the skills development of human staff."
+        ],
+        "use_case": "A regional hospital wants an AI assistant that summarizes patient discharge notes for the follow-up team."
+      },
+      "malformed_flag": false,
+      "latency_s": 1.329,
+      "error": null
+    },
+    {
+      "arm": "D4",
+      "fully_valid": false,
+      "failure_class": "no_call",
+      "failure_detail": "no tool call emitted",
+      "tool_name": null,
+      "emitted_key_sets": null,
+      "raw_args": null,
+      "malformed_flag": false,
+      "latency_s": 1.34,
+      "error": null
+    },
+    {
+      "arm": "D4",
+      "fully_valid": true,
+      "failure_class": null,
+      "failure_detail": null,
+      "tool_name": "score_use_case",
+      "emitted_key_sets": {
+        "root": [
+          "data_readiness",
+          "rationale_summary",
+          "risks",
+          "use_case",
+          "verdict"
+        ]
+      },
+      "raw_args": {
+        "use_case": "A regional hospital wants an AI assistant that summarizes patient discharge notes for the follow-up team.",
+        "data_readiness": 4,
+        "verdict": "go",
+        "rationale_summary": "The data is clean and structured, which will facilitate accurate summarization. The use case addresses a clear need in healthcare to improve efficiency and quality of care.",
+        "risks": [
+          "Potential inaccuracies in summaries could lead to miscommunication or incorrect treatment plans.",
+          "Dependence on AI may reduce the skills development of medical staff."
+        ]
+      },
+      "malformed_flag": false,
+      "latency_s": 1.291,
+      "error": null
+    },
+    {
+      "arm": "S1",
+      "fully_valid": true,
+      "failure_class": null,
+      "failure_detail": null,
+      "tool_name": null,
+      "emitted_key_sets": {
+        "root": [
+          "data_readiness",
+          "rationale",
+          "use_case",
+          "verdict"
+        ],
+        "rationale": [
+          "risks",
+          "summary"
+        ]
+      },
+      "raw_args": {
+        "use_case": "A regional hospital wants an AI assistant that summarizes patient discharge notes for the follow-up team.",
+        "data_readiness": 4,
+        "verdict": "go",
+        "rationale": {
+          "summary": "The use case involves developing an AI system to summarize patient discharge notes, which will help the follow-up team quickly understand key information from previous visits. This can improve efficiency and patient care.",
+          "risks": [
+            "Potential for inaccuracies in summaries leading to miscommunication or incorrect treatment decisions.",
+            "Privacy concerns related to handling sensitive health data; must ensure strict compliance with regulations like HIPAA."
+          ]
+        }
+      },
+      "malformed_flag": false,
+      "latency_s": 1.465,
+      "error": null
+    },
+    {
+      "arm": "S1",
+      "fully_valid": true,
+      "failure_class": null,
+      "failure_detail": null,
+      "tool_name": null,
+      "emitted_key_sets": {
+        "root": [
+          "data_readiness",
+          "rationale",
+          "use_case",
+          "verdict"
+        ],
+        "rationale": [
+          "risks",
+          "summary"
+        ]
+      },
+      "raw_args": {
+        "use_case": "A regional hospital wants an AI assistant that summarizes patient discharge notes for the follow-up team.",
+        "data_readiness": 4,
+        "verdict": "go",
+        "rationale": {
+          "summary": "The use case involves developing an AI system to summarize patient discharge notes, which will help the follow-up team quickly understand key information from previous interactions with patients. This can improve efficiency and ensure continuity of care.",
+          "risks": [
+            "Potential for inaccuracies in summaries leading to miscommunication or incorrect treatment decisions.",
+            "Privacy concerns related to handling sensitive health data; ensuring compliance with regulations like HIPAA is crucial."
+          ]
+        }
+      },
+      "malformed_flag": false,
+      "latency_s": 1.485,
+      "error": null
+    },
+    {
+      "arm": "S1",
+      "fully_valid": true,
+      "failure_class": null,
+      "failure_detail": null,
+      "tool_name": null,
+      "emitted_key_sets": {
+        "root": [
+          "data_readiness",
+          "rationale",
+          "use_case",
+          "verdict"
+        ],
+        "rationale": [
+          "risks",
+          "summary"
+        ]
+      },
+      "raw_args": {
+        "use_case": "A regional hospital wants an AI assistant that summarizes patient discharge notes for the follow-up team.",
+        "data_readiness": 4,
+        "verdict": "go",
+        "rationale": {
+          "summary": "The use case involves developing an AI system to automatically generate summaries of patient discharge notes, which can help the follow-up team quickly understand key information and improve patient care coordination.",
+          "risks": [
+            "Potential for summarization errors that could lead to misinterpretation or omission of critical details in patient records.",
+            "Privacy concerns related to handling sensitive health data; ensuring compliance with regulations such as HIPAA is essential."
+          ]
+        }
+      },
+      "malformed_flag": false,
+      "latency_s": 1.485,
+      "error": null
+    },
+    {
+      "arm": "S1",
+      "fully_valid": true,
+      "failure_class": null,
+      "failure_detail": null,
+      "tool_name": null,
+      "emitted_key_sets": {
+        "root": [
+          "data_readiness",
+          "rationale",
+          "use_case",
+          "verdict"
+        ],
+        "rationale": [
+          "risks",
+          "summary"
+        ]
+      },
+      "raw_args": {
+        "use_case": "A regional hospital wants an AI assistant that summarizes patient discharge notes for the follow-up team.",
+        "data_readiness": 4,
+        "verdict": "go",
+        "rationale": {
+          "summary": "The use case involves developing an AI system to automatically summarize patient discharge notes, which will help the follow-up team quickly understand key information from previous visits. This can improve efficiency and patient care.",
+          "risks": [
+            "Potential for misinterpretation or inaccuracy in summaries, leading to incorrect follow-up actions.",
+            "Privacy concerns related to handling sensitive health data; ensuring compliance with regulations like HIPAA is crucial."
+          ]
+        }
+      },
+      "malformed_flag": false,
+      "latency_s": 1.485,
+      "error": null
+    },
+    {
+      "arm": "S1",
+      "fully_valid": true,
+      "failure_class": null,
+      "failure_detail": null,
+      "tool_name": null,
+      "emitted_key_sets": {
+        "root": [
+          "data_readiness",
+          "rationale",
+          "use_case",
+          "verdict"
+        ],
+        "rationale": [
+          "risks",
+          "summary"
+        ]
+      },
+      "raw_args": {
+        "use_case": "A regional hospital wants an AI assistant that summarizes patient discharge notes for the follow-up team.",
+        "data_readiness": 4,
+        "verdict": "go",
+        "rationale": {
+          "summary": "The use case involves developing an AI system to summarize patient discharge notes, which will help the follow-up team quickly understand key information from previous visits. This can improve efficiency and patient care.",
+          "risks": [
+            "Potential for inaccuracy in summaries leading to miscommunication or incorrect treatment decisions.",
+            "Privacy concerns related to handling sensitive health data; ensuring compliance with regulations like HIPAA is crucial."
+          ]
+        }
+      },
+      "malformed_flag": false,
+      "latency_s": 1.447,
+      "error": null
+    },
+    {
+      "arm": "S1",
+      "fully_valid": true,
+      "failure_class": null,
+      "failure_detail": null,
+      "tool_name": null,
+      "emitted_key_sets": {
+        "root": [
+          "data_readiness",
+          "rationale",
+          "use_case",
+          "verdict"
+        ],
+        "rationale": [
+          "risks",
+          "summary"
+        ]
+      },
+      "raw_args": {
+        "use_case": "A regional hospital wants an AI assistant that summarizes patient discharge notes for the follow-up team.",
+        "data_readiness": 4,
+        "verdict": "go",
+        "rationale": {
+          "summary": "The use case involves developing an AI system to automatically summarize patient discharge notes, which will help the follow-up team quickly understand key information from previous visits. This can improve efficiency and patient care.",
+          "risks": [
+            "Potential for inaccuracies in summaries leading to miscommunication or incorrect treatment decisions.",
+            "Privacy concerns related to handling sensitive health data; ensuring compliance with regulations like HIPAA is crucial."
+          ]
+        }
+      },
+      "malformed_flag": false,
+      "latency_s": 1.46,
+      "error": null
+    },
+    {
+      "arm": "S1",
+      "fully_valid": true,
+      "failure_class": null,
+      "failure_detail": null,
+      "tool_name": null,
+      "emitted_key_sets": {
+        "root": [
+          "data_readiness",
+          "rationale",
+          "use_case",
+          "verdict"
+        ],
+        "rationale": [
+          "risks",
+          "summary"
+        ]
+      },
+      "raw_args": {
+        "use_case": "A regional hospital wants an AI assistant that summarizes patient discharge notes for the follow-up team.",
+        "data_readiness": 4,
+        "verdict": "go",
+        "rationale": {
+          "summary": "The use case involves developing an AI system to summarize patient discharge notes, which will help the follow-up team quickly understand key information from previous visits. This can improve efficiency and patient care.",
+          "risks": [
+            "Potential for inaccuracies in summaries leading to miscommunication or incorrect treatment decisions.",
+            "Privacy concerns related to handling sensitive health data; ensuring compliance with regulations such as HIPAA is crucial."
+          ]
+        }
+      },
+      "malformed_flag": false,
+      "latency_s": 1.458,
+      "error": null
+    },
+    {
+      "arm": "S1",
+      "fully_valid": true,
+      "failure_class": null,
+      "failure_detail": null,
+      "tool_name": null,
+      "emitted_key_sets": {
+        "root": [
+          "data_readiness",
+          "rationale",
+          "use_case",
+          "verdict"
+        ],
+        "rationale": [
+          "risks",
+          "summary"
+        ]
+      },
+      "raw_args": {
+        "use_case": "A regional hospital wants an AI assistant that summarizes patient discharge notes for the follow-up team.",
+        "data_readiness": 4,
+        "verdict": "go",
+        "rationale": {
+          "summary": "The use case involves developing an AI system to automatically summarize patient discharge notes, which will help the follow-up team quickly understand key information from previous interactions with patients. This can improve efficiency and ensure continuity of care.",
+          "risks": [
+            "Potential for inaccuracies in summaries leading to miscommunication or incorrect treatment decisions.",
+            "Privacy concerns related to handling sensitive health data; ensuring compliance with regulations like HIPAA is crucial."
+          ]
+        }
+      },
+      "malformed_flag": false,
+      "latency_s": 1.49,
+      "error": null
+    },
+    {
+      "arm": "S1",
+      "fully_valid": true,
+      "failure_class": null,
+      "failure_detail": null,
+      "tool_name": null,
+      "emitted_key_sets": {
+        "root": [
+          "data_readiness",
+          "rationale",
+          "use_case",
+          "verdict"
+        ],
+        "rationale": [
+          "risks",
+          "summary"
+        ]
+      },
+      "raw_args": {
+        "use_case": "A regional hospital wants an AI assistant that summarizes patient discharge notes for the follow-up team.",
+        "data_readiness": 4,
+        "verdict": "go",
+        "rationale": {
+          "summary": "The use case involves developing an AI system to automatically summarize patient discharge notes, which will help the follow-up team quickly understand key information about patients without having to read lengthy documents. This can improve efficiency and ensure that critical details are not overlooked.",
+          "risks": [
+            "Potential for inaccuracies in summaries leading to miscommunication or incorrect treatment decisions.",
+            "Privacy concerns related to handling sensitive patient data, requiring strict adherence to regulations like HIPAA."
+          ]
+        }
+      },
+      "malformed_flag": false,
+      "latency_s": 1.537,
+      "error": null
+    },
+    {
+      "arm": "S1",
+      "fully_valid": true,
+      "failure_class": null,
+      "failure_detail": null,
+      "tool_name": null,
+      "emitted_key_sets": {
+        "root": [
+          "data_readiness",
+          "rationale",
+          "use_case",
+          "verdict"
+        ],
+        "rationale": [
+          "risks",
+          "summary"
+        ]
+      },
+      "raw_args": {
+        "use_case": "A regional hospital wants an AI assistant that summarizes patient discharge notes for the follow-up team.",
+        "data_readiness": 4,
+        "verdict": "go",
+        "rationale": {
+          "summary": "The use case involves developing an AI system to summarize patient discharge notes, which will help the follow-up team quickly understand key information from previous visits. This can improve efficiency and patient care.",
+          "risks": [
+            "Potential for inaccuracies in summaries leading to miscommunication or incorrect treatment decisions.",
+            "Patient privacy concerns if the AI system is not properly secured and protected against data breaches."
+          ]
+        }
+      },
+      "malformed_flag": false,
+      "latency_s": 1.432,
+      "error": null
+    },
+    {
+      "arm": "S2",
+      "fully_valid": true,
+      "failure_class": null,
+      "failure_detail": null,
+      "tool_name": null,
+      "emitted_key_sets": {
+        "root": [
+          "data_readiness",
+          "rationale_summary",
+          "risks",
+          "use_case",
+          "verdict"
+        ]
+      },
+      "raw_args": {
+        "use_case": "AI assistant for summarizing patient discharge notes",
+        "data_readiness": 4,
+        "verdict": "go",
+        "rationale_summary": "The hospital has a large, clean dataset of structured electronic health records, which is ideal for training an AI model to summarize discharge notes. This will improve the efficiency of the follow-up team by providing quick summaries.",
+        "risks": [
+          "Potential inaccuracies in summarization could lead to miscommunication or incorrect patient care instructions if not thoroughly reviewed.",
+          "Patient privacy concerns may arise due to handling sensitive health information, requiring strict adherence to data protection regulations."
+        ]
+      },
+      "malformed_flag": false,
+      "latency_s": 1.441,
+      "error": null
+    },
+    {
+      "arm": "S2",
+      "fully_valid": true,
+      "failure_class": null,
+      "failure_detail": null,
+      "tool_name": null,
+      "emitted_key_sets": {
+        "root": [
+          "data_readiness",
+          "rationale_summary",
+          "risks",
+          "use_case",
+          "verdict"
+        ]
+      },
+      "raw_args": {
+        "use_case": "AI assistant for summarizing patient discharge notes",
+        "data_readiness": 4,
+        "verdict": "go",
+        "rationale_summary": "The hospital has a large, clean dataset of structured electronic health records, which is ideal for training an AI model to summarize discharge notes. This will improve efficiency and ensure that the follow-up team receives essential information quickly.",
+        "risks": [
+          "Dependency on technology: The system may fail if there are technical issues or power outages, potentially impacting patient care.",
+          "Data privacy concerns: There is a risk of data breaches or misuse of sensitive patient information, which could lead to legal and reputational damage."
+        ]
+      },
+      "malformed_flag": false,
+      "latency_s": 1.54,
+      "error": null
+    },
+    {
+      "arm": "S2",
+      "fully_valid": true,
+      "failure_class": null,
+      "failure_detail": null,
+      "tool_name": null,
+      "emitted_key_sets": {
+        "root": [
+          "data_readiness",
+          "rationale_summary",
+          "risks",
+          "use_case",
+          "verdict"
+        ]
+      },
+      "raw_args": {
+        "use_case": "AI assistant for summarizing patient discharge notes",
+        "data_readiness": 4,
+        "verdict": "go",
+        "rationale_summary": "The hospital has a large volume of clean, structured data which is ideal for training an AI model. The task of summarization is well-defined and can significantly improve the efficiency of the follow-up team.",
+        "risks": [
+          "Potential inaccuracies in summaries could lead to miscommunication or incorrect patient care instructions being followed.",
+          "Patient confidentiality must be strictly maintained, as the AI system will handle sensitive health information."
+        ]
+      },
+      "malformed_flag": false,
+      "latency_s": 1.356,
+      "error": null
+    },
+    {
+      "arm": "S2",
+      "fully_valid": true,
+      "failure_class": null,
+      "failure_detail": null,
+      "tool_name": null,
+      "emitted_key_sets": {
+        "root": [
+          "data_readiness",
+          "rationale_summary",
+          "risks",
+          "use_case",
+          "verdict"
+        ]
+      },
+      "raw_args": {
+        "use_case": "AI assistant for summarizing patient discharge notes",
+        "data_readiness": 4,
+        "verdict": "go",
+        "rationale_summary": "The hospital has a large, clean dataset of structured electronic health records, which is ideal for training an AI model to summarize discharge notes. This will improve efficiency and ensure that the follow-up team receives relevant information quickly.",
+        "risks": [
+          "Potential inaccuracies in summaries could lead to misdiagnosis or delayed treatment if critical details are missed.",
+          "Patient privacy concerns may arise if the AI system is not properly secured, leading to data breaches."
+        ]
+      },
+      "malformed_flag": false,
+      "latency_s": 1.422,
+      "error": null
+    },
+    {
+      "arm": "S2",
+      "fully_valid": true,
+      "failure_class": null,
+      "failure_detail": null,
+      "tool_name": null,
+      "emitted_key_sets": {
+        "root": [
+          "data_readiness",
+          "rationale_summary",
+          "risks",
+          "use_case",
+          "verdict"
+        ]
+      },
+      "raw_args": {
+        "use_case": "A regional hospital wants an AI assistant that summarizes patient discharge notes for the follow-up team.",
+        "data_readiness": 4,
+        "verdict": "go",
+        "rationale_summary": "The structured nature of the electronic health records and the clear need to improve efficiency in summarizing discharge notes make this a strong use case. The AI can help reduce the workload on medical staff and ensure consistent, accurate summaries.",
+        "risks": [
+          "Potential for inaccuracies in summary generation which could lead to miscommunication or incorrect follow-up care.",
+          "Privacy concerns if the AI system is not adequately secured, potentially leading to breaches of patient confidentiality."
+        ]
+      },
+      "malformed_flag": false,
+      "latency_s": 1.507,
+      "error": null
+    },
+    {
+      "arm": "S2",
+      "fully_valid": true,
+      "failure_class": null,
+      "failure_detail": null,
+      "tool_name": null,
+      "emitted_key_sets": {
+        "root": [
+          "data_readiness",
+          "rationale_summary",
+          "risks",
+          "use_case",
+          "verdict"
+        ]
+      },
+      "raw_args": {
+        "use_case": "A regional hospital wants an AI assistant that summarizes patient discharge notes for the follow-up team.",
+        "data_readiness": 4,
+        "verdict": "go",
+        "rationale_summary": "The structured nature of the electronic health records and the clear need to improve efficiency in summarizing patient information make this a strong use case. The AI can help reduce the workload on healthcare professionals, ensuring that critical follow-up details are not overlooked.",
+        "risks": [
+          "Potential for inaccuracies in summaries leading to miscommunication or incorrect treatment",
+          "Privacy concerns related to handling sensitive health data; strict compliance with regulations is necessary"
+        ]
+      },
+      "malformed_flag": false,
+      "latency_s": 1.468,
+      "error": null
+    },
+    {
+      "arm": "S2",
+      "fully_valid": true,
+      "failure_class": null,
+      "failure_detail": null,
+      "tool_name": null,
+      "emitted_key_sets": {
+        "root": [
+          "data_readiness",
+          "rationale_summary",
+          "risks",
+          "use_case",
+          "verdict"
+        ]
+      },
+      "raw_args": {
+        "use_case": "A regional hospital wants an AI assistant that summarizes patient discharge notes for the follow-up team.",
+        "data_readiness": 4,
+        "verdict": "go",
+        "rationale_summary": "The structured nature of the electronic health records and the clear need to improve efficiency in summarizing patient information make this a strong use case. The AI can help reduce the workload on healthcare professionals, ensuring that critical details are not overlooked during follow-up care.",
+        "risks": [
+          "Potential for inaccuracies in summaries leading to misdiagnosis or delayed treatment if important details are missed.",
+          "Privacy concerns related to handling sensitive patient information; strict compliance with data protection regulations is necessary."
+        ]
+      },
+      "malformed_flag": false,
+      "latency_s": 1.559,
+      "error": null
+    },
+    {
+      "arm": "S2",
+      "fully_valid": true,
+      "failure_class": null,
+      "failure_detail": null,
+      "tool_name": null,
+      "emitted_key_sets": {
+        "root": [
+          "data_readiness",
+          "rationale_summary",
+          "risks",
+          "use_case",
+          "verdict"
+        ]
+      },
+      "raw_args": {
+        "use_case": "A regional hospital wants an AI assistant that summarizes patient discharge notes for the follow-up team.",
+        "data_readiness": 4,
+        "verdict": "go",
+        "rationale_summary": "The structured nature of the electronic health records and the clear need to improve efficiency in summarizing discharge notes make this a strong use case. The AI can help reduce the workload on healthcare professionals and ensure that critical information is not overlooked.",
+        "risks": [
+          "Potential for inaccuracies in summaries, which could lead to miscommunication or incorrect follow-up care if not thoroughly reviewed by medical staff.",
+          "Privacy concerns related to handling sensitive patient data; strict compliance with regulations such as HIPAA must be ensured."
+        ]
+      },
+      "malformed_flag": false,
+      "latency_s": 1.611,
+      "error": null
+    },
+    {
+      "arm": "S2",
+      "fully_valid": true,
+      "failure_class": null,
+      "failure_detail": null,
+      "tool_name": null,
+      "emitted_key_sets": {
+        "root": [
+          "data_readiness",
+          "rationale_summary",
+          "risks",
+          "use_case",
+          "verdict"
+        ]
+      },
+      "raw_args": {
+        "use_case": "AI assistant for summarizing patient discharge notes",
+        "data_readiness": 4,
+        "verdict": "go",
+        "rationale_summary": "The hospital has a clear need for an AI solution to improve efficiency in follow-up care by automating the summary of patient discharge notes. The five years of clean, structured electronic health records provide a robust dataset for training and validating the AI model.",
+        "risks": [
+          "Dependency on the quality of input data: Although the data is described as clean and structured, any inconsistencies or errors in the existing records could impact the accuracy of the summaries generated by the AI system.",
+          "Privacy concerns: Handling sensitive patient information requires strict adherence to privacy regulations. Any failure to comply with these regulations could result in legal issues and damage to the hospital's reputation."
+        ]
+      },
+      "malformed_flag": false,
+      "latency_s": 1.802,
+      "error": null
+    },
+    {
+      "arm": "S2",
+      "fully_valid": true,
+      "failure_class": null,
+      "failure_detail": null,
+      "tool_name": null,
+      "emitted_key_sets": {
+        "root": [
+          "data_readiness",
+          "rationale_summary",
+          "risks",
+          "use_case",
+          "verdict"
+        ]
+      },
+      "raw_args": {
+        "use_case": "AI assistant for summarizing patient discharge notes",
+        "data_readiness": 4,
+        "verdict": "go",
+        "rationale_summary": "The hospital has a large, clean dataset of structured electronic health records which is ideal for training an AI model. The task of summarizing discharge notes can significantly improve the efficiency and quality of follow-up care.",
+        "risks": [
+          "Potential inaccuracies in summaries could lead to misdiagnosis or delayed treatment if not thoroughly reviewed by healthcare professionals.",
+          "Patient privacy concerns may arise due to handling sensitive health information, requiring strict adherence to data protection regulations."
+        ]
+      },
+      "malformed_flag": false,
+      "latency_s": 1.438,
+      "error": null
+    }
+  ]
+}

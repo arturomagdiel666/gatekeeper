@@ -994,3 +994,102 @@ show the live model as a measured, imperfect front-end — with these numbers on
 the slide rather than hidden. The obvious next experiments are a 14B model and
 an anti-pattern adjudication pass; both are cheap and both are measurable with
 `scripts/run_examples.py` as it stands.
+
+---
+
+## ADR-020 — Gates require a higher evidentiary standard than dimensions
+
+**Date:** 2026-07-25 · **Commit:** Phase 3.1 Part A · **Status:** accepted
+
+### The governance finding
+
+The live run of the six examples returned 2/6, and every mismatch was a gate
+firing when it should not have. Three were false positives on
+`existing_licensed_capability` where the request mentioned nothing licensed.
+
+The instinct is to call this prompt tuning. It is not. It is structural, and it
+follows directly from the property that makes gates correct in the first place:
+
+> **The same non-compensability that makes gates correct makes their false
+> positives maximally expensive.** An error in a weighted dimension moves the
+> total by tenths and can be absorbed by the other six. An error in a gate
+> decides the verdict and cannot be outvoted by anything.
+
+Therefore **a gate requires a higher evidentiary standard than a dimension** —
+not the same one. Before this phase both came from the same single-shot
+judgement, held to the same (low) bar. The bar must follow the cost of the
+error, and the costs differ by an order of magnitude.
+
+This generalises beyond Gatekeeper. Any system that mixes compensable scoring
+with non-compensable rules needs to hold the rule inputs to a stricter standard
+than the score inputs, or the rules become the weakest link precisely because
+they are the strongest lever.
+
+### A1 — a hard-block gate may not fire without a verifiable quote
+
+`Assessment.anti_pattern_ids: list[str]` becomes
+`anti_pattern_matches: list[AntiPatternMatch]`, where each match carries
+`anti_pattern_id` (grammar-pinned to a config-drawn enum, as ADR-019
+established), a `quote`, and a `quote_confidence`.
+
+`scoring.py` then verifies: a gate whose condition is an anti-pattern match
+does not fire unless the quote appears as a substring of the request text under
+whitespace- and case-normalization. **Forgiving about presentation, strict
+about words** — a re-wrapped line still quotes, a swapped word does not.
+
+A quote that is not in the source is a fabrication. The match is discarded, no
+gate fires, and it is recorded in `Outcome.unsupported_anti_patterns` with the
+offending text. Reported rather than silently dropped: a fabricated quote is a
+finding about the model, and hiding it makes the same failure invisible next
+time.
+
+**Dimension evidence deliberately keeps the lower bar.** `evidence` stays
+free-form and unverified. The asymmetry is the entire point, and it is
+commented as such in `schemas.py`, `scoring.py`, and a test that asserts
+unverifiable dimension evidence is still accepted.
+
+Verification is deterministic, so it is tested without a model: exact match,
+case variant, whitespace variant, paraphrase, single swapped word, empty quote,
+and fabrication.
+
+### A2 — a gate-driven `not_ai` is a recommendation, not a rejection
+
+`Outcome` gains `requires_human_confirmation` and `confirmation_reason`, set
+whenever the deciding gate fired **only** on an anti-pattern match — a
+judgement the model made about the world. Gates resting on a dimension
+threshold (`no_usable_data`, `unacceptable_data_governance`) or an intake
+predicate (`no_named_business_owner`) are deterministic given the assessment
+and stand on their own.
+
+`TriggeredGate.deterministic_basis` records which kind fired, so a gate that
+fired on *both* an anti-pattern and a dimension threshold does not need
+confirmation — the deterministic half suffices.
+
+The UI renders a pending verdict in grey, labelled `— PENDING REVIEW`, with the
+quote the gate relied on shown inline. It must not look like a decision,
+because it is not one. This is also how a real Hub would operate regardless of
+what the model does.
+
+### A3 — signals describe what the requester said, not what the capability is
+
+`existing_licensed_capability`'s signals listed *categories of capability* — "a
+productivity-suite assistant already drafts and summarises", "the
+service-management platform has AI ticket routing". Those match any request
+that **resembles** the category, which is why they fired on three requests that
+mentioned no licence at all. Resemblance to a category is not evidence that a
+licence exists.
+
+Rewritten so every signal is something a reader can point at in the request
+text: the request names a product the company runs, mentions a licence or tier,
+says a tool already does part of this, or says IT has already said it is
+covered. The category knowledge moved to a new `notes` field, explicitly
+labelled as reviewer guidance for *after* a signal has matched — not as a
+signal itself. The same rewrite was applied to the other three hard blocks.
+
+### Result
+
+2/6 → **3/6**, and all three `existing_licensed_capability` false positives are
+gone; it now fires only on the one request that genuinely mentions a licensed
+tool. The remaining failures are of a different kind — under-specified input
+producing `incomplete`, and one dimension mis-scored — which is what Part B
+addresses.

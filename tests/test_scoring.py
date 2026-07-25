@@ -18,7 +18,13 @@ import pytest
 import yaml
 
 from config import RUBRIC_PATH, load_patterns, load_rubric
-from schemas import Assessment, Confidence, DimensionAssessment, RequestIntake
+from schemas import (
+    AntiPatternMatch,
+    Assessment,
+    Confidence,
+    DimensionAssessment,
+    RequestIntake,
+)
 from scoring import Verdict, match_band, score
 
 PATTERNS = load_patterns()
@@ -26,8 +32,13 @@ RUBRIC = load_rubric()
 
 # An intake that satisfies the owner gate, so tests of other gates are not
 # accidentally testing this one.
+# Every anti-pattern match in these tests quotes this phrase, and the intake
+# below contains it — so matches verify and the tests exercise gate logic
+# rather than the quote check. The quote check has its own tests.
+QUOTABLE_PHRASE = "the platform team said the licence already covers it"
+
 OWNED = RequestIntake(
-    request_text="A request.",
+    request_text=f"A request. {QUOTABLE_PHRASE}",
     requesting_area="Service Desk",
     business_owner="Ana Ruiz",
     process_description="Done by hand today.",
@@ -88,7 +99,14 @@ def make_assessment(
     """Build an Assessment from a {dimension_id: score} mapping."""
     return Assessment(
         archetype_id=archetype_id,
-        anti_pattern_ids=anti_pattern_ids or [],
+        anti_pattern_matches=[
+            AntiPatternMatch(
+                anti_pattern_id=i,
+                quote=QUOTABLE_PHRASE,
+                quote_confidence=Confidence.HIGH,
+            )
+            for i in (anti_pattern_ids or [])
+        ],
         dimension_assessments=[
             DimensionAssessment(
                 dimension_id=dimension_id,
@@ -301,7 +319,7 @@ class TestBlockingGates:
             make_assessment(BEST_SCORES),
             RUBRIC,
             PATTERNS,
-            RequestIntake(request_text="A request.", business_owner="   "),
+            RequestIntake(request_text=f"A request. {QUOTABLE_PHRASE}", business_owner="   "),
         )
         assert outcome.verdict is Verdict.NO_GO
         assert outcome.triggered_gate_ids == ["no_named_business_owner"]
@@ -339,7 +357,7 @@ class TestBlockingGates:
             ),
             RUBRIC,
             PATTERNS,
-            RequestIntake(request_text="A request.", business_owner=""),
+            RequestIntake(request_text=f"A request. {QUOTABLE_PHRASE}", business_owner=""),
         )
         assert outcome.verdict is Verdict.NOT_AI
         assert outcome.triggered_gate_ids == [

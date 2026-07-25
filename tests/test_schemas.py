@@ -82,7 +82,7 @@ class TestAssessmentValidation:
         """
         assert set(Assessment.model_json_schema()["required"]) == {
             "archetype_id",
-            "anti_pattern_ids",
+            "anti_pattern_matches",
             "dimension_assessments",
         }
         with pytest.raises(ValidationError):
@@ -91,7 +91,7 @@ class TestAssessmentValidation:
     def test_an_assessment_with_the_required_fields_is_valid(self):
         assessment = Assessment(
             archetype_id=None,
-            anti_pattern_ids=[],
+            anti_pattern_matches=[],
             dimension_assessments=[
                 DimensionAssessment(
                     dimension_id="business_value",
@@ -173,7 +173,7 @@ class TestMetricProposalFields:
         """Omitting these accepts the archetype default and an unmeasured
         baseline, both of which are valid outcomes — unlike omitting a score."""
         assessment = Assessment(
-            archetype_id=None, anti_pattern_ids=[],
+            archetype_id=None, anti_pattern_matches=[],
             dimension_assessments=[_ENTRY],
         )
         assert assessment.proposed_metric_id is None
@@ -181,7 +181,7 @@ class TestMetricProposalFields:
 
     def test_metric_proposal_round_trips(self):
         assessment = Assessment(
-            archetype_id=None, anti_pattern_ids=[],
+            archetype_id=None, anti_pattern_matches=[],
             dimension_assessments=[_ENTRY],
             proposed_metric_id="hours_reclaimed_per_month",
             stated_baseline_value=120.0,

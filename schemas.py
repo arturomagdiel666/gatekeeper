@@ -41,6 +41,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 __all__ = [
     "Confidence",
+    "AntiPatternMatch",
     "RequestIntake",
     "DimensionAssessment",
     "Assessment",
@@ -70,7 +71,13 @@ BANNED_PROMPT_SYNONYMS: dict[str, tuple[str, ...]] = {
     "score": ("rating", "grade", "mark out of"),
     "confidence": ("certainty", "sureness", "how sure"),
     "dimension_id": ("criterion name", "factor id"),
-    "anti_pattern_ids": ("red flag", "warning sign", "smells"),
+    "anti_pattern_matches": ("red flag", "warning sign", "smells"),
+    # "citation" is deliberately NOT banned here: it appears legitimately in
+    # the rag_qa archetype's risk text ("answers with no citation"), which is
+    # domain prose rather than an instruction naming a field. Banning it would
+    # make the check unpassable without making the prompt any safer — the same
+    # curation rule as "level" and "criteria" above.
+    "quote": ("excerpt", "snippet", "verbatim span"),
     "archetype_id": ("use case category", "pattern name"),
     "proposed_metric_id": ("kpi", "success measure name"),
 }
@@ -118,6 +125,35 @@ class RequestIntake(BaseModel):
     stated_benefit: str | None = None
 
 
+class AntiPatternMatch(BaseModel):
+    """One matched anti-pattern, with the text that justifies the match.
+
+    An anti-pattern match is held to a **higher evidentiary standard than a
+    dimension score**, and this class is where that asymmetry lives. The reason
+    is the same non-compensability that makes gates correct in the first place:
+    an error in a weighted dimension moves the total by tenths and can be
+    absorbed by the other six, while an error in a gate decides the verdict and
+    cannot be outvoted by anything. See ADR-020.
+
+    ``quote`` must be text copied **verbatim** from the request.
+    ``scoring.py`` checks it as a substring of the request text before letting
+    any gate fire on it; a quote that is not in the source is a fabrication, and
+    the match is discarded and reported rather than silently honoured.
+
+    Attributes:
+        anti_pattern_id: Id from ``patterns.yaml``.
+        quote: Text copied word for word from the request. Not a paraphrase,
+            not a summary, not an inference.
+        quote_confidence: How well that quote establishes the anti-pattern.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    anti_pattern_id: str
+    quote: str
+    quote_confidence: Confidence
+
+
 class DimensionAssessment(BaseModel):
     """One rubric dimension as assessed from the request.
 
@@ -132,6 +168,13 @@ class DimensionAssessment(BaseModel):
             paraphrased. This is what a requester is shown when they ask why
             the verdict came out the way it did, so it must point at something
             actually present in the request.
+
+            Deliberately held to a LOWER standard than
+            :class:`AntiPatternMatch.quote`: free-form prose, not verified
+            against the source. A wrong dimension score shifts the weighted
+            total by tenths and is compensable by the other dimensions; a wrong
+            anti-pattern match fires a gate and decides the verdict outright.
+            The evidentiary bar follows the cost of the error (ADR-020).
         confidence: How firmly the request establishes the score.
     """
 
@@ -161,8 +204,10 @@ class Assessment(BaseModel):
     Attributes:
         archetype_id: Id of the best-matching archetype from
             ``patterns.yaml``, or ``None`` if none fits.
-        anti_pattern_ids: Ids of every matched anti-pattern. Those flagged
-            ``hard_block`` in ``patterns.yaml`` fire a gate.
+        anti_pattern_matches: Every matched anti-pattern, each carrying the
+            verbatim quote that justifies it. Those flagged ``hard_block`` in
+            ``patterns.yaml`` fire a gate — but only if their quote verifies
+            against the request text.
         dimension_assessments: One entry per rubric dimension.
         proposed_metric_id: The candidate metric from ``contracts.yaml`` that
             best fits this request, or ``None`` to accept the archetype default.
@@ -182,8 +227,11 @@ class Assessment(BaseModel):
     # because the schema told it everything else was optional. A schema that
     # does not demand the work does not get the work.
     archetype_id: str | None = Field(description="Null if no archetype fits.")
-    anti_pattern_ids: list[str] = Field(
-        description="Empty list if none match. Never omit the key."
+    anti_pattern_matches: list[AntiPatternMatch] = Field(
+        description=(
+            "Every anti-pattern the request matches, each with a verbatim "
+            "quote from the request. Empty list if none. Never omit the key."
+        )
     )
     dimension_assessments: list[DimensionAssessment] = Field(
         min_length=1,

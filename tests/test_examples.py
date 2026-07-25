@@ -73,7 +73,27 @@ class TestTheExampleSetItself:
             assessment = example.reference_assessment
             if assessment.archetype_id:
                 assert assessment.archetype_id in archetypes, example.id
-            assert set(assessment.anti_pattern_ids) <= anti_patterns, example.id
+            matched = {m.anti_pattern_id for m in assessment.anti_pattern_matches}
+            assert matched <= anti_patterns, example.id
+
+    def test_every_anti_pattern_match_quotes_the_request_verbatim(self):
+        """The exemplars must satisfy the same evidentiary bar as the model."""
+        from scoring import quote_is_supported
+
+        for example in EXAMPLES:
+            source = "\n".join(
+                [
+                    example.intake.request_text,
+                    example.intake.process_description,
+                    example.intake.stated_benefit or "",
+                ]
+            )
+            for match in example.reference_assessment.anti_pattern_matches:
+                assert quote_is_supported(match.quote, source), (
+                    example.id,
+                    match.anti_pattern_id,
+                    match.quote,
+                )
 
 
 @pytest.mark.parametrize("example", EXAMPLES, ids=ids(EXAMPLES))

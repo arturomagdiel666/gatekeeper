@@ -218,16 +218,30 @@ anti_patterns:
       capability is already supported, secured and updated by its vendor.
       Signals name categories rather than products, because the specific
       products differ by organisation and change faster than this file.
+    # SIGNALS DESCRIBE WHAT THE REQUESTER SAID, NOT WHAT THE CAPABILITY IS.
+    # The earlier version listed categories of capability, which matched any
+    # request that merely RESEMBLED the category — it fired on three of six
+    # example requests where no licence was mentioned at all. Because this is
+    # the highest-precedence gate, each false positive decided a verdict. A
+    # signal here must be something a reader can point at in the request text.
     signals:
-      - the productivity suite's assistant already drafts, summarises and
-        searches across the same documents
-      - the service-management platform has AI ticket routing, summarisation or
-        virtual-agent capability included in the current tier
-      - the CRM has an embedded assistant covering exactly this workflow
-      - the BI platform already answers natural-language questions over this data
-      - an enterprise document-search capability already indexes this corpus
-      - nobody has spoken to the team that owns the relevant platform licence
+      - the request names a specific platform, product or vendor the company
+        already runs
+      - the request says a tool the company already has does this, or part of it
+      - the request mentions an existing licence, subscription, tier or module
+      - the request says IT, a platform team, or a vendor has already said this
+        is covered
+      - the request asks whether an existing tool could do it instead
     hard_block: true
+    notes: >-
+      The capability categories most often already licensed — a productivity
+      suite assistant that drafts and searches documents, service-management
+      platform AI for ticket routing and summarisation, a CRM-embedded
+      assistant, BI natural-language query, enterprise document search. This
+      list is for the reviewer's judgement AFTER a signal has matched. It is
+      deliberately NOT in `signals`: resemblance to a category is not evidence
+      that a licence exists, and treating it as evidence is what caused the
+      false positives.
     better_alternative: >-
       Route the requester to the team that owns that licence, with the specific
       capability named. Ask that team to run a configuration pilot first. Only
@@ -241,11 +255,13 @@ anti_patterns:
       The decision follows from data already available, by a rule a person can
       state in one sentence. There is no ambiguity for a model to resolve, only
       a rule nobody has written down.
+    # Tightened for the same reason as existing_licensed_capability: these must
+    # be things the requester wrote, not inferences about the domain.
     signals:
-      - the request can be stated as "if X and Y then Z"
-      - every input needed is already a structured field in one system
-      - an expert can articulate the complete decision logic in a few minutes
-      - the phrase "it is basically just a lookup"
+      - the request states the decision rule itself, in the form "if X then Y"
+      - the request says every input needed is already a field in one system
+      - the request says somebody can write down the complete logic
+      - the request calls it a lookup, a mapping, or a simple rule
     hard_block: true
     better_alternative: >-
       Write the rule, the query, or the validation. It will be faster, cheaper,
@@ -257,11 +273,13 @@ anti_patterns:
       What is actually wanted is visibility into what already happened —
       aggregates, trends, a number on a screen. Nothing is being predicted,
       classified, generated, or decided.
+    # Tightened: the requester must actually be asking for a report or a view,
+    # not merely be describing something that involves data.
     signals:
-      - we want a dashboard, a view, or visibility
-      - every question asked is about the past, not the future
-      - the output is a table or a chart with no decision attached to it
-      - 'the word "AI" appears in the ask but nowhere in the described workflow'
+      - the request asks for a dashboard, a report, a view, or visibility
+      - the request asks only about counts, totals, trends or rankings
+      - every question in the request is about what already happened
+      - the request describes the wanted output as a table, a chart or a number
     hard_block: true
     better_alternative: >-
       Build the report or the BI dashboard, or point them at the one that
@@ -275,11 +293,14 @@ anti_patterns:
       with no judgement involved. Valuable automation, but calling it an AI
       agent adds cost, latency and nondeterminism to something that should be
       exact.
+    # Tightened: the requester must describe fixed, judgement-free steps, not
+    # merely a process that touches two systems.
     signals:
-      - copy it from system A into system B
-      - the steps are identical every time and already written down
-      - the inputs are structured fields, not documents or free text
-      - errors today come from fatigue, not from difficult judgement
+      - the request describes copying or moving data between named systems
+      - the request says the steps are the same every time
+      - the request says the procedure is already written down or scripted
+      - the request describes the inputs as fields or records rather than as
+        documents, messages or free text
     hard_block: true
     better_alternative: >-
       Use scripted integration, a platform workflow, or an RPA tool.
@@ -292,12 +313,15 @@ anti_patterns:
       The process demands accuracy indistinguishable from 100%, acts without
       review, and an error is not recoverable. Probabilistic systems cannot
       offer that guarantee and a review step has been ruled out.
+    # Tightened: BOTH halves must be present in the request — a demand for
+    # perfect accuracy AND the absence of a human. Either alone is not this.
     signals:
-      - it has to be right every time
-      - the output triggers an irreversible action — a payment, an access
-        revocation, a legal filing — with nobody in between
-      - no budget, staffing or appetite for a review step
-      - a compliance obligation with no tolerance for a wrong call
+      - the request says it has to be right every time, or that no error is
+        acceptable
+      - the request says the output acts automatically with nobody reviewing it
+      - the request names an irreversible action it would trigger — a payment,
+        an access change, a filing
+      - the request rules out a review step, or says there is no capacity for one
     hard_block: true
     better_alternative: >-
       Either introduce a review step and re-triage it as decision support, or

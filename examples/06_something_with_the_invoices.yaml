@@ -22,8 +22,11 @@ stated_benefit: null
 
 reference_assessment:
   archetype_id: extraction
-  anti_pattern_ids:
-    - solution_first_no_measurable_problem
+  anti_pattern_matches:
+    - anti_pattern_id: solution_first_no_measurable_problem
+      quote: >-
+        We think there is something AI could do with our supplier invoices
+      quote_confidence: high
   proposed_metric_id: null
   stated_baseline_value: null
   dimension_assessments:

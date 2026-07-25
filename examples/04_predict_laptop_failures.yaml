@@ -28,8 +28,11 @@ stated_benefit: |
 
 reference_assessment:
   archetype_id: forecasting
-  anti_pattern_ids:
-    - data_does_not_exist_yet
+  anti_pattern_matches:
+    - anti_pattern_id: data_does_not_exist_yet
+      quote: >-
+        we have never recorded what actually failed or why
+      quote_confidence: high
   proposed_metric_id: cost_avoided_per_month
   stated_baseline_value: null
   dimension_assessments:

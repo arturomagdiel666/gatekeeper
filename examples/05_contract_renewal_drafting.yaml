@@ -28,7 +28,7 @@ stated_benefit: |
 
 reference_assessment:
   archetype_id: summarization
-  anti_pattern_ids: []
+  anti_pattern_matches: []
   proposed_metric_id: hours_reclaimed_per_month
   stated_baseline_value: null
   dimension_assessments:

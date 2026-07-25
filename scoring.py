@@ -47,6 +47,9 @@ from schemas import Assessment, DimensionAssessment, RequestIntake
 __all__ = [
     "Verdict",
     "TriggeredGate",
+    "UnsupportedAntiPattern",
+    "normalize_for_quote_check",
+    "quote_is_supported",
     "DimensionContribution",
     "Outcome",
     "score",
@@ -68,6 +71,43 @@ class Verdict(str, Enum):
     NO_GO = "no_go"
     NOT_AI = "not_ai"
     INCOMPLETE = "incomplete"
+
+
+def normalize_for_quote_check(text: str) -> str:
+    """Lower-case and collapse all whitespace, for verbatim-quote comparison.
+
+    Deliberately forgiving about presentation and strict about words: a model
+    that re-wraps a line or changes capitalisation is still quoting, while one
+    that swaps a word is paraphrasing and must not pass.
+    """
+    return " ".join(text.lower().split())
+
+
+def quote_is_supported(quote: str, source: str) -> bool:
+    """Whether ``quote`` appears verbatim in ``source``.
+
+    Whitespace- and case-insensitive substring check. An empty or whitespace-only
+    quote is never supported — "I found this pattern but cannot show you where"
+    is precisely the claim this check exists to reject.
+    """
+    if not quote or not quote.strip():
+        return False
+    return normalize_for_quote_check(quote) in normalize_for_quote_check(source)
+
+
+class UnsupportedAntiPattern(BaseModel):
+    """An anti-pattern match whose quote could not be found in the request.
+
+    Reported rather than silently dropped: a fabricated quote is a finding
+    about the model, and hiding it would make the same failure invisible next
+    time.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    anti_pattern_id: str
+    quote: str
+    reason: str
 
 
 class TriggeredGate(BaseModel):
@@ -92,6 +132,15 @@ class TriggeredGate(BaseModel):
     reason: str
     detail: str
     matched_anti_pattern_ids: list[str] = Field(default_factory=list)
+    #: True when at least one condition that fired was a dimension threshold or
+    #: an intake-field predicate — both deterministic given the assessment. A
+    #: gate that fired ONLY on an anti-pattern match rests on a model judgement
+    #: about the world, and its verdict is a recommendation pending human
+    #: confirmation rather than a rejection (ADR-020).
+    deterministic_basis: bool = False
+    #: The verbatim quotes the anti-pattern conditions relied on, so a human
+    #: confirming the verdict can see the evidence without opening the payload.
+    supporting_quotes: list[str] = Field(default_factory=list)
 
 
 class DimensionContribution(BaseModel):
@@ -157,6 +206,16 @@ class Outcome(BaseModel):
     unknown_dimensions: list[str] = Field(default_factory=list)
     ignored_dimension_ids: list[str] = Field(default_factory=list)
     ignored_anti_pattern_ids: list[str] = Field(default_factory=list)
+    #: Anti-pattern matches discarded because their quote was not found in the
+    #: request. Visible rather than silent — a fabricated quote is a finding.
+    unsupported_anti_patterns: list[UnsupportedAntiPattern] = Field(
+        default_factory=list
+    )
+    #: True when the verdict rests on a hard-block anti-pattern gate and nothing
+    #: deterministic. Such a verdict is a RECOMMENDATION awaiting human
+    #: confirmation, not a rejection.
+    requires_human_confirmation: bool = False
+    confirmation_reason: str | None = None
     explanation: str = ""
 
     @property
@@ -222,7 +281,7 @@ def _evaluate_gates(
     rubric: Rubric,
     patterns: Patterns,
     intake: RequestIntake | None,
-) -> tuple[list[TriggeredGate], list[str]]:
+) -> tuple[list[TriggeredGate], list[str], list[UnsupportedAntiPattern]]:
     """Evaluate every blocking gate declared in the rubric.
 
     A gate fires when any one of its conditions is met. Two kinds of condition
@@ -238,21 +297,68 @@ def _evaluate_gates(
     file.
     """
     ignored_anti_patterns: list[str] = []
+    unsupported: list[UnsupportedAntiPattern] = []
     matched_all: list[str] = []
     matched_hard_blocks: list[str] = []
-    for anti_pattern_id in assessment.anti_pattern_ids:
-        anti_pattern = patterns.anti_pattern_by_id(anti_pattern_id)
+    quote_by_id: dict[str, str] = {}
+
+    # The evidentiary bar for an anti-pattern is higher than for a dimension
+    # score, because the cost of the error is higher: a wrong dimension moves
+    # the total by tenths and is compensable, a wrong anti-pattern fires a gate
+    # and cannot be outvoted. Every match must carry a quote that actually
+    # appears in the request, or it is discarded. See ADR-020.
+    source_text = ""
+    if intake is not None:
+        source_text = "\n".join(
+            part
+            for part in (
+                intake.request_text,
+                intake.process_description,
+                intake.stated_benefit or "",
+            )
+            if part
+        )
+
+    for match in assessment.anti_pattern_matches:
+        anti_pattern = patterns.anti_pattern_by_id(match.anti_pattern_id)
         if anti_pattern is None:
-            ignored_anti_patterns.append(anti_pattern_id)
+            ignored_anti_patterns.append(match.anti_pattern_id)
             continue
-        matched_all.append(anti_pattern_id)
+        if intake is None:
+            unsupported.append(
+                UnsupportedAntiPattern(
+                    anti_pattern_id=match.anti_pattern_id,
+                    quote=match.quote,
+                    reason=(
+                        "no intake was supplied, so the quote could not be "
+                        "verified against the request"
+                    ),
+                )
+            )
+            continue
+        if not quote_is_supported(match.quote, source_text):
+            unsupported.append(
+                UnsupportedAntiPattern(
+                    anti_pattern_id=match.anti_pattern_id,
+                    quote=match.quote,
+                    reason=(
+                        "empty quote"
+                        if not match.quote.strip()
+                        else "quote does not appear in the request text"
+                    ),
+                )
+            )
+            continue
+        matched_all.append(match.anti_pattern_id)
+        quote_by_id[match.anti_pattern_id] = match.quote
         if anti_pattern.hard_block:
-            matched_hard_blocks.append(anti_pattern_id)
+            matched_hard_blocks.append(match.anti_pattern_id)
 
     triggered: list[TriggeredGate] = []
     for gate in rubric.gates_by_precedence:
         details: list[str] = []
         contributing_anti_patterns: list[str] = []
+        deterministic_basis = False
         for condition in gate.any_of:
             if isinstance(condition, DimensionThresholdCondition):
                 entry = indexed.get(condition.dimension)
@@ -260,18 +366,18 @@ def _evaluate_gates(
                     continue
                 if condition.is_met(entry.score):
                     details.append(condition.describe(entry.score))
+                    deterministic_basis = True
             elif isinstance(condition, AntiPatternCondition):
                 hits = condition.matches(matched_hard_blocks, matched_all)
                 if hits:
                     contributing_anti_patterns.extend(hits)
-                    details.append(
-                        "anti-pattern(s) matched: " + ", ".join(hits)
-                    )
+                    details.append("anti-pattern(s) matched: " + ", ".join(hits))
             elif isinstance(condition, IntakeFieldCondition):
                 if intake is None:
                     continue
                 if condition.is_met(getattr(intake, condition.field, None)):
                     details.append(condition.describe())
+                    deterministic_basis = True
         if details:
             triggered.append(
                 TriggeredGate(
@@ -281,9 +387,15 @@ def _evaluate_gates(
                     reason=" ".join(gate.reason.split()),
                     detail="; ".join(details),
                     matched_anti_pattern_ids=contributing_anti_patterns,
+                    deterministic_basis=deterministic_basis,
+                    supporting_quotes=[
+                        quote_by_id[i]
+                        for i in contributing_anti_patterns
+                        if i in quote_by_id
+                    ],
                 )
             )
-    return triggered, ignored_anti_patterns
+    return triggered, ignored_anti_patterns, unsupported
 
 
 def _compute_contributions(
@@ -329,6 +441,7 @@ def _build_explanation(
     contributions: list[DimensionContribution],
     triggered_gates: list[TriggeredGate],
     unknown_dimensions: list[str],
+    unsupported: list[UnsupportedAntiPattern],
     rubric: Rubric,
     patterns: Patterns,
     assessment: Assessment,
@@ -372,10 +485,13 @@ def _build_explanation(
         lines.append("")
         lines.append("Gates triggered (the first decided the verdict):")
         for gate in triggered_gates:
+            basis = "deterministic" if gate.deterministic_basis else "model judgement"
             lines.append(
-                f"  - {gate.gate_id} -> {gate.verdict.value} ({gate.detail})"
+                f"  - {gate.gate_id} -> {gate.verdict.value} [{basis}] ({gate.detail})"
             )
             lines.append(f"      {gate.reason}")
+            for quote in gate.supporting_quotes:
+                lines.append(f'      Quoted from the request: "{quote}"')
             for anti_pattern_id in gate.matched_anti_pattern_ids:
                 anti_pattern = patterns.anti_pattern_by_id(anti_pattern_id)
                 if anti_pattern is not None:
@@ -385,6 +501,15 @@ def _build_explanation(
     if unknown_dimensions:
         lines.append("")
         lines.append(f"Unknown dimensions: {', '.join(unknown_dimensions)}")
+
+    if unsupported:
+        lines.append("")
+        lines.append(
+            "Anti-pattern matches DISCARDED — the quote was not found in the "
+            "request, so no gate fired on them:"
+        )
+        for item in unsupported:
+            lines.append(f'  - {item.anti_pattern_id}: "{item.quote}" ({item.reason})')
 
     if contributions:
         lines.append("")
@@ -424,7 +549,7 @@ def score(
         behind every line.
     """
     indexed, ignored_dimension_ids = _index_assessments(assessment, rubric)
-    triggered_gates, ignored_anti_pattern_ids = _evaluate_gates(
+    triggered_gates, ignored_anti_pattern_ids, unsupported = _evaluate_gates(
         assessment, indexed, rubric, patterns, intake
     )
 
@@ -446,9 +571,26 @@ def score(
     else:
         contributions, weighted_total = [], None
 
+    requires_confirmation = False
+    confirmation_reason: str | None = None
     if triggered_gates:
         # Gates arrive in precedence order, so the first one decides.
-        verdict = triggered_gates[0].verdict
+        deciding = triggered_gates[0]
+        verdict = deciding.verdict
+        # A gate that fired only on an anti-pattern match rests entirely on a
+        # model judgement about the world. Dimension thresholds and intake
+        # predicates are deterministic given the assessment; those stand on
+        # their own. See ADR-020.
+        if not deciding.deterministic_basis and deciding.matched_anti_pattern_ids:
+            requires_confirmation = True
+            quoted = "; ".join(f'"{q}"' for q in deciding.supporting_quotes) or "(none)"
+            confirmation_reason = (
+                f"{verdict.value} rests on the anti-pattern(s) "
+                f"{', '.join(deciding.matched_anti_pattern_ids)}, which is a "
+                f"judgement the model made about this request rather than a "
+                f"deterministic check. It quoted: {quoted}. Confirm the quote "
+                f"supports the finding before rejecting the request."
+            )
     elif not scorable:
         verdict = Verdict.INCOMPLETE
     else:
@@ -463,12 +605,16 @@ def score(
         unknown_dimensions=unknown_dimensions,
         ignored_dimension_ids=ignored_dimension_ids,
         ignored_anti_pattern_ids=ignored_anti_pattern_ids,
+        unsupported_anti_patterns=unsupported,
+        requires_human_confirmation=requires_confirmation,
+        confirmation_reason=confirmation_reason,
         explanation=_build_explanation(
             verdict,
             weighted_total,
             contributions,
             triggered_gates,
             unknown_dimensions,
+            unsupported,
             rubric,
             patterns,
             assessment,

@@ -470,9 +470,15 @@ class AntiPattern(BaseModel):
     id: str
     label: str
     description: str
+    #: Things a reader can point at IN THE REQUEST TEXT. Not descriptions of
+    #: the domain: resemblance to a category is not evidence, and treating it
+    #: as evidence is what caused the false positives measured in ADR-020.
     signals: list[str]
     hard_block: bool
     better_alternative: str
+    #: Reviewer guidance that is deliberately NOT a signal — background used to
+    #: judge a match after one of the signals has already fired.
+    notes: str | None = None
 
 
 class Patterns(BaseModel):

@@ -27,8 +27,11 @@ stated_benefit: |
 
 reference_assessment:
   archetype_id: rag_qa
-  anti_pattern_ids:
-    - existing_licensed_capability
+  anti_pattern_matches:
+    - anti_pattern_id: existing_licensed_capability
+      quote: >-
+        IT mentioned that the assistant bundled with our current licence tier can already search and answer over that same document library
+      quote_confidence: high
   proposed_metric_id: search_success_rate_pct
   stated_baseline_value: null
   dimension_assessments:

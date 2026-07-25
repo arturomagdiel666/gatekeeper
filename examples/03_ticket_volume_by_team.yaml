@@ -22,8 +22,11 @@ stated_benefit: |
 
 reference_assessment:
   archetype_id: null
-  anti_pattern_ids:
-    - reporting_in_disguise
+  anti_pattern_matches:
+    - anti_pattern_id: reporting_in_disguise
+      quote: >-
+        We want to use AI to tell us how many tickets each team closed last month
+      quote_confidence: high
   proposed_metric_id: null
   stated_baseline_value: null
   dimension_assessments:

@@ -177,8 +177,9 @@ Each entry contains:
 Plus, at the top level:
 
 - archetype_id: the best-matching archetype id, or null if none fits.
-- anti_pattern_ids: the ids of every anti-pattern the request matches, as a
-  list. Empty list if none.
+- anti_pattern_matches: every anti-pattern the request matches. Each entry is
+  an object with anti_pattern_id, quote, and quote_confidence. Empty list if
+  none match — which is the common case.
 - proposed_metric_id: the candidate metric id that best fits this request, from
   the list for the matching archetype, or null to accept the default.
 - stated_baseline_value: the current value of that metric as a number, ONLY if
@@ -196,6 +197,16 @@ Plus, at the top level:
 4. Use exact ids from the lists below. Do not invent ids.
 5. Set confidence to low when you are extrapolating from thin information, even
    if you are confident in the extrapolation.
+6. An anti_pattern_matches entry REQUIRES a quote: a span of text copied word
+   for word from the request above. Not a paraphrase, not a summary, not
+   something you inferred. If you cannot copy out a span that shows the
+   pattern, the pattern is not there — leave it out. A quote that does not
+   appear in the request is discarded and the match is thrown away, so an
+   invented quote gains you nothing.
+7. Do not match an anti-pattern because the request RESEMBLES its category.
+   Match it only on what the request says. In particular, do not match
+   existing_licensed_capability unless the request itself mentions a product,
+   a licence, or a tool the company already has.
 
 ## Dimensions
 
@@ -207,8 +218,10 @@ Plus, at the top level:
 
 ## Anti-patterns
 
-Record every one that matches. Those marked BLOCKING will stop the request, so
-match them only on real signals present in the text.
+Those marked BLOCKING stop the request outright, so they are held to a higher
+standard than a dimension score: each needs a quote copied from the request.
+Most requests match NONE of these. An empty anti_pattern_matches list is a
+normal, common, correct answer.
 
 {_render_anti_patterns(active_patterns)}
 
@@ -261,7 +274,7 @@ def build_response_schema(
     root["archetype_id"] = {
         "anyOf": [{"type": "string", "enum": active_patterns.archetype_ids}, {"type": "null"}]
     }
-    root["anti_pattern_ids"]["items"] = {
+    schema["$defs"]["AntiPatternMatch"]["properties"]["anti_pattern_id"] = {
         "type": "string",
         "enum": [a.id for a in active_patterns.anti_patterns],
     }

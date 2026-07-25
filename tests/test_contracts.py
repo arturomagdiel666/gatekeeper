@@ -15,15 +15,23 @@ from contracts import (
     issue_contract,
     load_contracts_config,
 )
-from schemas import Assessment, Confidence, DimensionAssessment, RequestIntake
+from schemas import (
+    AntiPatternMatch,
+    Assessment,
+    Confidence,
+    DimensionAssessment,
+    RequestIntake,
+)
 from scoring import Verdict, score
 
 RUBRIC = load_rubric()
 PATTERNS = load_patterns()
 APPROVAL = date(2026, 1, 31)
 
+QUOTABLE_PHRASE = "the platform team said the licence already covers it"
+
 OWNED = RequestIntake(
-    request_text="A request.",
+    request_text=f"A request. {QUOTABLE_PHRASE}",
     requesting_area="Service Desk",
     business_owner="Ana Ruiz",
 )
@@ -43,7 +51,7 @@ def make_assessment(scores=None, archetype_id="summarization", **kwargs) -> Asse
     """Build an Assessment with the given scores and metric proposal."""
     return Assessment(
         archetype_id=archetype_id,
-        anti_pattern_ids=[],
+        anti_pattern_matches=[],
         dimension_assessments=[
             DimensionAssessment(
                 dimension_id=key,

@@ -101,6 +101,10 @@ def render_dimension_table(outcome) -> None:
 def render_outcome(outcome, contract: MeasurementContract | None) -> None:
     """Render a scored outcome: verdict, gates, arithmetic, contract."""
     colour, label = VERDICT_STYLE[outcome.verdict.value]
+    if outcome.requires_human_confirmation:
+        # A verdict resting only on a model judgement about the world is a
+        # RECOMMENDATION, and must not look like a decision (ADR-020).
+        colour, label = "#57606a", f"{label} — PENDING REVIEW"
     if outcome.weighted_total is not None:
         subtitle = (
             f"Weighted total {outcome.weighted_total:.2f} of 5.00 · "
@@ -110,6 +114,27 @@ def render_outcome(outcome, contract: MeasurementContract | None) -> None:
         subtitle = "No weighted total — see below"
     banner(colour, label, subtitle)
 
+    if outcome.requires_human_confirmation:
+        st.warning(
+            "**This is a recommendation, not a rejection.** It rests on a "
+            "judgement the model made about this request rather than on a "
+            "deterministic check, so a human must confirm it before the "
+            "request is refused.\n\n" + (outcome.confirmation_reason or "")
+        )
+        for gate in outcome.triggered_gates:
+            for quote in gate.supporting_quotes:
+                st.markdown(f"> *The model quoted from the request:* “{quote}”")
+
+    if outcome.unsupported_anti_patterns:
+        st.info(
+            "Anti-pattern matches **discarded** because their quote was not "
+            "found in the request — no gate fired on these:\n\n"
+            + "\n".join(
+                f"- `{u.anti_pattern_id}` — “{u.quote}” ({u.reason})"
+                for u in outcome.unsupported_anti_patterns
+            )
+        )
+
     if outcome.triggered_gates:
         st.subheader("Blocking gates")
         st.caption(
@@ -118,9 +143,14 @@ def render_outcome(outcome, contract: MeasurementContract | None) -> None:
         )
         for gate in outcome.triggered_gates:
             with st.container(border=True):
+                basis = (
+                    "deterministic"
+                    if gate.deterministic_basis
+                    else "model judgement — needs confirmation"
+                )
                 st.markdown(
                     f"**{gate.gate_id}** → `{gate.verdict.value}` "
-                    f"(precedence {gate.precedence})"
+                    f"(precedence {gate.precedence}, {basis})"
                 )
                 st.markdown(f"*What fired it:* {gate.detail}")
                 st.markdown(gate.reason)

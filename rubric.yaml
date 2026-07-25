@@ -1,2 +1,275 @@
-# TODO (Phase 2): ROI scoring rubric — dimensions, weights, and thresholds
-# for the Go / No-Go / Not-AI verdict.
+# =============================================================================
+# Gatekeeper scoring rubric
+# =============================================================================
+# This file is the single source of truth for how a use case is scored. Weights,
+# anchors, thresholds and verdict bands all live here — Python only reads and
+# validates them (see config.py) and does the arithmetic (see scoring.py).
+#
+# You can tune this file without touching any code. Doing so changes verdicts.
+# `pytest` will tell you if you break an invariant (weights must sum to 1.0,
+# bands must tile the scale with no gap or overlap, every level needs an anchor).
+#
+# HOW SCORING WORKS
+#   1. The interview produces a raw 1-5 integer per dimension, plus evidence.
+#      A dimension that could not be determined is recorded as unknown (null) —
+#      never guessed.
+#   2. Each raw score is normalized so that 5 always means "good for this use
+#      case". For a `lower_is_better` dimension the raw score is flipped:
+#          normalized = scale.min + scale.max - raw     (with a 1-5 scale: 6 - raw)
+#      So implementation_effort=1 (cheap) normalizes to 5, and =5 (a year of
+#      work) normalizes to 1.
+#   3. weighted_total = sum(normalized * weight) over the KNOWN dimensions, with
+#      weights renormalized to sum to 1.0 across those known dimensions. The
+#      total therefore always lies on the same 1.0-5.0 scale.
+#   4. The total is rounded to 6 decimal places before band matching, so an
+#      exact boundary value like 3.5 lands predictably instead of being lost to
+#      binary floating-point error.
+#   5. Gates are evaluated BEFORE the bands. See `not_ai_gate` below.
+#
+# WRITING ANCHORS
+#   Anchors are what make scoring reproducible between two different
+#   interviewers, or between a human and the model. Each level must describe an
+#   observable situation, not an intensity. "3 = medium effort" is useless;
+#   "3 = about one quarter, new pipeline plus a workflow change, two or three
+#   teams to coordinate" is something two people can agree on. If you edit these,
+#   keep them concrete and keep the levels mutually exclusive.
+# =============================================================================
+
+version: "1.0.0"
+
+# The integer scale every dimension is scored on. Normalization of
+# `lower_is_better` dimensions derives from these two numbers.
+scale:
+  min: 1
+  max: 5
+
+dimensions:
+
+  # ---------------------------------------------------------------------------
+  - id: economic_impact
+    label: Economic impact
+    description: >-
+      The size of the financial upside if the system works as intended. Money
+      saved, money earned, or loss avoided — annualized. Judge the prize, not
+      the probability of winning it; the cost side is captured by
+      implementation_effort and the odds by data_maturity.
+    weight: 0.25
+    direction: higher_is_better
+    # The currency bands below are the main thing to retune for a different
+    # organization: what is transformational for a 50-person firm is a rounding
+    # error for a large one. Scale them, keep the structure.
+    anchors:
+      1: >-
+        Under roughly 10k USD a year, or nobody will name a number and the
+        benefit is described only as "efficiency" or "innovation".
+      2: >-
+        Roughly 10k-50k USD a year — real, but the same order of magnitude as
+        the cost of building and running the system.
+      3: >-
+        Roughly 50k-250k USD a year, or a non-monetary benefit (cycle time,
+        customer wait, backlog) that a named owner will personally vouch for.
+      4: >-
+        Roughly 250k-1M USD a year, or a loss the business already tracks and
+        reports on today.
+      5: >-
+        Over roughly 1M USD a year, or the process is directly tied to revenue,
+        a regulatory penalty, or a safety cost that leadership already escalates.
+
+  # ---------------------------------------------------------------------------
+  - id: process_frequency
+    label: Process frequency
+    description: >-
+      How often the target process actually runs. Frequency is what lets a fixed
+      build cost compound into a return. A rare process can be extremely
+      valuable per instance and still be a poor automation target, because there
+      are too few instances to repay the build or to learn from.
+    weight: 0.15
+    direction: higher_is_better
+    anchors:
+      1: >-
+        A handful of times a year, or genuinely ad hoc. Each instance is
+        bespoke enough that little carries over to the next.
+      2: >-
+        Roughly monthly, or a few dozen instances a year.
+      3: >-
+        Roughly weekly, or a few hundred instances a year.
+      4: >-
+        Roughly daily; hundreds to a few thousand instances a year, with a
+        recognizable steady-state pattern.
+      5: >-
+        Continuously or many times an hour; thousands of instances a month. The
+        queue never empties and people are visibly rate-limited by it.
+
+  # ---------------------------------------------------------------------------
+  - id: data_maturity
+    label: Data maturity
+    description: >-
+      Whether the data needed to build this exists today, can actually be
+      obtained by this team this quarter, and is good enough to learn from or
+      ground answers in. This is the dimension teams most consistently
+      overestimate — score what has been seen, not what is believed to exist.
+    weight: 0.20
+    direction: higher_is_better
+    anchors:
+      1: >-
+        The data does not exist. It lives in people's heads, in undigitized
+        paper, or it would have to be collected from scratch before any work
+        could start.
+      2: >-
+        Data exists but is scattered across systems nobody has joined, or is
+        locked in free text or documents with no access path. Getting to it is
+        its own project with its own budget.
+      3: >-
+        Data exists in one or two systems and there is a plausible access path,
+        but quality is unverified and there is no labeled set or ground truth to
+        measure against.
+      4: >-
+        Data is centralized, reasonably clean, and has a named owner who can
+        grant access. Some labeled examples or a usable proxy for the outcome
+        exist.
+      5: >-
+        Several years of clean, structured, accessible history with labels or an
+        unambiguous outcome variable, plus an owner who can grant access this
+        quarter without an escalation.
+
+  # ---------------------------------------------------------------------------
+  - id: implementation_effort
+    label: Implementation effort
+    description: >-
+      Total cost to get to production and keep it there: build, integration with
+      the systems of record, and the change management needed for people to
+      actually use it. Score the whole path to production, not the prototype.
+    weight: 0.15
+    direction: lower_is_better
+    anchors:
+      1: >-
+        Days to a couple of weeks. One integration against an existing API, no
+        new infrastructure, one team affected.
+      2: >-
+        Roughly one to two months. A couple of integrations, minor data
+        plumbing, one existing process to adjust.
+      3: >-
+        Roughly one quarter. A new data pipeline plus a UI or workflow change,
+        with two or three teams to coordinate.
+      4: >-
+        Two or more quarters. Multiple system integrations, a new platform
+        component to stand up, or a real retraining of how people work.
+      5: >-
+        A year or more, or blocked on something outside this team's control:
+        replacing a legacy system, a vendor negotiation, an org change, or a
+        labeling effort measured in person-months.
+
+  # ---------------------------------------------------------------------------
+  - id: regulatory_risk
+    label: Regulatory and liability risk
+    description: >-
+      Exposure from compliance, privacy, and liability if the system is wrong or
+      is misused. Score the consequence of a bad output reaching a person, not
+      the probability of it happening.
+    weight: 0.10
+    direction: lower_is_better
+    anchors:
+      1: >-
+        Internal, non-personal data. A wrong output is embarrassing at worst and
+        trivially reversible by the person who sees it.
+      2: >-
+        Internal data with some personal fields. Standard privacy handling
+        covers it, and errors are caught and corrected inside the team.
+      3: >-
+        Personal or commercially sensitive data, or a decision that shapes a
+        customer's experience without affecting their money, rights, or access.
+      4: >-
+        A regulated domain (health, finance, employment, safety) or a decision
+        affecting money or access. An audit trail and documented human review
+        are required, not optional.
+      5: >-
+        Decisions carrying legal force or safety consequences, protected-class
+        exposure, or a regulator who must approve the system before it is used.
+        A bad output can cause harm that cannot be undone.
+
+  # ---------------------------------------------------------------------------
+  - id: non_ai_alternative
+    label: Strength of the non-AI alternative
+    description: >-
+      How completely a deterministic rule, a SQL query, a report, or a fix to
+      the upstream process would solve the same problem. This is the dimension
+      that makes Gatekeeper worth running: a strong non-AI alternative is a
+      reason NOT to build AI, no matter how attractive the rest of the score.
+      A high raw score here also fires the not_ai gate below.
+    weight: 0.15
+    direction: lower_is_better
+    anchors:
+      1: >-
+        No deterministic alternative exists. The input is unstructured or
+        genuinely ambiguous, and rule-based attempts have been tried and are
+        known to fail.
+      2: >-
+        A rules-based approach handles a minority of cases; the remaining volume
+        is judgment-heavy in a way rules have not captured.
+      3: >-
+        Rules or a query would cover roughly half the cases. AI would extend
+        coverage rather than create the capability.
+      4: >-
+        A well-written query, a report, or a documented process change would
+        solve most of it. AI would mostly add convenience.
+      5: >-
+        A deterministic rule, a lookup table, a new form field, or fixing an
+        upstream process solves it completely — and more cheaply, more
+        predictably, and with less to maintain.
+
+# =============================================================================
+# VERDICT BANDS
+# =============================================================================
+# Bands map the weighted 1.0-5.0 total onto a verdict. Only `go` and `no_go` may
+# appear here, and config.py enforces that: `not_ai` is a gate, never a band
+# (see below), and `incomplete` is a refusal to score, not a score.
+#
+# BOUNDARY CONVENTION: a band matches when   lower <= total < upper
+# EXCEPT the single band flagged `upper_inclusive: true` — which must be the
+# highest band — where it matches   lower <= total <= upper.
+# The bands must tile [scale.min, scale.max] exactly: no gaps, no overlaps.
+verdict_bands:
+  - verdict: no_go
+    lower: 1.0
+    upper: 3.5
+    upper_inclusive: false
+  - verdict: go
+    lower: 3.5
+    upper: 5.0
+    upper_inclusive: true
+
+# =============================================================================
+# THE NOT-AI GATE
+# =============================================================================
+# `not_ai` is an override, not a low score. It is evaluated BEFORE the bands and
+# wins outright. This is deliberate and is the core of the product: a use case
+# can score 4.6 and still be Not-AI because a SQL query already solves it. If
+# Not-AI were merely the bottom band, that case would come out as Go — which is
+# precisely the mistake Gatekeeper exists to prevent.
+#
+# Gates are also evaluated before the completeness check, because they are
+# positive findings: knowing "a rule already solves this" is enough to stop,
+# even when half the interview is still unanswered.
+not_ai_gate:
+
+  # Any anti-pattern in patterns.yaml carrying `hard_block: true` that the
+  # interview matched fires the gate. Set this to false to downgrade every
+  # anti-pattern to advisory (they will still be reported in the outcome).
+  hard_block_anti_patterns: true
+
+  # A raw score at or above this level on the named dimension fires the gate on
+  # its own. With the anchors above, 4 means "a query or a process change would
+  # solve most of it" — at that point the answer is a query, not a model.
+  dimension_id: non_ai_alternative
+  min_raw_score: 4
+
+# =============================================================================
+# COMPLETENESS
+# =============================================================================
+# Unknown dimensions are recorded as null, never guessed. Up to
+# max_unknown_dimensions may be unknown and still produce a verdict — the
+# remaining weights are renormalized to sum to 1.0. Above that limit the scorer
+# refuses and returns `incomplete` with the list of what is missing, because a
+# verdict from a mostly-empty interview is worse than no verdict at all.
+completeness:
+  max_unknown_dimensions: 1

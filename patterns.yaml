@@ -1,2 +1,321 @@
-# TODO (Phase 2): known AI use-case patterns and anti-patterns used to
-# classify incoming "add AI to X" requests.
+# =============================================================================
+# Gatekeeper pattern library
+# =============================================================================
+# Two sections:
+#
+#   archetypes    — the canonical shapes an AI use case can take. Naming the
+#                   archetype tells you what data you will need and what
+#                   typically goes wrong, before you have built anything.
+#
+#   anti_patterns — signals that the request is not an AI problem at all. Those
+#                   marked `hard_block: true` fire the not_ai gate in
+#                   rubric.yaml and end the assessment regardless of score.
+#
+# `signals` are the phrases and traits that indicate a match. They are read by
+# the interview (Phase 3) as guidance, and matched ids are passed to the scorer.
+# Edit these freely — they are content, not code.
+# =============================================================================
+
+version: "1.0.0"
+
+archetypes:
+
+  - id: classification
+    label: Classification
+    description: >-
+      Assign each item to one of a fixed set of known categories: route this
+      ticket, flag this transaction, tag this document, decide whether this
+      email is a complaint.
+    typical_data_needs: >-
+      A few hundred to a few thousand labeled examples per category, with the
+      category set agreed in advance and stable. Historical decisions made by
+      people are often usable as labels if the reasoning was recorded.
+    typical_risks:
+      - Categories that overlap or that people themselves disagree about; if two
+        experts label differently, the model cannot do better than that ceiling.
+      - Rare but important classes drowned out by common ones.
+      - Category drift over time, silently degrading accuracy after launch.
+    signals:
+      - "route it to the right team"
+      - "tag / categorize / triage / sort into buckets"
+      - "flag the ones that need attention"
+      - a fixed, nameable list of outcomes exists today
+    notes_on_roi: >-
+      The most reliable archetype to get value from, and usually the cheapest.
+      ROI comes from volume, so it rewards high process_frequency. Check first
+      whether a handful of rules already covers most of the volume.
+
+  - id: extraction
+    label: Information extraction
+    description: >-
+      Pull specific structured fields out of unstructured or semi-structured
+      source material: totals off invoices, dates and parties out of contracts,
+      readings off a scanned form.
+    typical_data_needs: >-
+      Representative source documents covering every format and layout you
+      actually receive, plus a target schema of fields with agreed definitions
+      and a set of correctly filled examples.
+    typical_risks:
+      - The long tail of layouts and edge cases, which is where the cost hides.
+      - Silent errors — a plausible but wrong number is far more damaging than
+        a blank field, and much harder to notice downstream.
+      - Source formats changing without warning when a supplier updates a template.
+    signals:
+      - "we retype this from PDFs / emails / scans"
+      - "get the fields out of these documents"
+      - a person currently transcribes between two systems
+    notes_on_roi: >-
+      Strong ROI when volume is high and the current process is manual retyping.
+      Insist on a verification step: the value comes from reducing effort, not
+      from removing the human, and unverified extraction transfers risk downstream.
+
+  - id: summarization
+    label: Summarization
+    description: >-
+      Compress long material into a shorter form for a specific reader and a
+      specific decision: case notes for a handover, a call transcript for a
+      supervisor, a thread for someone returning from leave.
+    typical_data_needs: >-
+      The source documents themselves, plus a clear statement of who reads the
+      output and what they do next. Examples of good summaries written by people
+      are valuable but not strictly required.
+    typical_risks:
+      - Omission of the one detail that mattered — the failure is invisible
+        because the output still reads fluent and complete.
+      - 'A definition of "good" that nobody has written down, so quality cannot
+        be measured or improved.'
+      - Readers gradually trusting the summary enough to stop opening the source.
+    signals:
+      - "nobody has time to read all of this"
+      - "give me the gist / the highlights / a handover note"
+      - a person currently writes this digest by hand
+    notes_on_roi: >-
+      Time saved is real but diffuse and easily overstated, so economic_impact
+      deserves scrutiny. Strongest when the summary feeds a specific downstream
+      decision, weakest when it feeds general awareness.
+
+  - id: forecasting
+    label: Forecasting
+    description: >-
+      Predict a future quantity or event from historical patterns: demand next
+      month, when this machine will need service, which customers will churn.
+    typical_data_needs: >-
+      A long history — typically several years for anything seasonal — of the
+      target quantity at the granularity you want to predict, plus the drivers.
+      Records of past interventions matter too, since they alter the history.
+    typical_risks:
+      - "Regime change: the future stops resembling the history the model learned."
+      - Acting on the forecast changes the outcome, so the model's own success
+        corrupts its future training data.
+      - Confusing correlation with a lever you can actually pull.
+    signals:
+      - "we want to know in advance"
+      - "predict demand / failures / churn"
+      - planning currently runs on a spreadsheet extrapolation
+    notes_on_roi: >-
+      Value only materializes if someone can and will act differently on the
+      prediction. A forecast nobody acts on has an ROI of zero no matter how
+      accurate. Establish the naive baseline (last month's number) first — many
+      forecasting projects never beat it.
+
+  - id: anomaly_detection
+    label: Anomaly detection
+    description: >-
+      Surface instances that differ from the normal pattern, where the
+      interesting cases are rare and not fully known in advance: fraud, sensor
+      faults, unusual access, quality excursions.
+    typical_data_needs: >-
+      A large volume of normal-operation history to establish the baseline, plus
+      whatever confirmed examples of anomalies exist. Crucially, feedback on
+      whether each alert turned out to be real.
+    typical_risks:
+      - False-positive fatigue — the failure mode that kills most deployments;
+        alerts get ignored and the system quietly becomes shelfware.
+      - No feedback loop, so nobody ever learns whether alerts were correct.
+      - 'The set of "anomalous" cases and the set that "requires action" not
+        being the same set.'
+    signals:
+      - "catch the unusual ones"
+      - "we only find out after it has gone wrong"
+      - the current control is a fixed threshold people have learned to ignore
+    notes_on_roi: >-
+      ROI is dominated by the cost of a false positive versus a miss. Get the
+      alert budget agreed up front — how many alerts a day will someone actually
+      investigate? — because that number, not accuracy, determines feasibility.
+
+  - id: rag_qa
+    label: Retrieval-augmented question answering
+    description: >-
+      Answer questions grounded in a specific body of documents, with citations
+      back to the source: policy questions, product documentation, an internal
+      knowledge base.
+    typical_data_needs: >-
+      A curated, current, and reasonably well-structured document corpus with
+      clear ownership, plus a real list of the questions people actually ask.
+      Documents must have an owner who keeps them current.
+    typical_risks:
+      - Confident answers from stale, contradictory, or superseded documents —
+        the corpus's quality problems become the product's quality problems.
+      - Answers with no citation, which cannot be verified or challenged.
+      - The corpus quietly rotting after launch because nobody owns it.
+    signals:
+      - "people keep asking the same questions"
+      - "the answer is in the documentation somewhere"
+      - a subject-matter expert is a bottleneck for routine questions
+    notes_on_roi: >-
+      Frequently proposed, frequently disappointing. The work is in curating and
+      maintaining the corpus, not in the model. If the documents are wrong or out
+      of date today, this archetype ships that problem faster and with more
+      authority.
+
+  - id: recommendation
+    label: Recommendation
+    description: >-
+      Rank or suggest items for a specific person or context: next best action,
+      related products, which case an agent should pick up next.
+    typical_data_needs: >-
+      Interaction history linking people or contexts to items, at enough volume
+      to see patterns, plus a clear definition of a good outcome — a click is not
+      the same thing as a satisfied customer.
+    typical_risks:
+      - Optimizing a proxy metric that diverges from the real goal.
+      - Feedback loops that narrow what is shown and entrench early bias.
+      - The cold-start problem for new items, new users, or a new market.
+    signals:
+      - "what should we show / offer / do next"
+      - "personalize it for each user"
+      - the current approach is one static list for everyone
+    notes_on_roi: >-
+      Needs both scale and a measurable outcome to be worth it. Below a certain
+      traffic volume, a hand-curated list beats a model and costs almost nothing
+      to maintain.
+
+# =============================================================================
+# ANTI-PATTERNS
+# =============================================================================
+# `hard_block: true` fires the not_ai gate and ends the assessment. Reserve it
+# for cases where the correct answer is genuinely "build something that is not
+# AI" — not merely "this looks risky" or "this is badly scoped".
+#
+# `hard_block: false` anti-patterns are reported in the outcome and should drive
+# the relevant dimension scores down, but they do not by themselves force a
+# Not-AI verdict. Their usual home is a low economic_impact or data_maturity
+# score, which lands them in no_go through the bands.
+anti_patterns:
+
+  - id: deterministic_rule_suffices
+    label: A deterministic rule or query already solves it
+    description: >-
+      The decision follows from data already available by a rule a person can
+      state in one sentence. There is no ambiguity for a model to resolve — only
+      a rule nobody has gotten around to writing down.
+    signals:
+      - the request can be stated as "if X and Y then Z"
+      - every input needed is already a structured field in one system
+      - an expert can articulate the complete decision logic in a few minutes
+      - the phrase "it's basically just a lookup"
+    hard_block: true
+    better_alternative: >-
+      Write the rule, the SQL query, or the validation. It will be faster,
+      cheaper, exactly auditable, and it will not drift or need retraining.
+
+  - id: reporting_in_disguise
+    label: The real request is reporting, not prediction
+    description: >-
+      What is actually wanted is visibility into what already happened —
+      aggregates, trends, a number on a screen. Nothing is being predicted,
+      classified, or generated.
+    signals:
+      - "we want a dashboard / a view / visibility"
+      - every question asked is about the past, not the future
+      - the output is a table or a chart, and no decision is attached to it
+      - 'the word "AI" appears in the ask but nowhere in the described workflow'
+    hard_block: true
+    better_alternative: >-
+      Build the report or the BI dashboard. If nobody would use that, the
+      problem is not the tooling and adding AI will not create the demand.
+
+  - id: rpa_relabeled
+    label: Deterministic automation wearing an AI label
+    description: >-
+      The work is moving structured data between systems along a fixed path with
+      no judgment involved. It is valuable automation, but calling it AI adds
+      cost, latency, and nondeterminism to something that should be exact.
+    signals:
+      - "copy it from system A into system B"
+      - the steps are identical every time and already written down
+      - the inputs are structured fields, not documents or free text
+      - errors today come from fatigue, not from difficult judgment
+    hard_block: true
+    better_alternative: >-
+      Use scripted integration, an API, or an RPA tool. Deterministic work
+      deserves a deterministic system that fails loudly instead of plausibly.
+
+  - id: zero_error_tolerance_no_human
+    label: Effectively perfect accuracy required with no human in the loop
+    description: >-
+      The process demands accuracy indistinguishable from 100%, acts without
+      review, and an error is not recoverable. Probabilistic systems cannot
+      offer that guarantee, and a review step has been ruled out.
+    signals:
+      - "it has to be right every time"
+      - the output triggers an irreversible action — a payment, a shutdown, a
+        legal filing — with nobody in between
+      - no budget, staffing, or appetite for a review step
+      - regulatory or safety exposure with no tolerance for a wrong call
+    hard_block: true
+    better_alternative: >-
+      Either introduce a human review step and re-triage it as decision support,
+      or narrow the scope to the subset where an error is recoverable. If
+      neither is possible, use a deterministic system with explicit guarantees.
+
+  - id: chatbot_without_job_to_be_done
+    label: "A chatbot is wanted, but no job to be done is defined"
+    description: >-
+      The requested artifact is an interface — "a chatbot", "an assistant" —
+      with no specific question it answers or task it completes. The solution
+      arrived before the problem did.
+    signals:
+      - '"we want a chatbot" with no stated user and no stated task'
+      - nobody can name what a user would type into it on their first visit
+      - success is described as "engagement" or "adoption"
+      - the driver is that a competitor or a peer department launched one
+    hard_block: false
+    better_alternative: >-
+      Find the three questions people actually ask most often and solve those
+      specifically. If they turn out to be documentation lookups, the archetype
+      is rag_qa with a defined corpus — and the interface question can wait.
+
+  - id: data_does_not_exist_yet
+    label: The required data has not been collected yet
+    description: >-
+      The use case may be sound, but the data it depends on is not being
+      recorded today. This is a sequencing problem, not a verdict on the idea.
+    signals:
+      - "we would need to start tracking that"
+      - the decisions to be learned from were never written down
+      - the process is on paper, or in an inbox, or in people's heads
+      - the only history available is a few weeks old
+    hard_block: false
+    better_alternative: >-
+      Instrument the process first and revisit in a few months with real history.
+      Capturing the outcome variable from today onward is usually cheap and is a
+      prerequisite for anything here.
+
+  - id: solution_first_no_measurable_problem
+    label: Solution-first framing with no measurable problem
+    description: >-
+      The request begins from a technology rather than a cost, a delay, or a
+      risk. There is no baseline metric, so success could never be demonstrated
+      even if the build went perfectly.
+    signals:
+      - '"we want to use AI for X" with no stated problem'
+      - nobody can say what the process costs or how long it takes today
+      - no owner will commit to a target number
+      - the driver is a board slide, a conference, or a vendor demo
+    hard_block: false
+    better_alternative: >-
+      Start from the expensive, slow, or risky part of the operation and work
+      back to whether AI is the right instrument. Insist on a baseline
+      measurement before any build — without it there is no way to know whether
+      it worked.

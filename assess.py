@@ -294,6 +294,12 @@ def build_response_schema(
 def build_user_message(intake: RequestIntake) -> str:
     """Render the intake as the user turn of the assessment call."""
     stated = intake.stated_benefit or "(not stated)"
+    volume = "(not stated)"
+    if intake.times_per_period is not None and intake.period is not None:
+        volume = (
+            f"{intake.times_per_period} per {intake.period.value} "
+            f"(about {intake.instances_per_year:,.0f} a year)"
+        )
     return f"""Assess this request.
 
 Requesting area: {intake.requesting_area or "(not stated)"}
@@ -306,7 +312,20 @@ How the work is done today:
 {intake.process_description or "(not described)"}
 
 Benefit claimed by the requester:
-{stated}"""
+{stated}
+
+Answers the requester gave on the intake form:
+- Who does this today: {intake.who_does_this_today or "(not stated)"}
+- People affected: {intake.people_affected if intake.people_affected is not None else "(not stated)"}
+- How often it runs: {volume}
+- Last tool built for these same users: {intake.prior_tool_for_these_users.value}
+- Where the data lives: {intake.where_the_data_lives or "(not stated)"}
+- Data classification: {intake.data_sensitivity.value}
+
+Use these answers. "Last tool built for these same users" is direct evidence
+for adoption_risk and appears nowhere else. Where an answer is "(not stated)"
+or "unknown", fall back to the request text, and set score to null if neither
+establishes the dimension."""
 
 
 def assess_request(

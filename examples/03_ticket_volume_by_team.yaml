@@ -20,6 +20,14 @@ process_description: |
 stated_benefit: |
   Stop chasing my team lead for numbers every month.
 
+who_does_this_today: One team lead, once a month
+people_affected: 8
+times_per_period: 1
+period: month
+prior_tool_for_these_users: unknown
+where_the_data_lives: ServiceNow
+data_sensitivity: internal
+
 reference_assessment:
   archetype_id: null
   anti_pattern_matches:

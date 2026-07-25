@@ -26,6 +26,14 @@ process_description: |
 stated_benefit: |
   Half a day per renewal across 250 renewals a year.
 
+who_does_this_today: Five buyers in Procurement
+people_affected: 5
+times_per_period: 250
+period: year
+prior_tool_for_these_users: abandoned
+where_the_data_lives: Contract repository, ERP, shared folder
+data_sensitivity: confidential
+
 reference_assessment:
   archetype_id: summarization
   anti_pattern_matches: []

@@ -1093,3 +1093,85 @@ gone; it now fires only on the one request that genuinely mentions a licensed
 tool. The remaining failures are of a different kind — under-specified input
 producing `incomplete`, and one dimension mis-scored — which is what Part B
 addresses.
+
+---
+
+## ADR-021 — Structured intake: what it fixed, and what it did not
+
+**Date:** 2026-07-25 · **Commit:** Phase 3.1 Part B · **Status:** accepted
+
+### The diagnosis
+
+Three dimensions came back unknown on almost every request — `adoption_risk`,
+`data_governance`, `non_ai_alternative`. Not because the model failed, but
+because **the free text does not contain them.** Nobody writes in a request
+whether a previous tool for the same users was adopted or abandoned. With seven
+dimensions and `max_unknown_dimensions: 1`, `incomplete` became the default
+outcome: the input was under-specified, not the model.
+
+The fix is a short structured form, **not** a conversational agent. The single
+constrained call stays; it receives richer input. `RequestIntake` gains
+`who_does_this_today`, `people_affected`, `times_per_period` + `period`,
+`prior_tool_for_these_users`, `where_the_data_lives`, and `data_sensitivity`.
+
+**Every field is optional, deliberately.** A mandatory form pre-qualifies
+requests and teaches people to write what the form wants to hear. A blank field
+simply returns that dimension to model scoring, or to unknown.
+
+### Which dimensions are now deterministic
+
+| Dimension | Status |
+|---|---|
+| `process_frequency` | **Deterministic** when `times_per_period` + `period` are given — annualized and mapped onto the volume bands. Model-scored when blank. |
+| `data_governance` | **Deterministic** when `data_sensitivity` is not `unknown`: public→1, internal→2, confidential→3, regulated→4. Level 5 is *not* derivable — "may not be processed at all" is a contractual finding, not a classification — so a 5 must be established explicitly. |
+| `business_value`, `adoption_risk`, `data_readiness`, `implementation_effort`, `non_ai_alternative` | **Fully model-scored.** The intake informs them but does not determine them. |
+
+The mapping tables live in `rubric.yaml` beside the anchors, not in Python,
+because the mapping **is** the anchor semantics — `process_frequency`'s anchors
+are already volume bands, so duplicating them in code would guarantee drift.
+Derivations run before the gates, so a gate keying on a derived dimension sees
+the derived value rather than the model's guess. A test covers exactly that: a
+model claiming `data_governance = 5` no longer fires
+`unacceptable_data_governance` when the form says the data is internal.
+
+### Result: the headline number did not move
+
+**3/6 before Part B, 3/6 after.** Reported plainly because the alternative is
+to quietly not re-measure.
+
+What changed is the failure mode, and it is worth separating:
+
+- **The two targeted dimensions are fixed.** `process_frequency` and
+  `data_governance` are no longer unknown on any request that fills the form,
+  and are no longer mis-scored. The `ticket_volume_by_team` false
+  `unacceptable_data_governance` fire from Part A is gone.
+- **The remaining failures are all `incomplete`**, driven by the model leaving
+  `business_value`, `implementation_effort` and `non_ai_alternative` null.
+- **The longer prompt appears to have made this slightly worse, not better.**
+  The run took 445s against 38s before, and needed a schema retry it had not
+  needed previously. Adding context to a 7B model's prompt is not free, and on
+  this evidence the extra intake block traded latency and null-rate for the two
+  dimensions it fixed.
+
+### What this says about the real constraint
+
+The bottleneck is not the input format. It is that `qwen2.5:7b` will not commit
+to a score on abstract dimensions from a short request, and `max_unknown_dimensions: 1`
+across seven dimensions is a strict bar — the model must commit on four of the
+five it still owns.
+
+Three honest options, none of them "tune the prompt again":
+
+1. **Raise `max_unknown_dimensions` to 2** and let renormalization absorb it.
+   One line of YAML, and defensible: an assessment with five of seven
+   dimensions is not obviously worse than a human triage that hedges two.
+2. **A larger model.** Everything here is measurable with
+   `scripts/run_examples.py` unchanged; this is the cheapest experiment left.
+3. **Score dimensions in more than one call.** This reopens the multi-turn
+   question ADR-015 closed, but *not* as a conversation — as N independent
+   constrained calls over the same input, which does not multiply per-turn
+   failure the way a stateful loop does.
+
+The engine is unaffected by any of this: 307 tests, all six exemplars produce
+their expected verdicts offline, and the offline path in the UI demonstrates
+the full pipeline with no model at all.

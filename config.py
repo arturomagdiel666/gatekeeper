@@ -43,6 +43,8 @@ __all__ = [
     "Scale",
     "Dimension",
     "VerdictBand",
+    "VolumeDerivation",
+    "SensitivityDerivation",
     "DimensionThresholdCondition",
     "AntiPatternCondition",
     "IntakeFieldCondition",
@@ -129,6 +131,65 @@ class Scale(BaseModel):
         return list(range(self.min, self.max + 1))
 
 
+class VolumeBand(BaseModel):
+    """One band of the annualized-volume to score mapping."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    below_per_year: float
+    score: int
+
+
+class VolumeDerivation(BaseModel):
+    """Derive a score from the intake's stated process volume."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    source: Literal["intake_volume"]
+    bands: list[VolumeBand] = Field(min_length=1)
+    otherwise: int
+
+    def derive(self, instances_per_year: float | None) -> int | None:
+        """Score for an annualized volume, or ``None`` if none was stated."""
+        if instances_per_year is None:
+            return None
+        for band in sorted(self.bands, key=lambda b: b.below_per_year):
+            if instances_per_year < band.below_per_year:
+                return band.score
+        return self.otherwise
+
+    def describe(self, instances_per_year: float) -> str:
+        """Explain the derivation for the outcome."""
+        return (
+            f"Derived from the intake form: {instances_per_year:,.0f} instances "
+            "a year."
+        )
+
+
+class SensitivityDerivation(BaseModel):
+    """Derive a score from the intake's declared data classification."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    source: Literal["intake_sensitivity"]
+    mapping: dict[str, int]
+
+    def derive(self, sensitivity: str | None) -> int | None:
+        """Score for a classification, or ``None`` if unmapped or unknown."""
+        if sensitivity is None:
+            return None
+        return self.mapping.get(sensitivity)
+
+    def describe(self, sensitivity: str) -> str:
+        """Explain the derivation for the outcome."""
+        return f"Derived from the intake form: data classified {sensitivity!r}."
+
+
+DimensionDerivation = Annotated[
+    VolumeDerivation | SensitivityDerivation, Field(discriminator="source")
+]
+
+
 class Dimension(BaseModel):
     """One scored dimension of the rubric.
 
@@ -146,6 +207,11 @@ class Dimension(BaseModel):
     description: str
     weight: float = Field(gt=0.0, le=1.0)
     direction: Direction
+    #: Optional rule for computing this dimension from a structured intake
+    #: field instead of asking the model. Present only where the intake carries
+    #: the fact directly; the mapping lives here beside the anchors because it
+    #: IS the anchor semantics.
+    derivation: DimensionDerivation | None = None
     anchors: dict[int, str]
 
 

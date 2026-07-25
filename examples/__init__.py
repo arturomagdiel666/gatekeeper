@@ -18,7 +18,7 @@ from pathlib import Path
 import yaml
 from pydantic import BaseModel, ConfigDict
 
-from schemas import Assessment, RequestIntake
+from schemas import Assessment, DataSensitivity, Period, PriorTool, RequestIntake
 
 __all__ = ["Example", "EXAMPLES_DIR", "load_examples", "load_example"]
 
@@ -39,6 +39,13 @@ class Example(BaseModel):
     request_text: str
     process_description: str
     stated_benefit: str | None = None
+    who_does_this_today: str = ""
+    people_affected: int | None = None
+    times_per_period: int | None = None
+    period: Period | None = None
+    prior_tool_for_these_users: PriorTool = PriorTool.UNKNOWN
+    where_the_data_lives: str | None = None
+    data_sensitivity: DataSensitivity = DataSensitivity.UNKNOWN
     reference_assessment: Assessment
 
     @property
@@ -50,6 +57,13 @@ class Example(BaseModel):
             business_owner=self.business_owner,
             process_description=self.process_description.strip(),
             stated_benefit=(self.stated_benefit or "").strip() or None,
+            who_does_this_today=self.who_does_this_today,
+            people_affected=self.people_affected,
+            times_per_period=self.times_per_period,
+            period=self.period,
+            prior_tool_for_these_users=self.prior_tool_for_these_users,
+            where_the_data_lives=self.where_the_data_lives,
+            data_sensitivity=self.data_sensitivity,
         )
 
 

@@ -1,0 +1,116 @@
+{
+  "meta": {
+    "provider": "OllamaProvider",
+    "model": "qwen2.5:7b",
+    "temperature": 0.2,
+    "started_at": "2026-07-25T11:00:33-06:00"
+  },
+  "rows": [
+    {
+      "id": "ticket_handover_summaries",
+      "expected_verdict": "go",
+      "expected_gate": null,
+      "actual_verdict": "incomplete",
+      "actual_gate": null,
+      "weighted_total": null,
+      "retry_count": 0,
+      "unknown_dimensions": [
+        "business_value",
+        "adoption_risk",
+        "implementation_effort",
+        "non_ai_alternative"
+      ],
+      "error": null,
+      "has_contract": false,
+      "seconds": 4.3
+    },
+    {
+      "id": "hr_policy_questions",
+      "expected_verdict": "not_ai",
+      "expected_gate": "existing_capability_covers_it",
+      "actual_verdict": "not_ai",
+      "actual_gate": "non_ai_alternative_suffices",
+      "weighted_total": 3.333333,
+      "retry_count": 1,
+      "unknown_dimensions": [
+        "non_ai_alternative"
+      ],
+      "error": null,
+      "has_contract": false,
+      "seconds": 417.7
+    },
+    {
+      "id": "ticket_volume_by_team",
+      "expected_verdict": "not_ai",
+      "expected_gate": "non_ai_alternative_suffices",
+      "actual_verdict": "incomplete",
+      "actual_gate": null,
+      "weighted_total": null,
+      "retry_count": 0,
+      "unknown_dimensions": [
+        "business_value",
+        "data_readiness",
+        "implementation_effort",
+        "non_ai_alternative"
+      ],
+      "error": null,
+      "has_contract": false,
+      "seconds": 5.5
+    },
+    {
+      "id": "predict_laptop_failures",
+      "expected_verdict": "no_go",
+      "expected_gate": "no_usable_data",
+      "actual_verdict": "incomplete",
+      "actual_gate": null,
+      "weighted_total": null,
+      "retry_count": 0,
+      "unknown_dimensions": [
+        "data_readiness",
+        "implementation_effort",
+        "non_ai_alternative"
+      ],
+      "error": null,
+      "has_contract": false,
+      "seconds": 5.9
+    },
+    {
+      "id": "contract_renewal_drafting",
+      "expected_verdict": "no_go",
+      "expected_gate": "no_named_business_owner",
+      "actual_verdict": "no_go",
+      "actual_gate": "no_named_business_owner",
+      "weighted_total": null,
+      "retry_count": 0,
+      "unknown_dimensions": [
+        "business_value",
+        "adoption_risk",
+        "implementation_effort",
+        "non_ai_alternative"
+      ],
+      "error": null,
+      "has_contract": false,
+      "seconds": 5.6
+    },
+    {
+      "id": "something_with_the_invoices",
+      "expected_verdict": "incomplete",
+      "expected_gate": null,
+      "actual_verdict": "incomplete",
+      "actual_gate": null,
+      "weighted_total": null,
+      "retry_count": 0,
+      "unknown_dimensions": [
+        "adoption_risk",
+        "data_readiness",
+        "process_frequency",
+        "implementation_effort",
+        "data_governance",
+        "non_ai_alternative"
+      ],
+      "error": null,
+      "has_contract": false,
+      "seconds": 5.6
+    }
+  ]
+}

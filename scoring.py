@@ -41,8 +41,10 @@ from config import (
     IntakeFieldCondition,
     Patterns,
     Rubric,
+    SensitivityDerivation,
+    VolumeDerivation,
 )
-from schemas import Assessment, DimensionAssessment, RequestIntake
+from schemas import Assessment, Confidence, DimensionAssessment, RequestIntake
 
 __all__ = [
     "Verdict",
@@ -211,6 +213,9 @@ class Outcome(BaseModel):
     unsupported_anti_patterns: list[UnsupportedAntiPattern] = Field(
         default_factory=list
     )
+    #: Dimensions computed from a structured intake field rather than scored by
+    #: the model. Reported so a reader can see which numbers were judgements.
+    derived_dimensions: list[str] = Field(default_factory=list)
     #: True when the verdict rests on a hard-block anti-pattern gate and nothing
     #: deterministic. Such a verdict is a RECOMMENDATION awaiting human
     #: confirmation, not a rejection.
@@ -273,6 +278,53 @@ def _index_assessments(
             continue
         indexed[entry.dimension_id] = entry
     return indexed, ignored
+
+
+def _apply_intake_derivations(
+    indexed: dict[str, DimensionAssessment],
+    rubric: Rubric,
+    intake: RequestIntake | None,
+) -> list[str]:
+    """Replace model scores with deterministic ones where the intake states the fact.
+
+    Some dimensions are not judgement calls once the requester has answered a
+    direct question. If the intake form says the process runs three times a
+    week, ``process_frequency`` is arithmetic, not assessment — and asking a
+    model to re-infer it can only introduce error. The mapping lives in
+    ``rubric.yaml`` beside the anchors, because it IS the anchor semantics.
+
+    A derivation that yields ``None`` — the field was left blank, or the
+    classification is ``unknown`` — leaves the model's score in place. The form
+    is never mandatory, so a blank simply returns the dimension to model
+    scoring.
+
+    Mutates ``indexed`` in place and returns the ids that were derived.
+    """
+    if intake is None:
+        return []
+    derived: list[str] = []
+    for dimension in rubric.dimensions:
+        rule = dimension.derivation
+        if rule is None:
+            continue
+        if isinstance(rule, VolumeDerivation):
+            source_value = intake.instances_per_year
+            score_value = rule.derive(source_value)
+        elif isinstance(rule, SensitivityDerivation):
+            source_value = getattr(intake.data_sensitivity, "value", None)
+            score_value = rule.derive(source_value)
+        else:  # pragma: no cover - the union is closed
+            continue
+        if score_value is None:
+            continue
+        indexed[dimension.id] = DimensionAssessment(
+            dimension_id=dimension.id,
+            score=score_value,
+            evidence=rule.describe(source_value),
+            confidence=Confidence.HIGH,
+        )
+        derived.append(dimension.id)
+    return derived
 
 
 def _evaluate_gates(
@@ -549,6 +601,9 @@ def score(
         behind every line.
     """
     indexed, ignored_dimension_ids = _index_assessments(assessment, rubric)
+    # Deterministic derivations run BEFORE the gates, so a gate that keys on a
+    # derived dimension sees the derived value rather than the model's guess.
+    derived_dimensions = _apply_intake_derivations(indexed, rubric, intake)
     triggered_gates, ignored_anti_pattern_ids, unsupported = _evaluate_gates(
         assessment, indexed, rubric, patterns, intake
     )
@@ -606,6 +661,7 @@ def score(
         ignored_dimension_ids=ignored_dimension_ids,
         ignored_anti_pattern_ids=ignored_anti_pattern_ids,
         unsupported_anti_patterns=unsupported,
+        derived_dimensions=derived_dimensions,
         requires_human_confirmation=requires_confirmation,
         confirmation_reason=confirmation_reason,
         explanation=_build_explanation(

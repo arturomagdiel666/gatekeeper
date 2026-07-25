@@ -43,6 +43,9 @@ __all__ = [
     "Confidence",
     "AntiPatternMatch",
     "RequestIntake",
+    "Period",
+    "PriorTool",
+    "DataSensitivity",
     "DimensionAssessment",
     "Assessment",
     "InstrumentationPlan",
@@ -100,6 +103,39 @@ class Confidence(str, Enum):
     HIGH = "high"
 
 
+class Period(str, Enum):
+    """The unit ``times_per_period`` is counted in."""
+
+    DAY = "day"
+    WEEK = "week"
+    MONTH = "month"
+    YEAR = "year"
+
+    @property
+    def per_year(self) -> float:
+        """How many of this period fall in a year."""
+        return {"day": 260.0, "week": 52.0, "month": 12.0, "year": 1.0}[self.value]
+
+
+class PriorTool(str, Enum):
+    """What happened to the last tool built for these same users."""
+
+    NONE = "none"
+    ADOPTED = "adopted"
+    ABANDONED = "abandoned"
+    UNKNOWN = "unknown"
+
+
+class DataSensitivity(str, Enum):
+    """Classification of the data the agent would process."""
+
+    PUBLIC = "public"
+    INTERNAL = "internal"
+    CONFIDENTIAL = "confidential"
+    REGULATED = "regulated"
+    UNKNOWN = "unknown"
+
+
 class RequestIntake(BaseModel):
     """A request submitted to the AI Agent Hub.
 
@@ -108,12 +144,38 @@ class RequestIntake(BaseModel):
     or for its Measurement Contract, so an empty value forces ``no_go`` rather
     than being scored.
 
+    **Why the structured fields exist.** The live run showed `adoption_risk`,
+    `data_governance` and `non_ai_alternative` coming back unknown on almost
+    every request — not because the model failed, but because **the free text
+    does not contain them.** Nobody writes in a request whether a previous tool
+    for the same users was adopted or abandoned. With seven dimensions and a
+    limit of one unknown, `incomplete` became the default outcome. The fix is a
+    short structured form, not a conversational agent: the single constrained
+    call stays, it simply receives richer input.
+
+    **Every structured field is optional on purpose.** A mandatory form
+    pre-qualifies requests and teaches people to write what the form wants to
+    hear. A blank field simply returns that dimension to model scoring, or to
+    unknown.
+
     Attributes:
         request_text: What the requester wrote, in their own words.
         requesting_area: The business area or team making the request.
         business_owner: The named person accountable for this agent.
         process_description: How the work is done today.
         stated_benefit: The benefit the requester claims, if they named one.
+        who_does_this_today: Who performs the work now, and roughly how many.
+        people_affected: How many people the process touches.
+        times_per_period: How often the process runs, with ``period``. When
+            given, ``process_frequency`` is computed from it in code rather
+            than inferred by the model.
+        period: The unit ``times_per_period`` is counted in.
+        prior_tool_for_these_users: What happened to the last tool built for
+            these users — the single most informative fact about adoption risk,
+            and one that never appears in free text.
+        where_the_data_lives: The systems holding the data.
+        data_sensitivity: Classification of that data. When given,
+            ``data_governance`` is computed from it in code.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -123,6 +185,22 @@ class RequestIntake(BaseModel):
     business_owner: str = ""
     process_description: str = ""
     stated_benefit: str | None = None
+
+    # --- structured supplements, all optional --------------------------------
+    who_does_this_today: str = ""
+    people_affected: int | None = None
+    times_per_period: int | None = None
+    period: Period | None = None
+    prior_tool_for_these_users: PriorTool = PriorTool.UNKNOWN
+    where_the_data_lives: str | None = None
+    data_sensitivity: DataSensitivity = DataSensitivity.UNKNOWN
+
+    @property
+    def instances_per_year(self) -> float | None:
+        """Annualized process volume, or ``None`` if not stated."""
+        if self.times_per_period is None or self.period is None:
+            return None
+        return self.times_per_period * self.period.per_year
 
 
 class AntiPatternMatch(BaseModel):

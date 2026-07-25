@@ -29,7 +29,13 @@ from contracts import CONTRACTS, issue_contract
 from examples import load_examples
 from provider import get_provider
 from review import POLICY, ObservedMetrics, Recommendation, review
-from schemas import MeasurementContract, RequestIntake
+from schemas import (
+    DataSensitivity,
+    MeasurementContract,
+    Period,
+    PriorTool,
+    RequestIntake,
+)
 from scoring import Verdict, score
 
 load_dotenv()
@@ -179,6 +185,11 @@ def render_outcome(outcome, contract: MeasurementContract | None) -> None:
         )
 
     st.subheader("How the score was built")
+    if outcome.derived_dimensions:
+        st.caption(
+            "Computed from the intake form rather than scored by the model: "
+            + ", ".join(f"`{d}`" for d in outcome.derived_dimensions)
+        )
     render_dimension_table(outcome)
 
     if outcome.ignored_dimension_ids or outcome.ignored_anti_pattern_ids:
@@ -278,6 +289,50 @@ def triage_tab() -> None:
             value=(preset.stated_benefit or "").strip() if preset else "",
             height=70,
         )
+
+        st.markdown("**A few specifics** — all optional. Blank returns that "
+                    "dimension to the model, or to unknown.")
+        row_a = st.columns(3)
+        who_does_this_today = row_a[0].text_input(
+            "Who does this today", value=preset.who_does_this_today if preset else ""
+        )
+        people_affected = row_a[1].number_input(
+            "People affected", 0, 1_000_000,
+            value=(preset.people_affected if preset and preset.people_affected else 0),
+        )
+        where_the_data_lives = row_a[2].text_input(
+            "Where the data lives",
+            value=(preset.where_the_data_lives or "") if preset else "",
+        )
+        row_b = st.columns(4)
+        times_per_period = row_b[0].number_input(
+            "How often it runs", 0, 1_000_000,
+            value=(preset.times_per_period if preset and preset.times_per_period else 0),
+        )
+        period_choices = ["(not stated)"] + [p.value for p in Period]
+        period_value = row_b[1].selectbox(
+            "per",
+            period_choices,
+            index=period_choices.index(preset.period.value)
+            if preset and preset.period
+            else 0,
+        )
+        prior_choices = [p.value for p in PriorTool]
+        prior_tool = row_b[2].selectbox(
+            "Last tool for these users",
+            prior_choices,
+            index=prior_choices.index(preset.prior_tool_for_these_users.value)
+            if preset
+            else prior_choices.index("unknown"),
+        )
+        sensitivity_choices = [s.value for s in DataSensitivity]
+        data_sensitivity = row_b[3].selectbox(
+            "Data classification",
+            sensitivity_choices,
+            index=sensitivity_choices.index(preset.data_sensitivity.value)
+            if preset
+            else sensitivity_choices.index("unknown"),
+        )
         use_reference = st.checkbox(
             "Score the example's hand-authored assessment instead of calling the model",
             value=False,
@@ -301,6 +356,13 @@ def triage_tab() -> None:
         business_owner=business_owner.strip(),
         process_description=process_description.strip(),
         stated_benefit=stated_benefit.strip() or None,
+        who_does_this_today=who_does_this_today.strip(),
+        people_affected=people_affected or None,
+        times_per_period=times_per_period or None,
+        period=Period(period_value) if period_value != "(not stated)" else None,
+        prior_tool_for_these_users=PriorTool(prior_tool),
+        where_the_data_lives=where_the_data_lives.strip() or None,
+        data_sensitivity=DataSensitivity(data_sensitivity),
     )
 
     if use_reference and preset is not None:

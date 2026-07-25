@@ -25,6 +25,14 @@ process_description: |
 stated_benefit: |
   Give HR Ops their time back and give staff faster answers.
 
+who_does_this_today: Three people in HR Operations
+people_affected: 900
+times_per_period: 40
+period: week
+prior_tool_for_these_users: none
+where_the_data_lives: Intranet document library
+data_sensitivity: internal
+
 reference_assessment:
   archetype_id: rag_qa
   anti_pattern_matches:

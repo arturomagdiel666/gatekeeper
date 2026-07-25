@@ -31,6 +31,14 @@ stated_benefit: |
   Roughly one hour of analyst time per day across the three shifts, and fewer
   tickets where the incoming shift starts over.
 
+who_does_this_today: Six service desk analysts across three shifts
+people_affected: 6
+times_per_period: 180
+period: day
+prior_tool_for_these_users: adopted
+where_the_data_lives: ServiceNow
+data_sensitivity: internal
+
 reference_assessment:
   archetype_id: summarization
   anti_pattern_matches: []

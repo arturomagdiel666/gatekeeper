@@ -213,6 +213,23 @@ dimensions:
       here. See the proposed eighth dimension in docs/DECISIONS.md.
     weight: 0.13
     direction: higher_is_better
+    # DETERMINISTIC DERIVATION. When the requester states the volume on the
+    # intake form, the score is computed from it here rather than inferred by
+    # the model — the anchors below are volume bands, so the mapping IS the
+    # anchor semantics and belongs in config next to them, not hard-coded in
+    # Python. The model only scores this dimension when the field is blank.
+    derivation:
+      source: intake_volume
+      bands:
+        - below_per_year: 12
+          score: 1
+        - below_per_year: 100
+          score: 2
+        - below_per_year: 1000
+          score: 3
+        - below_per_year: 10000
+          score: 4
+      otherwise: 5
     anchors:
       1: >-
         Fewer than about a dozen instances a year.
@@ -272,6 +289,18 @@ dimensions:
       no amount of business value compensates.
     weight: 0.10
     direction: lower_is_better
+    # DETERMINISTIC DERIVATION from the intake's data_sensitivity field. Level 5
+    # is not derivable — "may not be processed at all" is a contractual finding,
+    # not a classification — so `regulated` maps to 4 and the model (or a
+    # reviewer) must establish a 5 explicitly. `unknown` derives nothing and
+    # returns the dimension to model scoring.
+    derivation:
+      source: intake_sensitivity
+      mapping:
+        public: 1
+        internal: 2
+        confidential: 3
+        regulated: 4
     anchors:
       1: >-
         Public or internal-unclassified data with no personal data. Processing

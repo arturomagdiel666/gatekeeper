@@ -12,6 +12,8 @@ import pytest
 
 from config import PATTERNS, RUBRIC
 from schemas import (
+    DataSensitivity,
+    Period,
     AntiPatternMatch,
     Assessment,
     Confidence,
@@ -257,3 +259,76 @@ class TestRequiresHumanConfirmation:
         assert deciding.gate_id == "non_ai_alternative_suffices"
         assert deciding.deterministic_basis is True
         assert outcome.requires_human_confirmation is False
+
+
+class TestDeterministicDerivation:
+    """Acceptance criterion 5: stated facts are computed, not re-inferred."""
+
+    def _assessment(self, **overrides):
+        assessment = assessment_with("already searches this document library")
+        assessment.anti_pattern_matches = []
+        for entry in assessment.dimension_assessments:
+            if entry.dimension_id in overrides:
+                entry.score = overrides[entry.dimension_id]
+        return assessment
+
+    def test_process_frequency_is_derived_when_volume_is_stated(self):
+        # 3 times a week = 156 a year, which is the level 3 band — regardless
+        # of the model saying 4.
+        intake = INTAKE.model_copy(
+            update={"times_per_period": 3, "period": Period.WEEK}
+        )
+        outcome = score(
+            self._assessment(process_frequency=4), RUBRIC, PATTERNS, intake
+        )
+        by_id = {c.dimension_id: c for c in outcome.contributions}
+        assert by_id["process_frequency"].raw_score == 3
+        assert "process_frequency" in outcome.derived_dimensions
+        assert "156 instances a year" in by_id["process_frequency"].evidence
+
+    def test_process_frequency_is_model_scored_when_volume_is_absent(self):
+        outcome = score(self._assessment(process_frequency=4), RUBRIC, PATTERNS, INTAKE)
+        by_id = {c.dimension_id: c for c in outcome.contributions}
+        assert by_id["process_frequency"].raw_score == 4
+        assert "process_frequency" not in outcome.derived_dimensions
+
+    @pytest.mark.parametrize(
+        ("sensitivity", "expected"),
+        [
+            (DataSensitivity.PUBLIC, 1),
+            (DataSensitivity.INTERNAL, 2),
+            (DataSensitivity.CONFIDENTIAL, 3),
+            (DataSensitivity.REGULATED, 4),
+        ],
+    )
+    def test_data_governance_is_derived_from_the_classification(
+        self, sensitivity, expected
+    ):
+        intake = INTAKE.model_copy(update={"data_sensitivity": sensitivity})
+        outcome = score(self._assessment(data_governance=5), RUBRIC, PATTERNS, intake)
+        by_id = {c.dimension_id: c for c in outcome.contributions}
+        assert by_id["data_governance"].raw_score == expected
+        assert "data_governance" in outcome.derived_dimensions
+
+    def test_unknown_classification_returns_the_dimension_to_the_model(self):
+        outcome = score(self._assessment(data_governance=3), RUBRIC, PATTERNS, INTAKE)
+        by_id = {c.dimension_id: c for c in outcome.contributions}
+        assert by_id["data_governance"].raw_score == 3
+        assert "data_governance" not in outcome.derived_dimensions
+
+    def test_a_derived_score_can_stop_a_gate_the_model_would_have_fired(self):
+        """The model said 5 (may not be processed); the form says internal."""
+        intake = INTAKE.model_copy(
+            update={"data_sensitivity": DataSensitivity.INTERNAL}
+        )
+        assert (
+            score(self._assessment(data_governance=5), RUBRIC, PATTERNS, INTAKE)
+            .triggered_gate_ids == ["unacceptable_data_governance"]
+        )
+        outcome = score(self._assessment(data_governance=5), RUBRIC, PATTERNS, intake)
+        assert outcome.triggered_gates == []
+        assert outcome.verdict is Verdict.GO
+
+    def test_derivations_are_skipped_entirely_without_an_intake(self):
+        outcome = score(self._assessment(), RUBRIC, PATTERNS, intake=None)
+        assert outcome.derived_dimensions == []

@@ -20,6 +20,10 @@ process_description: |
   Invoices arrive by email and get processed by the AP team.
 stated_benefit: null
 
+who_does_this_today: ''
+prior_tool_for_these_users: unknown
+data_sensitivity: unknown
+
 reference_assessment:
   archetype_id: extraction
   anti_pattern_matches:

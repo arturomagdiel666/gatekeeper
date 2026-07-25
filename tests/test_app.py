@@ -19,6 +19,33 @@ from streamlit.testing.v1 import AppTest  # noqa: E402
 APP_PATH = Path(__file__).resolve().parents[1] / "app.py"
 
 
+def triage_button(app):
+    """The Assess submit button."""
+    return next(b for b in app.button if b.label == "Assess")
+
+
+def review_button(app):
+    """The Run review submit button."""
+    return next(b for b in app.button if b.label == "Run review")
+
+
+def offline_checkbox(app):
+    """The checkbox that scores an exemplar without calling the model."""
+    return next(c for c in app.checkbox if "hand-authored" in c.label)
+
+
+def select_by_label(app, label: str):
+    """Find a selectbox by its label rather than its index.
+
+    Positional lookup broke the moment Tab 1 gained the structured intake
+    fields; a label is stable against layout changes.
+    """
+    for box in app.selectbox:
+        if box.label == label:
+            return box
+    raise AssertionError(f"no selectbox labelled {label!r}")
+
+
 def fresh_app() -> AppTest:
     """Run app.py headlessly and assert it did not blow up."""
     app = AppTest.from_file(str(APP_PATH), default_timeout=120)
@@ -47,12 +74,15 @@ class TestAppRenders:
         from examples import load_examples
 
         app = fresh_app()
-        options = app.selectbox[0].options
+        options = select_by_label(app, "Load a reference example").options
         assert len(options) == len(load_examples()) + 1  # + the blank form
 
     def test_both_scenarios_are_offered_in_the_review_simulator(self):
         app = fresh_app()
-        assert set(app.selectbox[1].options) == {"Healthy agent", "Failing agent"}
+        assert set(select_by_label(app, "Pre-loaded scenario").options) == {
+            "Healthy agent",
+            "Failing agent",
+        }
 
 
 class TestTriageEndToEnd:
@@ -60,12 +90,12 @@ class TestTriageEndToEnd:
 
     def test_loading_an_example_and_scoring_it_produces_a_verdict(self):
         app = fresh_app()
-        app.selectbox[0].select("Shift handover summaries for the service desk").run()
+        select_by_label(app, "Load a reference example").select("Shift handover summaries for the service desk").run()
         assert not app.exception
 
         # Tick the offline checkbox so no provider is needed, then submit.
-        app.checkbox[0].check().run()
-        app.button[0].click().run()
+        offline_checkbox(app).check().run()
+        triage_button(app).click().run()
         assert not app.exception
 
         rendered = " ".join(str(item.value) for item in app.markdown)
@@ -76,11 +106,11 @@ class TestTriageEndToEnd:
 
     def test_a_gated_example_shows_its_gate_and_no_contract(self):
         app = fresh_app()
-        app.selectbox[0].select(
+        select_by_label(app, "Load a reference example").select(
             "An assistant that answers HR policy questions in the chat client"
         ).run()
-        app.checkbox[0].check().run()
-        app.button[0].click().run()
+        offline_checkbox(app).check().run()
+        triage_button(app).click().run()
         assert not app.exception
 
         rendered = " ".join(str(item.value) for item in app.markdown)
@@ -91,7 +121,7 @@ class TestTriageEndToEnd:
 
     def test_submitting_an_empty_request_reports_an_error_not_a_crash(self):
         app = fresh_app()
-        app.button[0].click().run()
+        triage_button(app).click().run()
         assert not app.exception
         assert any("empty" in str(item.value).lower() for item in app.error)
 
@@ -101,15 +131,15 @@ class TestReviewEndToEnd:
 
     def test_the_healthy_scenario_recommends_continue(self):
         app = fresh_app()
-        app.button[1].click().run()
+        review_button(app).click().run()
         assert not app.exception
         rendered = " ".join(str(item.value) for item in app.markdown)
         assert "CONTINUE" in rendered
 
     def test_the_failing_scenario_recommends_retiring(self):
         app = fresh_app()
-        app.selectbox[1].select("Failing agent").run()
-        app.button[1].click().run()
+        select_by_label(app, "Pre-loaded scenario").select("Failing agent").run()
+        review_button(app).click().run()
         assert not app.exception
         rendered = " ".join(str(item.value) for item in app.markdown)
         assert "RETIRE" in rendered
@@ -119,7 +149,7 @@ class TestReviewEndToEnd:
 
     def test_the_review_reports_its_computed_indicators(self):
         app = fresh_app()
-        app.button[1].click().run()
+        review_button(app).click().run()
         assert not app.exception
         labels = {item.label for item in app.metric}
         assert {"Adoption rate", "Cost / successful task", "Value / task"} <= labels

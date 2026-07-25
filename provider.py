@@ -30,11 +30,14 @@ Gatekeeper-specific business logic.
 from __future__ import annotations
 
 import json
+import logging
 import os
 from abc import ABC, abstractmethod
 from typing import Any
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, model_validator
+
+logger = logging.getLogger(__name__)
 
 __all__ = [
     "ChatResponse",
@@ -51,6 +54,45 @@ DEFAULT_OLLAMA_HOST = "http://localhost:11434"
 DEFAULT_OPENAI_MODEL = "gpt-4o-mini"
 
 
+def _normalize_and_flag(arguments: Any) -> tuple[dict, bool]:
+    """Return ``(normalized_arguments, was_malformed)``.
+
+    ``was_malformed`` is ``True`` only when the fallback to ``{}`` lost
+    information: malformed JSON, JSON that is not an object, or an unexpected
+    type. Genuinely argument-less payloads — an empty dict, an empty or
+    whitespace-only string, or ``None`` (Ollama may omit the key entirely) —
+    are *not* malformed. Every malformed fallback emits a ``logging`` warning
+    with the offending payload (truncated) and its type.
+    """
+    if isinstance(arguments, dict):
+        return arguments, False
+    if isinstance(arguments, str):
+        if not arguments.strip():
+            return {}, False
+        try:
+            parsed = json.loads(arguments)
+        except (json.JSONDecodeError, ValueError):
+            _warn_malformed(arguments)
+            return {}, True
+        if isinstance(parsed, dict):
+            return parsed, False
+        _warn_malformed(arguments)
+        return {}, True
+    if arguments is None:
+        return {}, False
+    _warn_malformed(arguments)
+    return {}, True
+
+
+def _warn_malformed(arguments: Any) -> None:
+    """Log a warning about a tool-call arguments payload we had to discard."""
+    logger.warning(
+        "Malformed tool-call arguments (type %s) replaced with {}: %.200r",
+        type(arguments).__name__,
+        arguments,
+    )
+
+
 def normalize_arguments(arguments: Any) -> dict:
     """Coerce a tool-call ``arguments`` payload into a real ``dict``.
 
@@ -59,10 +101,11 @@ def normalize_arguments(arguments: Any) -> dict:
     * Ollama returns an already-parsed ``dict`` — passed through unchanged.
     * OpenAI returns a JSON ``str`` — parsed with :func:`json.loads`.
 
-    A malformed or empty string, a JSON payload that is not an object, or any
-    other unexpected type falls back to ``{}`` rather than raising; the
-    original provider payload is always preserved in ``ChatResponse.raw`` for
-    debugging.
+    A malformed string, a JSON payload that is not an object, or any other
+    unexpected type falls back to ``{}`` rather than raising — with a logged
+    warning, and providers surface it via
+    :attr:`ChatResponse.malformed_tool_calls`. The original provider payload
+    is always preserved in ``ChatResponse.raw`` for debugging.
 
     Args:
         arguments: The raw ``arguments`` value from a provider tool call.
@@ -70,17 +113,7 @@ def normalize_arguments(arguments: Any) -> dict:
     Returns:
         A ``dict`` of tool-call arguments (possibly empty).
     """
-    if isinstance(arguments, dict):
-        return arguments
-    if isinstance(arguments, str):
-        if not arguments.strip():
-            return {}
-        try:
-            parsed = json.loads(arguments)
-        except (json.JSONDecodeError, ValueError):
-            return {}
-        return parsed if isinstance(parsed, dict) else {}
-    return {}
+    return _normalize_and_flag(arguments)[0]
 
 
 class ChatResponse(BaseModel):
@@ -90,33 +123,54 @@ class ChatResponse(BaseModel):
         text: The assistant's textual reply (empty string if the model only
             returned tool calls).
         tool_calls: Tool invocations requested by the model, normalized to
-            ``[{"name": str, "arguments": dict}]``. Empty list if none.
+            ``[{"name": str, "arguments": dict, "id": str | None}]``. Empty
+            list if none. ``id`` carries the provider's tool-call id (OpenAI
+            requires it echoed back on the ``role="tool"`` result message);
+            Ollama does not emit one, so it is ``None`` there — never
+            synthesized.
+        malformed_tool_calls: ``True`` when any tool call's ``arguments``
+            payload was malformed (unparseable JSON, non-object JSON, or an
+            unexpected type) and had to fall back to ``{}``. Downstream code
+            must not treat such a response as a clean argument-less call;
+            ``raw`` always holds the original payload for forensics.
         raw: The untouched provider response payload, for debugging.
     """
 
     text: str
     tool_calls: list[dict] = Field(default_factory=list)
+    malformed_tool_calls: bool = False
     raw: dict = Field(default_factory=dict)
 
-    @field_validator("tool_calls")
-    @classmethod
-    def _validate_tool_calls(cls, value: list[dict]) -> list[dict]:
-        """Enforce the ``{"name": str, "arguments": dict}`` shape.
+    @model_validator(mode="after")
+    def _normalize_tool_calls(self) -> "ChatResponse":
+        """Enforce the ``{"name": str, "arguments": dict, "id": ...}`` shape.
 
-        ``arguments`` is run through :func:`normalize_arguments`, so a JSON
-        string sneaking in here still comes out as a ``dict``.
+        ``arguments`` is run through the normalization helper, so a JSON
+        string sneaking in here still comes out as a ``dict`` — and if that
+        re-normalization hits a malformed payload, ``malformed_tool_calls``
+        is set as well (a provider-set ``True`` is never cleared). ``id`` is
+        preserved when it is a string and defaults to ``None``; genuinely
+        unknown keys are stripped.
         """
         normalized: list[dict] = []
-        for call in value:
+        malformed = self.malformed_tool_calls
+        for call in self.tool_calls:
             name = call.get("name")
             if not isinstance(name, str) or not name:
-                raise ValueError(
-                    f"tool call missing a string 'name': {call!r}"
-                )
+                raise ValueError(f"tool call missing a string 'name': {call!r}")
+            arguments, was_malformed = _normalize_and_flag(call.get("arguments"))
+            malformed = malformed or was_malformed
+            call_id = call.get("id")
             normalized.append(
-                {"name": name, "arguments": normalize_arguments(call.get("arguments"))}
+                {
+                    "name": name,
+                    "arguments": arguments,
+                    "id": call_id if isinstance(call_id, str) else None,
+                }
             )
-        return normalized
+        self.tool_calls = normalized
+        self.malformed_tool_calls = malformed
+        return self
 
 
 class LLMProvider(ABC):
@@ -187,7 +241,8 @@ class OllamaProvider(LLMProvider):
 
         Ollama may omit the ``tool_calls`` key entirely when the model makes
         no tool call; that case yields an empty list. Ollama's ``arguments``
-        are already a ``dict`` and are passed through unchanged.
+        are already a ``dict`` and are passed through unchanged, and Ollama
+        does not emit tool-call ids, so ``id`` is always ``None``.
         """
         options = {"temperature": temperature, **kwargs.pop("options", {})}
         response = self._client.chat(
@@ -203,16 +258,20 @@ class OllamaProvider(LLMProvider):
             response.model_dump() if hasattr(response, "model_dump") else dict(response)
         )
         message = raw.get("message") or {}
-        tool_calls = [
-            {
-                "name": call["function"]["name"],
-                "arguments": normalize_arguments(call["function"].get("arguments")),
-            }
-            for call in (message.get("tool_calls") or [])
-        ]
+        tool_calls: list[dict] = []
+        malformed = False
+        for call in message.get("tool_calls") or []:
+            arguments, was_malformed = _normalize_and_flag(
+                call["function"].get("arguments")
+            )
+            malformed = malformed or was_malformed
+            tool_calls.append(
+                {"name": call["function"]["name"], "arguments": arguments, "id": None}
+            )
         return ChatResponse(
             text=message.get("content") or "",
             tool_calls=tool_calls,
+            malformed_tool_calls=malformed,
             raw=raw,
         )
 
@@ -268,7 +327,9 @@ class OpenAIProvider(LLMProvider):
 
         OpenAI returns tool-call ``arguments`` as a JSON *string*; it is
         parsed into a ``dict`` here (falling back to ``{}`` on malformed
-        input, with the original preserved in ``raw``).
+        input, flagged via ``malformed_tool_calls``, with the original
+        preserved in ``raw``). The provider's ``tool_calls[].id`` is kept so
+        tool results can be sent back with a matching ``tool_call_id``.
         """
         request: dict[str, Any] = {
             "model": self.model,
@@ -282,16 +343,24 @@ class OpenAIProvider(LLMProvider):
 
         raw: dict = response.model_dump()
         message = (raw.get("choices") or [{}])[0].get("message") or {}
-        tool_calls = [
-            {
-                "name": call["function"]["name"],
-                "arguments": normalize_arguments(call["function"].get("arguments")),
-            }
-            for call in (message.get("tool_calls") or [])
-        ]
+        tool_calls: list[dict] = []
+        malformed = False
+        for call in message.get("tool_calls") or []:
+            arguments, was_malformed = _normalize_and_flag(
+                call["function"].get("arguments")
+            )
+            malformed = malformed or was_malformed
+            tool_calls.append(
+                {
+                    "name": call["function"]["name"],
+                    "arguments": arguments,
+                    "id": call.get("id"),
+                }
+            )
         return ChatResponse(
             text=message.get("content") or "",
             tool_calls=tool_calls,
+            malformed_tool_calls=malformed,
             raw=raw,
         )
 
@@ -300,12 +369,17 @@ class MockProvider(LLMProvider):
     """Deterministic, network-free backend for tests and CI.
 
     Always returns the same canned reply. When ``tools`` is passed, it also
-    echoes one fixed tool call (with ``arguments`` already a ``dict``) so
-    downstream tool-handling code can be exercised deterministically.
+    echoes one fixed tool call (with ``arguments`` already a ``dict`` and the
+    stable id ``"mock_call_1"``) so downstream tool-handling code can be
+    exercised deterministically.
     """
 
     CANNED_TEXT = "MOCK: READY."
-    CANNED_TOOL_CALL = {"name": "mock_tool", "arguments": {"echo": "mock"}}
+    CANNED_TOOL_CALL = {
+        "name": "mock_tool",
+        "arguments": {"echo": "mock"},
+        "id": "mock_call_1",
+    }
 
     def chat(
         self,

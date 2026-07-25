@@ -44,6 +44,7 @@ class TestMockProvider:
         response = MockProvider().chat([{"role": "user", "content": "hi"}], tools=tools)
         assert response.tool_calls == [MockProvider.CANNED_TOOL_CALL]
         assert isinstance(response.tool_calls[0]["arguments"], dict)
+        assert response.tool_calls[0]["id"] == "mock_call_1"
 
 
 class TestGetProvider:
@@ -65,12 +66,14 @@ class TestChatResponseValidation:
         assert response.tool_calls == []
         assert response.raw == {}
 
-    def test_tool_calls_normalized_to_name_arguments_shape(self):
+    def test_tool_calls_normalized_to_name_arguments_id_shape(self):
         response = ChatResponse(
             text="",
             tool_calls=[{"name": "score", "arguments": {"value": 3}, "junk": "x"}],
         )
-        assert response.tool_calls == [{"name": "score", "arguments": {"value": 3}}]
+        assert response.tool_calls == [
+            {"name": "score", "arguments": {"value": 3}, "id": None}
+        ]
 
     def test_tool_call_without_name_rejected(self):
         with pytest.raises(ValueError):
@@ -82,6 +85,56 @@ class TestChatResponseValidation:
             tool_calls=[{"name": "score", "arguments": '{"value": 3}'}],
         )
         assert response.tool_calls[0]["arguments"] == {"value": 3}
+
+    def test_openai_style_id_survives_and_ollama_style_yields_none(self):
+        response = ChatResponse(
+            text="",
+            tool_calls=[
+                # OpenAI-style: id present, arguments as a JSON string.
+                {"name": "score", "arguments": '{"value": 3}', "id": "call_abc123"},
+                # Ollama-style: no id, arguments already a dict.
+                {"name": "score", "arguments": {"value": 3}},
+            ],
+        )
+        assert response.tool_calls[0]["id"] == "call_abc123"
+        assert response.tool_calls[1]["id"] is None
+
+
+class TestMalformedToolCallFlag:
+    """A2: malformed arguments must be flagged, not silently swallowed."""
+
+    def test_malformed_json_sets_flag_and_logs_warning(self, caplog):
+        with caplog.at_level("WARNING", logger="provider"):
+            response = ChatResponse(
+                text="",
+                tool_calls=[{"name": "score", "arguments": '{"broken":'}],
+            )
+        assert response.malformed_tool_calls is True
+        assert response.tool_calls[0]["arguments"] == {}
+        assert any("Malformed tool-call arguments" in r.message for r in caplog.records)
+
+    def test_well_formed_call_leaves_flag_false(self):
+        response = ChatResponse(
+            text="",
+            tool_calls=[{"name": "score", "arguments": {"value": 3}}],
+        )
+        assert response.malformed_tool_calls is False
+
+    def test_argument_less_call_is_not_malformed(self):
+        for empty in ({}, ""):
+            response = ChatResponse(
+                text="", tool_calls=[{"name": "score", "arguments": empty}]
+            )
+            assert response.malformed_tool_calls is False
+            assert response.tool_calls[0]["arguments"] == {}
+
+    def test_provider_set_flag_is_never_cleared(self):
+        response = ChatResponse(
+            text="",
+            tool_calls=[{"name": "score", "arguments": {"value": 3}}],
+            malformed_tool_calls=True,
+        )
+        assert response.malformed_tool_calls is True
 
 
 class TestNormalizeArguments:

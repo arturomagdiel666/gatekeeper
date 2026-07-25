@@ -1,0 +1,144 @@
+# =============================================================================
+# Review and sunset policy
+# =============================================================================
+# The thresholds and recommendations used when an approved agent reaches its
+# review date. Same discipline as the rubric: this is config, so a governance
+# change is a YAML edit rather than a release, and the same observed metrics
+# can be run against several policies to see what the policy itself decides.
+#
+# review.py contains NO LLM. The retirement decision must be fully auditable
+# and reproducible — an agent that recommends killing another agent has to be
+# able to show its arithmetic.
+#
+# WHAT `recommendation` MEANS on a trigger:
+#   retire  — this condition alone is sufficient to recommend decommissioning
+#   adjust  — this condition calls for bounded remediation and an earlier
+#             re-review, not decommissioning
+# Flipping one of these values changes the outcome with no code change.
+#
+# PRECEDENCE, when several conditions fire:
+#   retire  >  insufficient_telemetry  >  adjust  >  continue
+# A definite retire finding is actionable and more telemetry will not unfire
+# it. But an unevaluable condition must never be read as "fine": it outranks
+# adjust, because you cannot honestly recommend a small fix while unable to
+# see part of the picture.
+# =============================================================================
+
+version: "1.0.0"
+
+thresholds:
+
+  # Share of the addressable population actively using the agent, below which
+  # adoption has failed. 0.25 is deliberately modest — the bar is "a quarter of
+  # the people it was built for touched it in a month", not mass adoption.
+  adoption_floor: 0.25
+
+  # Months after launch before the adoption floor is enforced. Nothing is
+  # judged on adoption during its ramp.
+  ramp_months: 3
+
+  # Tasks finished versus started. Below this, the agent is not completing the
+  # work it was given.
+  completion_rate_floor: 0.70
+
+  # Share of outputs a human changed before using. Above this, people are
+  # doing the work twice.
+  override_rate_ceiling: 0.30
+
+  # Share of users who came back at least once. Below this, usage is curiosity
+  # rather than value.
+  repeat_usage_floor: 0.40
+
+  # Adoption at or above this counts as "high usage" for the two failure
+  # signatures below, both of which require usage to look healthy first.
+  high_usage_adoption_floor: 0.50
+
+next_review:
+  # Months added to the current review date when the agent continues.
+  standard_interval_months: 6
+  # Months added when remediation is expected, or when telemetry was missing
+  # and must be in place before a real decision can be made.
+  remediation_interval_months: 3
+
+# -----------------------------------------------------------------------------
+# MONETARY CONVERSIONS
+# Used to express the contract's primary metric as value per task, so it can be
+# compared against cost per successful task. Keyed by the metric's declared
+# unit in contracts.yaml.
+#
+# A unit that is NOT listed here has no monetary conversion, so value per task
+# is undefined and `cost_exceeds_value` cannot be evaluated — the review
+# returns insufficient_telemetry rather than guessing. That is deliberate:
+# percentage and duration metrics genuinely cannot be turned into money without
+# a local assumption, and inventing one here would hide it.
+# -----------------------------------------------------------------------------
+monetary_conversions:
+  hours_per_month: 45.0        # fully-loaded internal cost of an hour
+  tickets_per_month: 12.0      # average cost of handling one ticket
+  currency_per_month: 1.0      # already money
+
+# -----------------------------------------------------------------------------
+# TRIGGERS
+# Each id must have an evaluator in review.py, and every evaluator must appear
+# here — a test asserts the two sets match exactly, so a trigger cannot be
+# defined and then silently never evaluated.
+#
+# `enabled: false` switches a trigger off without deleting it, keeping the
+# record of why it existed.
+# -----------------------------------------------------------------------------
+triggers:
+
+  - id: usage_floor_not_met
+    recommendation: retire
+    enabled: true
+    detail: >-
+      Adoption is below the floor after the ramp period. The agent was built
+      for people who are not using it.
+
+  - id: cost_exceeds_value
+    recommendation: retire
+    enabled: true
+    detail: >-
+      Cost per successful task exceeds the value each task produces. It may
+      work perfectly and still be worth retiring.
+
+  - id: quality_below_threshold
+    recommendation: adjust
+    enabled: true
+    detail: >-
+      Completion is below the floor or the override rate is above the ceiling,
+      with no remediation in flight.
+
+  - id: business_metric_missed
+    recommendation: retire
+    enabled: true
+    detail: >-
+      The one number this agent was approved against did not reach its agreed
+      threshold by the review date.
+
+  - id: high_usage_low_quality
+    recommendation: adjust
+    enabled: true
+    detail: >-
+      Usage looks healthy while people correct the output every time. The
+      correction work is invisible in a usage chart.
+
+  - id: curiosity_adoption
+    recommendation: adjust
+    enabled: true
+    detail: >-
+      Plenty of people tried it and few came back. Interest, not value.
+
+  - id: owner_absent
+    recommendation: retire
+    enabled: true
+    detail: >-
+      The named business owner is gone or has withdrawn sponsorship, and
+      nobody has accepted the role.
+
+  - id: superseded_by_platform
+    recommendation: retire
+    enabled: true
+    detail: >-
+      A licensed platform capability now covers this natively. Migrate to it
+      and decommission the agent.

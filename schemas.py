@@ -224,6 +224,11 @@ class MeasurementContract(BaseModel):
     primary_metric_id: str
     primary_metric_label: str
     primary_metric_unit: str
+    #: Whether a higher or lower value of the metric is better. Carried on the
+    #: contract so the reviewer can compare value against threshold without
+    #: reloading the metric catalogue — the contract must be self-contained
+    #: enough to be evaluated on its own terms.
+    primary_metric_direction: str
     measurement_method: str
     baseline_value: float | None = None
     baseline_is_measured: bool = False

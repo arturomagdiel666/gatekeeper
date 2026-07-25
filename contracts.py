@@ -358,6 +358,7 @@ def issue_contract(
         primary_metric_id=metric.id,
         primary_metric_label=metric.label,
         primary_metric_unit=metric.unit,
+        primary_metric_direction=metric.direction,
         measurement_method=" ".join(metric.measurement_method.split()),
         baseline_value=baseline,
         baseline_is_measured=baseline is not None,

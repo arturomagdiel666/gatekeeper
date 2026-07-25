@@ -756,3 +756,75 @@ month-end clamping that makes 31 January plus one month land on 28 February.
 Review horizons come from the implementation-effort band: 3 months for light
 builds, 6 for moderate, 9 for heavy. **An unknown effort gets the shortest
 horizon** — reviewing too early is recoverable, reviewing too late is not.
+
+---
+
+## ADR-017 — The reviewer is pure policy, and missing telemetry is a finding
+
+**Date:** 2026-07-25 · **Commit:** Phase 3 Part C · **Status:** accepted
+
+`review.py` contains **no LLM**, and a test asserts the module imports nothing
+from the provider layer. A function that recommends decommissioning somebody's
+agent must be reproducible by whoever disagrees with it; a model in that path
+would make the retirement decision unauditable at exactly the moment it is most
+contested.
+
+### Four layers, because a usage chart hides three failures
+
+`ObservedMetrics` carries usage, quality, business, and cost. Two failure
+signatures get their own explicit triggers because **both look like success on
+an adoption dashboard**:
+
+* **high usage, low quality** — adoption above target while the override rate
+  is above its ceiling. People use it because they must and correct its output
+  every time; the correction work never appears in usage numbers.
+* **curiosity adoption** — users above target while the repeat-usage ratio is
+  below its floor. Interest, not value.
+
+Neither is detectable from any single layer, which is the argument for
+instrumenting all four at approval time rather than discovering the gap at
+review.
+
+### Precedence, and why `insufficient_telemetry` sits where it does
+
+```
+retire  >  insufficient_telemetry  >  adjust  >  continue
+```
+
+A definite retire finding is actionable and more telemetry will not unfire it,
+so it outranks everything. But an unevaluable condition must never read as
+"fine": it outranks `adjust`, because recommending a small fix while blind to
+part of the picture is exactly the failure this module exists to prevent.
+
+`owner_absent` and `superseded_by_platform` cannot be computed and are modelled
+as explicit booleans a reviewer must answer. Leaving one as `None` yields
+`insufficient_telemetry` rather than quietly reading as "no" — the reviewer is
+forced to answer rather than allowed to skip.
+
+`remediation_in_flight` deliberately defaults to `False` rather than `None`:
+if nobody has said a fix is underway, the safe reading is that none is, which
+makes the quality trigger *more* likely to fire. Defaults are chosen by which
+direction is conservative, not by which is convenient.
+
+### Units that cannot be turned into money say so
+
+`cost_exceeds_value` compares cost per successful task against value per task,
+which requires converting the contract's primary metric into currency.
+`review_policy.yaml` declares conversions for hours, tickets and currency. A
+percentage or a duration has **no** conversion — turning "20% cycle-time
+reduction" into money needs a local assumption, and inventing one in code would
+bury it. Those units make the trigger unevaluable and the review returns
+`insufficient_telemetry`, which is the honest answer.
+
+### Everything that decides is config
+
+Thresholds, each trigger's recommendation, whether a trigger is enabled at all,
+and the next-review intervals all live in `review_policy.yaml`. Tests flip a
+recommendation from `retire` to `adjust`, lower a threshold so a trigger stops
+firing, and disable a trigger outright — each changing the outcome with no
+Python edit. A registry test asserts the trigger ids in the policy and the
+evaluator functions in `review.py` match exactly, so a trigger cannot be
+declared and then silently never evaluated.
+
+No system clock is consulted: `next_review_date` is derived from the contract's
+own `review_date`.

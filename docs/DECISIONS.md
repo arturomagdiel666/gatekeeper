@@ -688,3 +688,71 @@ What is lost is the ability to ask clarifying questions. That is handled
 instead by the `incomplete` verdict, which names exactly which dimensions the
 request failed to establish — turning "the agent should have asked" into a
 concrete, auditable list the requester can answer and resubmit.
+
+---
+
+## ADR-016 — Approval issues a Measurement Contract, or it is not an approval
+
+**Date:** 2026-07-25 · **Commit:** Phase 3 Part B · **Status:** accepted
+
+> An agent may only be approved together with the definition of its own
+> failure.
+
+A `go` verdict alone is an opinion with a date on it. Without pre-agreed
+success criteria, the question "should we turn this off?" has no answer that
+is not political: whoever sponsored the agent argues it needs more time, and
+there is no number anyone committed to in advance. Every `go` therefore issues
+a `MeasurementContract`, and `review.py` (ADR-017) later evaluates the agent
+against it.
+
+### Exactly one primary metric
+
+`primary_metric_id` is a single field, not a list. **A contract with three
+metrics has none** — there is no single number anyone can be held to, and at
+review time the sponsor will point at whichever one moved. Choosing one is the
+uncomfortable part of the exercise and the part that makes it work.
+
+### The skeleton is code; only the selection is model output
+
+The model contributes exactly two things, in the same single constrained call
+as the assessment: `proposed_metric_id` (which candidate fits this request) and
+`stated_baseline_value` (only if the request actually states it). Everything
+else — measurement method, success threshold, review date, instrumentation
+plan, decommission triggers — is assembled deterministically in
+`contracts.py` from `contracts.yaml`.
+
+A proposal outside the archetype's candidate list is overridden with the
+archetype default and recorded in `ContractResult.ignored_metric_ids`,
+mirroring the hallucinated-dimension-id handling in `scoring.py`. Candidate
+lists are per archetype, not a global pool, so a metric valid elsewhere is
+still rejected here.
+
+**Deviation from the brief, flagged:** the ignored list lives on
+`ContractResult` rather than on `Outcome`. `Outcome` is produced by the pure
+scorer, which knows nothing about contracts and must not import them; putting
+the field there would either invert that dependency or require mutating an
+outcome after the fact. `AssessmentResult` (ADR-018) surfaces both together.
+
+### Two kinds of metric need two threshold formulas
+
+`absolute` metrics are gains measured from nothing — hours reclaimed, tickets
+deflected. Their baseline is zero by definition, so a relative target would
+compute a threshold of zero. `relative_improvement` metrics are levels that
+already exist — response time, rework rate — and improve on a measured
+baseline in the metric's own improving direction.
+
+`baseline_is_measured` is recorded explicitly. A contract against an unmeasured
+baseline is still issued, falling back to the absolute default, but the fact is
+carried in the contract. **An unmeasured baseline is a finding, not a
+formality**: it means nobody knows what the process costs today, which is worth
+knowing before the review argues about whether it improved.
+
+### The clock is always injected
+
+`approval_date` is a parameter. Contract generation never reads the system
+clock, so review-date arithmetic is deterministic and testable — including the
+month-end clamping that makes 31 January plus one month land on 28 February.
+
+Review horizons come from the implementation-effort band: 3 months for light
+builds, 6 for moderate, 9 for heavy. **An unknown effort gets the shortest
+horizon** — reviewing too early is recoverable, reviewing too late is not.

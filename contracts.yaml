@@ -1,0 +1,386 @@
+# =============================================================================
+# Measurement Contract templates
+# =============================================================================
+# An agent may only be approved together with the definition of its own
+# failure. A `go` verdict is incomplete without pre-agreed success criteria,
+# because without them retirement becomes a political argument instead of a
+# scheduled event.
+#
+# This file holds the templates. contracts.py assembles the actual contract
+# DETERMINISTICALLY from the archetype template, the implementation-effort
+# band, and the intake metadata. The model's only role is proposing which
+# candidate metric fits and reporting a baseline the request states — the
+# skeleton is code, only the selection is model output.
+#
+# THRESHOLD BASIS — two kinds of metric, which cannot share a formula:
+#   absolute             — a gain measured from nothing (hours reclaimed,
+#                          tickets deflected). Baseline is zero by definition,
+#                          so the target is an absolute number.
+#   relative_improvement — a level that already exists (response time, rework
+#                          rate). The target is a percentage improvement on the
+#                          measured baseline, in the metric's improving
+#                          direction. With no measured baseline it falls back
+#                          to `default_absolute_threshold`, and the contract
+#                          records baseline_is_measured: false — which is a
+#                          finding, not a formality.
+# =============================================================================
+
+version: "1.0.0"
+
+# -----------------------------------------------------------------------------
+# METRIC CATALOGUE
+# Referenced by id from the archetype templates below, so a metric is defined
+# once and reused. `measurement_method` must describe how the number is
+# ACTUALLY OBSERVED — if nobody can say how it would be measured, it is not a
+# metric, it is a hope.
+# -----------------------------------------------------------------------------
+metrics:
+
+  - id: hours_reclaimed_per_month
+    label: Hours reclaimed per month
+    unit: hours_per_month
+    direction: higher_is_better
+    threshold_basis: absolute
+    default_absolute_threshold: 40.0
+    default_target_improvement_pct: 0.0
+    typical_ramp_months: 3
+    measurement_method: >-
+      Sampled time study: ten users timed on the task before launch and again
+      at review, multiplied by the observed monthly volume from the platform's
+      own usage report. Self-reported time savings are not accepted.
+
+  - id: tickets_deflected_per_month
+    label: Tickets deflected per month
+    unit: tickets_per_month
+    direction: higher_is_better
+    threshold_basis: absolute
+    default_absolute_threshold: 150.0
+    default_target_improvement_pct: 0.0
+    typical_ramp_months: 3
+    measurement_method: >-
+      Service-management platform report: sessions resolved by the agent
+      without a ticket being raised within 48 hours, compared against the
+      pre-launch ticket rate for the same request categories.
+
+  - id: cost_avoided_per_month
+    label: Cost avoided per month
+    unit: currency_per_month
+    direction: higher_is_better
+    threshold_basis: absolute
+    default_absolute_threshold: 8000.0
+    default_target_improvement_pct: 0.0
+    typical_ramp_months: 4
+    measurement_method: >-
+      Finance-confirmed avoided spend: licence, contractor, or overtime lines
+      that fell after launch, signed off by the cost-centre owner. Modelled
+      savings with no ledger line are not accepted.
+
+  - id: cycle_time_reduction_pct
+    label: Cycle time reduction
+    unit: percent
+    direction: higher_is_better
+    threshold_basis: relative_improvement
+    default_absolute_threshold: 20.0
+    default_target_improvement_pct: 20.0
+    typical_ramp_months: 3
+    measurement_method: >-
+      Median end-to-end duration of the process from the system of record,
+      before launch and at review, over the same case mix.
+
+  - id: first_response_time_minutes
+    label: First response time
+    unit: minutes
+    direction: lower_is_better
+    threshold_basis: relative_improvement
+    default_absolute_threshold: 30.0
+    default_target_improvement_pct: 30.0
+    typical_ramp_months: 2
+    measurement_method: >-
+      Median minutes from request creation to first substantive response, from
+      the service-management platform, excluding automated acknowledgements.
+
+  - id: rework_rate_pct
+    label: Rework rate
+    unit: percent
+    direction: lower_is_better
+    threshold_basis: relative_improvement
+    default_absolute_threshold: 10.0
+    default_target_improvement_pct: 30.0
+    typical_ramp_months: 3
+    measurement_method: >-
+      Share of completed items reopened, corrected, or returned within 30 days,
+      from the system of record.
+
+  - id: routing_accuracy_pct
+    label: Routing accuracy
+    unit: percent
+    direction: higher_is_better
+    threshold_basis: relative_improvement
+    default_absolute_threshold: 85.0
+    default_target_improvement_pct: 15.0
+    typical_ramp_months: 2
+    measurement_method: >-
+      Weekly audit of a random sample of 50 routed items, checked against the
+      team that ultimately handled them.
+
+  - id: extraction_accuracy_pct
+    label: Field extraction accuracy
+    unit: percent
+    direction: higher_is_better
+    threshold_basis: relative_improvement
+    default_absolute_threshold: 90.0
+    default_target_improvement_pct: 10.0
+    typical_ramp_months: 2
+    measurement_method: >-
+      Monthly audit of 50 sampled documents, field by field, against a
+      human-verified transcription.
+
+  - id: search_success_rate_pct
+    label: Answer success rate
+    unit: percent
+    direction: higher_is_better
+    threshold_basis: relative_improvement
+    default_absolute_threshold: 70.0
+    default_target_improvement_pct: 20.0
+    typical_ramp_months: 3
+    measurement_method: >-
+      Share of sessions where the user did not re-ask, escalate, or open a
+      ticket within one hour, plus a monthly audit of 30 sampled answers for
+      citation correctness.
+
+  - id: forecast_error_reduction_pct
+    label: Forecast error reduction
+    unit: percent
+    direction: higher_is_better
+    threshold_basis: relative_improvement
+    default_absolute_threshold: 15.0
+    default_target_improvement_pct: 15.0
+    typical_ramp_months: 6
+    measurement_method: >-
+      Mean absolute percentage error against the naive last-period baseline,
+      measured over the review window on held-out periods.
+
+  - id: alert_precision_pct
+    label: Alert precision
+    unit: percent
+    direction: higher_is_better
+    threshold_basis: relative_improvement
+    default_absolute_threshold: 60.0
+    default_target_improvement_pct: 25.0
+    typical_ramp_months: 4
+    measurement_method: >-
+      Share of raised alerts confirmed as genuine by the investigating team,
+      recorded as a mandatory disposition field on every alert.
+
+# -----------------------------------------------------------------------------
+# ARCHETYPE TEMPLATES
+# `default_metric_id` is used when the model proposes nothing, or proposes a
+# metric that is not a candidate for this archetype. It must appear in
+# `candidate_metric_ids`.
+# -----------------------------------------------------------------------------
+archetypes:
+
+  - id: classification
+    default_metric_id: routing_accuracy_pct
+    candidate_metric_ids:
+      - routing_accuracy_pct
+      - hours_reclaimed_per_month
+      - first_response_time_minutes
+      - rework_rate_pct
+    instrumentation_extra:
+      quality:
+        - Per-item confidence and whether a human changed the assigned category.
+
+  - id: extraction
+    default_metric_id: extraction_accuracy_pct
+    candidate_metric_ids:
+      - extraction_accuracy_pct
+      - hours_reclaimed_per_month
+      - rework_rate_pct
+      - cycle_time_reduction_pct
+    instrumentation_extra:
+      quality:
+        - Field-level correction counts, so a single bad field is not hidden by
+          a document-level pass rate.
+
+  - id: summarization
+    default_metric_id: hours_reclaimed_per_month
+    candidate_metric_ids:
+      - hours_reclaimed_per_month
+      - cycle_time_reduction_pct
+      - first_response_time_minutes
+      - rework_rate_pct
+    instrumentation_extra:
+      quality:
+        - Edit distance between the generated draft and what was actually sent
+          or filed, sampled weekly.
+
+  - id: forecasting
+    default_metric_id: forecast_error_reduction_pct
+    candidate_metric_ids:
+      - forecast_error_reduction_pct
+      - cost_avoided_per_month
+      - cycle_time_reduction_pct
+    instrumentation_extra:
+      quality:
+        - Realised versus predicted values retained per period, so accuracy can
+          be recomputed independently.
+
+  - id: anomaly_detection
+    default_metric_id: alert_precision_pct
+    candidate_metric_ids:
+      - alert_precision_pct
+      - cost_avoided_per_month
+      - hours_reclaimed_per_month
+    instrumentation_extra:
+      quality:
+        - Mandatory disposition on every alert (genuine, false, duplicate), and
+          the count of alerts closed with no disposition at all.
+
+  - id: rag_qa
+    default_metric_id: search_success_rate_pct
+    candidate_metric_ids:
+      - search_success_rate_pct
+      - tickets_deflected_per_month
+      - first_response_time_minutes
+      - hours_reclaimed_per_month
+    instrumentation_extra:
+      quality:
+        - Citation presence and citation correctness per answer, plus the
+          re-ask rate within one hour.
+
+  - id: recommendation
+    default_metric_id: cycle_time_reduction_pct
+    candidate_metric_ids:
+      - cycle_time_reduction_pct
+      - hours_reclaimed_per_month
+      - rework_rate_pct
+    instrumentation_extra:
+      quality:
+        - Acceptance rate of the top suggestion, and what the user chose when
+          they rejected it.
+
+# -----------------------------------------------------------------------------
+# REVIEW HORIZONS
+# Time from approval to the first review, by implementation-effort band. Bigger
+# builds get longer to ramp, but nothing goes unreviewed for more than three
+# quarters. The bands must cover the whole 1-5 effort scale.
+#
+# When implementation_effort is unknown, contracts.py uses the SHORTEST horizon
+# — reviewing too early is recoverable, reviewing too late is not.
+# -----------------------------------------------------------------------------
+review_horizons:
+  - id: light
+    effort_min: 1
+    effort_max: 2
+    months: 3
+  - id: moderate
+    effort_min: 3
+    effort_max: 3
+    months: 6
+  - id: heavy
+    effort_min: 4
+    effort_max: 5
+    months: 9
+
+# -----------------------------------------------------------------------------
+# INSTRUMENTATION BASELINE
+# What every agent must emit regardless of archetype, in four layers. An agent
+# can fail in four independent ways and a usage chart hides three of them, so a
+# contract that only instruments usage cannot be reviewed honestly.
+# Archetype `instrumentation_extra` is merged on top of this.
+# -----------------------------------------------------------------------------
+instrumentation_baseline:
+  usage:
+    - Distinct active users per month, and the addressable population they are
+      drawn from.
+    - Session and task-start counts per month.
+    - Repeat users per month — distinct users with more than one session.
+    - Median days from a user's first session to their first completed task.
+  quality:
+    - Task completion rate — tasks finished versus started.
+    - Human override or correction rate on the agent's output.
+    - Escalation rate to a person.
+    - Mid-task abandonment rate.
+  business:
+    - The contract's primary metric, at its declared measurement cadence.
+    - The baseline value and the date it was measured.
+  cost:
+    - Inference spend per month.
+    - Licence and platform cost attributable to this agent.
+    - Maintenance hours per month, and the rate used to value them.
+
+# -----------------------------------------------------------------------------
+# DECOMMISSION TRIGGERS CATALOGUE
+# The conditions under which an approved agent is retired or adjusted. This
+# file defines WHAT they are; review_policy.yaml defines the thresholds and the
+# recommendation each one carries. Both are config so a governance change is a
+# YAML edit, not a release.
+#
+# `manual_assertion: true` means the reviewer must answer it — it cannot be
+# computed from telemetry, and leaving it unanswered blocks the review rather
+# than being read as "no".
+# -----------------------------------------------------------------------------
+decommission_triggers:
+
+  - id: usage_floor_not_met
+    label: Adoption below the floor after ramp
+    manual_assertion: false
+    description: >-
+      The share of the addressable population actively using the agent is below
+      the policy floor after the ramp period has elapsed. Nobody adopted it.
+
+  - id: cost_exceeds_value
+    label: Cost per successful task exceeds value per task
+    manual_assertion: false
+    description: >-
+      Running it costs more than the benefit it produces, per unit of work. The
+      agent may work perfectly and still fail this.
+
+  - id: quality_below_threshold
+    label: Quality below threshold with no remediation in flight
+    manual_assertion: false
+    description: >-
+      Task completion is below the floor, or the human override rate is above
+      the ceiling, and no fix is underway.
+
+  - id: business_metric_missed
+    label: Primary metric below its success threshold at review
+    manual_assertion: false
+    description: >-
+      The one number the agent was approved against did not reach the agreed
+      value by the review date.
+
+  - id: high_usage_low_quality
+    label: High usage with low quality
+    manual_assertion: false
+    description: >-
+      Usage is above target while the override or correction rate is above its
+      ceiling. People use it because they must and fix its output every time;
+      the correction work is invisible in a usage chart, which is precisely why
+      this must be detected explicitly.
+
+  - id: curiosity_adoption
+    label: Curiosity adoption without repeat use
+    manual_assertion: false
+    description: >-
+      Total users are above target while the repeat-usage ratio is below its
+      floor. That is interest, not value — and it looks like success on every
+      adoption dashboard.
+
+  - id: owner_absent
+    label: Business owner gone or sponsorship withdrawn
+    manual_assertion: true
+    description: >-
+      The named business owner has left, changed role, or withdrawn
+      sponsorship, and no replacement has accepted the role. An agent with no
+      owner has nobody to answer for it at the next review.
+
+  - id: superseded_by_platform
+    label: Superseded by a licensed platform capability
+    manual_assertion: true
+    description: >-
+      A platform the company already licenses now covers this natively. The
+      same check that would have blocked the request at intake, applied again
+      at review — vendors ship, and what was a valid build last year may be a
+      configuration this year.

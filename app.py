@@ -98,10 +98,16 @@ def render_dimension_table(outcome) -> None:
                 "Weight": f"{item.effective_weight:.3f}",
                 "Contribution": f"{item.contribution:.3f}",
                 "Confidence": item.confidence,
-                "Evidence": item.evidence,
             }
         )
     st.dataframe(rows, use_container_width=True, hide_index=True)
+
+    st.markdown("**Evidence cited for each score**")
+    for item in outcome.contributions:
+        st.markdown(
+            f"- **{item.label}** — raw {item.raw_score}, {item.confidence} confidence  \n"
+            f"  {item.evidence}"
+        )
 
 
 def render_outcome(outcome, contract: MeasurementContract | None) -> None:
@@ -243,7 +249,7 @@ def render_outcome(outcome, contract: MeasurementContract | None) -> None:
                     st.markdown(f"**{layer}**")
                     for item in items:
                         st.markdown(f"- {item}")
-            with st.expander("Decommission triggers this agent is subject to"):
+            with st.expander("Decommission triggers this agent is subject to", expanded=True):
                 for trigger_id in contract.decommission_trigger_ids:
                     trigger = next(
                         (t for t in CONTRACTS.decommission_triggers if t.id == trigger_id),
@@ -298,49 +304,54 @@ def triage_tab() -> None:
             height=70,
         )
 
-        st.markdown("**A few specifics** — all optional. Blank returns that "
-                    "dimension to the model, or to unknown.")
-        row_a = st.columns(3)
-        who_does_this_today = row_a[0].text_input(
-            "Who does this today", value=preset.who_does_this_today if preset else ""
-        )
-        people_affected = row_a[1].number_input(
-            "People affected", 0, 1_000_000,
-            value=(preset.people_affected if preset and preset.people_affected else 0),
-        )
-        where_the_data_lives = row_a[2].text_input(
-            "Where the data lives",
-            value=(preset.where_the_data_lives or "") if preset else "",
-        )
-        row_b = st.columns(4)
-        times_per_period = row_b[0].number_input(
-            "How often it runs", 0, 1_000_000,
-            value=(preset.times_per_period if preset and preset.times_per_period else 0),
-        )
-        period_choices = ["(not stated)"] + [p.value for p in Period]
-        period_value = row_b[1].selectbox(
-            "per",
-            period_choices,
-            index=period_choices.index(preset.period.value)
-            if preset and preset.period
-            else 0,
-        )
-        prior_choices = [p.value for p in PriorTool]
-        prior_tool = row_b[2].selectbox(
-            "Last tool for these users",
-            prior_choices,
-            index=prior_choices.index(preset.prior_tool_for_these_users.value)
-            if preset
-            else prior_choices.index("unknown"),
-        )
-        sensitivity_choices = [s.value for s in DataSensitivity]
-        data_sensitivity = row_b[3].selectbox(
-            "Data classification",
-            sensitivity_choices,
-            index=sensitivity_choices.index(preset.data_sensitivity.value)
-            if preset
-            else sensitivity_choices.index("unknown"),
-        )
+        # Open on a blank form, collapsed once an exemplar has filled it in.
+        # Collapsing trades form legibility against blank-form completion, and
+        # a blank form has a shorter path to `incomplete` — see ADR-025.
+        with st.expander(
+            "A few specifics — optional; blank returns that dimension to the model",
+            expanded=preset is None,
+        ):
+            row_a = st.columns(3)
+            who_does_this_today = row_a[0].text_input(
+                "Who does this today", value=preset.who_does_this_today if preset else ""
+            )
+            people_affected = row_a[1].number_input(
+                "People affected", 0, 1_000_000,
+                value=(preset.people_affected if preset and preset.people_affected else 0),
+            )
+            where_the_data_lives = row_a[2].text_input(
+                "Where the data lives",
+                value=(preset.where_the_data_lives or "") if preset else "",
+            )
+            row_b = st.columns(4)
+            times_per_period = row_b[0].number_input(
+                "How often it runs", 0, 1_000_000,
+                value=(preset.times_per_period if preset and preset.times_per_period else 0),
+            )
+            period_choices = ["(not stated)"] + [p.value for p in Period]
+            period_value = row_b[1].selectbox(
+                "per",
+                period_choices,
+                index=period_choices.index(preset.period.value)
+                if preset and preset.period
+                else 0,
+            )
+            prior_choices = [p.value for p in PriorTool]
+            prior_tool = row_b[2].selectbox(
+                "Last tool for these users",
+                prior_choices,
+                index=prior_choices.index(preset.prior_tool_for_these_users.value)
+                if preset
+                else prior_choices.index("unknown"),
+            )
+            sensitivity_choices = [s.value for s in DataSensitivity]
+            data_sensitivity = row_b[3].selectbox(
+                "Data classification",
+                sensitivity_choices,
+                index=sensitivity_choices.index(preset.data_sensitivity.value)
+                if preset
+                else sensitivity_choices.index("unknown"),
+            )
         use_reference = st.checkbox(
             "Score the example's hand-authored assessment instead of calling the model",
             value=False,

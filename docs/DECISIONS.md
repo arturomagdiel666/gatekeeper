@@ -1453,3 +1453,47 @@ Every match rate in this log — 2/6, 3/6, 4/6 — should be read as "how many
 verdicts matched", never as "how good the system is". The Phase 3.2 improvement
 from 3/6 to 4/6 is real in the first sense and unproven in the second, and the
 `ticket_handover_summaries` row is the specific reason to doubt it.
+
+---
+
+## ADR-025 — UI rendering changes, and one trade named rather than absorbed
+
+**Date:** 2026-07-25 · **Status:** accepted · **Scope:** presentation only
+
+Three changes to `app.py`. **Rendering only: no computation, no config, no
+prompt, no schema.** The frozen live path — the assessment call, the rubric,
+the scoring engine — is untouched, which is why this lands after the freeze
+rather than breaching it.
+
+1. **Evidence moved out of the dimension table into a list beneath it.** The
+   evidence strings run 200-400 characters and were truncated to unreadable
+   stubs inside a dataframe cell — which quietly defeated the point, since the
+   evidence is what makes a verdict auditable and it was the one column nobody
+   could read.
+2. **Decommission triggers expanded by default.** They are the concrete answer
+   to "when would you turn it off", which is the differentiating claim.
+3. **Intake specifics in an expander, open on a blank form and collapsed once
+   an exemplar has filled it in** (`expanded=preset is None`).
+
+### The trade behind the third one
+
+Collapsing the intake specifics trades **form legibility against blank-form
+completion rate**, and the second half of that has a measurable consequence
+worth naming rather than absorbing.
+
+Every blank intake field returns a dimension to model scoring or to `unknown`.
+Four dimensions are in `never_unknown` (ADR-022), so **a blank form has a
+shorter path to `incomplete` than a filled one** — collapsing the section makes
+a walk-up user less likely to open it, which pushes the blank-form path toward
+`incomplete` for reasons that have nothing to do with the request.
+
+On the exemplar path this costs nothing: the values are pre-populated and both
+deterministic derivations still fire, verified by driving the collapsed form
+end to end. So the conditional expander takes both — open where the user must
+supply the facts, collapsed where they are already supplied and the clutter is
+pure cost.
+
+A note on the mechanism, since it is the thing worth doubting: **widgets inside
+a collapsed Streamlit expander still execute and still submit their values.**
+Collapsing changes what is visible, never what is sent. That was checked rather
+than assumed.

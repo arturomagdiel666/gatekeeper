@@ -1,0 +1,72 @@
+# Reference exemplar: NOT_AI, the request is reporting wearing an AI label.
+id: ticket_volume_by_team
+title: Tell us how many tickets each team closed
+expected_verdict: not_ai
+expected_gate: non_ai_alternative_suffices
+
+requesting_area: IT Operations
+business_owner: Lucia Barrera (Head of IT Operations)
+request_text: |
+  We want to use AI to tell us how many tickets each team closed last month,
+  which categories are growing, and which teams are slowest. Right now I ask my
+  team lead for numbers and he sends me a spreadsheet a few days later, and
+  every director asks for it in a slightly different cut.
+
+  Ideally we would have a view where I can see this without asking anyone.
+process_description: |
+  Everything is already in ServiceNow. My team lead exports it to Excel and
+  pivots it by hand once a month. The fields we care about - team, category,
+  closed date, time to close - are all standard fields on the ticket.
+stated_benefit: |
+  Stop chasing my team lead for numbers every month.
+
+reference_assessment:
+  archetype_id: null
+  anti_pattern_ids:
+    - reporting_in_disguise
+  proposed_metric_id: null
+  stated_baseline_value: null
+  dimension_assessments:
+    - dimension_id: business_value
+      score: 1
+      confidence: high
+      evidence: >-
+        Level 1: the stated benefit is one person no longer building a monthly
+        pivot table, which is well under 200 person-hours a year.
+    - dimension_id: adoption_risk
+      score: 3
+      confidence: low
+      evidence: >-
+        Level 3: directors already consume these numbers, but each wants a
+        different cut, and nothing says they were consulted about a shared view.
+    - dimension_id: data_readiness
+      score: 4
+      confidence: high
+      evidence: >-
+        Level 4: all the fields are standard, structured and already in
+        ServiceNow, and the monthly export proves the access path works.
+    - dimension_id: process_frequency
+      score: 1
+      confidence: high
+      evidence: >-
+        Level 1: the reporting process runs once a month, which is 12 instances
+        a year.
+    - dimension_id: implementation_effort
+      score: 1
+      confidence: medium
+      evidence: >-
+        Level 1: a dashboard over structured fields in one system already
+        licensed, no new infrastructure.
+    - dimension_id: data_governance
+      score: 1
+      confidence: medium
+      evidence: >-
+        Level 1: aggregate operational counts, no personal data beyond the
+        assignee names already visible to these managers.
+    - dimension_id: non_ai_alternative
+      score: 5
+      confidence: high
+      evidence: >-
+        Level 5: a report or dashboard over structured fields solves this
+        completely, more cheaply and more predictably. Every question asked is
+        about the past and no decision is attached to the output.

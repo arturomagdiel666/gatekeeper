@@ -22,6 +22,11 @@ from schemas import (
 )
 
 
+_ENTRY = DimensionAssessment(
+    dimension_id="business_value", score=3, evidence="e", confidence=Confidence.LOW
+)
+
+
 def property_names(schema: dict) -> set[str]:
     """Every property name anywhere in a JSON Schema, including nested defs."""
     found: set[str] = set()
@@ -67,11 +72,36 @@ class TestNoVerdictOrTotalAnywhere:
 
 
 class TestAssessmentValidation:
-    def test_minimal_assessment_is_valid(self):
-        assessment = Assessment()
-        assert assessment.archetype_id is None
-        assert assessment.anti_pattern_ids == []
-        assert assessment.dimension_assessments == []
+    def test_the_load_bearing_fields_are_required(self):
+        """A schema that does not demand the work does not get the work.
+
+        Pydantic omits any field with a default from the JSON Schema's
+        `required` list, and grammar-constrained decoding will then satisfy the
+        schema with `{}`. The first live run returned exactly that. These three
+        fields therefore carry no default.
+        """
+        assert set(Assessment.model_json_schema()["required"]) == {
+            "archetype_id",
+            "anti_pattern_ids",
+            "dimension_assessments",
+        }
+        with pytest.raises(ValidationError):
+            Assessment()
+
+    def test_an_assessment_with_the_required_fields_is_valid(self):
+        assessment = Assessment(
+            archetype_id=None,
+            anti_pattern_ids=[],
+            dimension_assessments=[
+                DimensionAssessment(
+                    dimension_id="business_value",
+                    score=3,
+                    evidence="e",
+                    confidence=Confidence.LOW,
+                )
+            ],
+        )
+        assert assessment.proposed_metric_id is None
 
     def test_extra_fields_are_forbidden(self):
         """A hallucinated verdict field must fail loudly, not be ignored."""
@@ -140,12 +170,19 @@ class TestMetricProposalFields:
     """The model's only role in the Measurement Contract."""
 
     def test_metric_proposal_is_optional(self):
-        assessment = Assessment()
+        """Omitting these accepts the archetype default and an unmeasured
+        baseline, both of which are valid outcomes — unlike omitting a score."""
+        assessment = Assessment(
+            archetype_id=None, anti_pattern_ids=[],
+            dimension_assessments=[_ENTRY],
+        )
         assert assessment.proposed_metric_id is None
         assert assessment.stated_baseline_value is None
 
     def test_metric_proposal_round_trips(self):
         assessment = Assessment(
+            archetype_id=None, anti_pattern_ids=[],
+            dimension_assessments=[_ENTRY],
             proposed_metric_id="hours_reclaimed_per_month",
             stated_baseline_value=120.0,
         )

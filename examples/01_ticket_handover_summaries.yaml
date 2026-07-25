@@ -1,0 +1,93 @@
+# Reference exemplar: a clear GO.
+# Scored against the anchors, not tuned to reach a pleasant answer.
+id: ticket_handover_summaries
+title: Shift handover summaries for the service desk
+expected_verdict: go
+expected_gate: null
+
+requesting_area: IT Service Desk
+business_owner: Ana Ruiz (Service Desk Manager)
+request_text: |
+  At every shift change our analysts write a handover note for each open P2/P3
+  ticket so the next shift knows where things stand. It takes the outgoing
+  analyst about 20 minutes at the end of every shift, three shifts a day, and
+  the quality varies a lot depending on who wrote it. When the note is thin the
+  incoming analyst re-reads the whole ticket history anyway, which is what we
+  are trying to avoid.
+
+  We would like something that reads the ticket history and drafts the handover
+  note, which the analyst then checks and edits before it is posted. We are not
+  asking to remove the analyst from the loop - we want them to edit a draft
+  instead of writing from scratch.
+process_description: |
+  Handover notes are written by hand into the ticket in ServiceNow at the end
+  of each shift. About 60 open tickets are carried across a shift change, three
+  times a day, every day. All ticket history lives in ServiceNow and we already
+  have API access for reporting. Our team lead has written down what a good
+  handover note has to contain - current status, what was tried, who was
+  contacted, what the next shift should do first - and she reviews a sample
+  every week.
+stated_benefit: |
+  Roughly one hour of analyst time per day across the three shifts, and fewer
+  tickets where the incoming shift starts over.
+
+reference_assessment:
+  archetype_id: summarization
+  anti_pattern_ids: []
+  proposed_metric_id: hours_reclaimed_per_month
+  stated_baseline_value: null
+  dimension_assessments:
+    - dimension_id: business_value
+      score: 4
+      confidence: medium
+      evidence: >-
+        Level 4 by hours: 20 minutes x 3 shifts x 365 days is roughly 365
+        person-hours a year on writing alone, and the request also claims
+        avoided rework when the incoming shift starts over. That sits above the
+        level 3 floor once the rework is counted, though no figure is given for
+        it, hence medium confidence.
+    - dimension_id: adoption_risk
+      score: 2
+      confidence: high
+      evidence: >-
+        Level 2: the analysts already write these notes daily so the change
+        fits an existing workflow with minor adjustment, and a named owner (the
+        Service Desk Manager) submitted the request. It is not level 1 because
+        the request does not say the analysts asked for it themselves.
+    - dimension_id: data_readiness
+      score: 4
+      confidence: high
+      evidence: >-
+        Level 4: ticket history is centralized in ServiceNow with API access
+        already in place, and for a generative archetype the equivalent of
+        labels is a reference set with quality criteria - the team lead has
+        written down what a good note must contain and samples weekly. Not
+        level 5 because that is draft criteria and a weekly sample rather than
+        a curated evaluation set.
+    - dimension_id: process_frequency
+      score: 5
+      confidence: high
+      evidence: >-
+        Level 5: about 60 tickets x 3 shift changes x 365 days is roughly
+        65,000 handover notes a year, above the 10,000 threshold.
+    - dimension_id: implementation_effort
+      score: 2
+      confidence: medium
+      evidence: >-
+        Level 2: one integration against a ServiceNow API that already exists,
+        one existing process to adjust, no new vendor or licence mentioned.
+    - dimension_id: data_governance
+      score: 2
+      confidence: medium
+      evidence: >-
+        Level 2: internal ticket data containing names and work contact details
+        of staff and requesters. No indication of restricted classification or
+        of a contractual bar on processing.
+    - dimension_id: non_ai_alternative
+      score: 2
+      confidence: high
+      evidence: >-
+        Level 2: a template could pull structured fields such as status,
+        assignee and last update, which covers a minority of the note. The
+        synthesis of what was tried and what to do next is judgement-heavy
+        free text that rules have not captured.

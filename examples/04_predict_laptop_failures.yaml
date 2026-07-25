@@ -1,0 +1,83 @@
+# Reference exemplar: NO_GO via the no_usable_data gate.
+# The weighted total lands in the go band; the gate is what stops it.
+id: predict_laptop_failures
+title: Predict which laptops are about to fail
+expected_verdict: no_go
+expected_gate: no_usable_data
+
+requesting_area: End User Computing
+business_owner: Diego Sandoval (End User Computing Manager)
+request_text: |
+  We replace laptops reactively - a machine dies, the user is down for a day or
+  two while we build a replacement, and it always happens to someone travelling.
+  We would like to predict which machines are going to fail so we can swap them
+  during a scheduled window instead.
+
+  We have about 4,000 laptops in the fleet and we are replacing maybe 30 a
+  month unplanned.
+process_description: |
+  When a laptop fails the user raises a ticket, we triage it, and if it cannot
+  be fixed we build a new one. The ticket says "hardware failure" and nothing
+  else - we have never recorded what actually failed or why. We do not collect
+  any telemetry from the machines: no SMART data, no event logs, no battery
+  health, no crash history. The endpoint management agent could probably report
+  some of that but it has never been switched on.
+stated_benefit: |
+  Around 30 unplanned replacements a month, each costing a day or two of lost
+  productivity plus the rebuild time.
+
+reference_assessment:
+  archetype_id: forecasting
+  anti_pattern_ids:
+    - data_does_not_exist_yet
+  proposed_metric_id: cost_avoided_per_month
+  stated_baseline_value: null
+  dimension_assessments:
+    - dimension_id: business_value
+      score: 5
+      confidence: medium
+      evidence: >-
+        Level 5 by cases affected in a fleet of 4,000 machines with 360
+        unplanned replacements a year, each costing a day or two of lost
+        productivity plus rebuild time. The order of magnitude is estimated
+        from the stated volumes since no figure is given.
+    - dimension_id: adoption_risk
+      score: 2
+      confidence: medium
+      evidence: >-
+        Level 2: scheduled swaps fit the existing replacement workflow with
+        minor adjustment, and a named owner submitted the request.
+    - dimension_id: data_readiness
+      score: 1
+      confidence: high
+      evidence: >-
+        Level 1: the data does not exist in retrievable form. No machine
+        telemetry is collected at all, and the failure history records only the
+        words "hardware failure" with no cause, so there is nothing to learn
+        from and no outcome variable.
+    - dimension_id: process_frequency
+      score: 4
+      confidence: high
+      evidence: >-
+        Level 4: 30 unplanned replacements a month is 360 a year, and the
+        prediction would run across a 4,000-machine fleet continuously.
+    - dimension_id: implementation_effort
+      score: 2
+      confidence: low
+      evidence: >-
+        Level 2 for the modelling itself once data exists - the endpoint agent
+        can report telemetry and needs switching on. Low confidence because the
+        data collection period is not an integration cost and is not scored here.
+    - dimension_id: data_governance
+      score: 2
+      confidence: medium
+      evidence: >-
+        Level 2: device telemetry tied to an assigned user is internal data
+        with limited personal fields, covered by standard processing.
+    - dimension_id: non_ai_alternative
+      score: 1
+      confidence: medium
+      evidence: >-
+        Level 1: no deterministic rule predicts hardware failure from data
+        nobody is collecting. Age-based replacement is the current implicit
+        rule and it is what is failing.

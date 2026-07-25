@@ -138,7 +138,10 @@ class DimensionAssessment(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     dimension_id: str
-    score: int | None = Field(default=None, ge=SCORE_MIN, le=SCORE_MAX)
+    #: Required but nullable: the model must decide explicitly between a score
+    #: and "the request does not establish this". Giving it a default would let
+    #: the field be omitted, which is not the same statement.
+    score: int | None = Field(ge=SCORE_MIN, le=SCORE_MAX)
     evidence: str
     confidence: Confidence
 
@@ -170,9 +173,24 @@ class Assessment(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    archetype_id: str | None = None
-    anti_pattern_ids: list[str] = Field(default_factory=list)
-    dimension_assessments: list[DimensionAssessment] = Field(default_factory=list)
+    # These three are REQUIRED — deliberately, and the reason is measured.
+    # Pydantic omits any field with a default from the JSON Schema's `required`
+    # list, and grammar-constrained decoding will then happily satisfy the
+    # schema with `{}`. The first live run of the six examples returned
+    # `{"archetype_id": "summarization", "proposed_metric_id": "..."}` and
+    # nothing else: the model identified the archetype correctly and stopped,
+    # because the schema told it everything else was optional. A schema that
+    # does not demand the work does not get the work.
+    archetype_id: str | None = Field(description="Null if no archetype fits.")
+    anti_pattern_ids: list[str] = Field(
+        description="Empty list if none match. Never omit the key."
+    )
+    dimension_assessments: list[DimensionAssessment] = Field(
+        min_length=1,
+        description="One entry per rubric dimension.",
+    )
+    # Genuinely optional: omitting these accepts the archetype's default metric
+    # and records the baseline as unmeasured, both of which are valid outcomes.
     proposed_metric_id: str | None = None
     stated_baseline_value: float | None = None
 

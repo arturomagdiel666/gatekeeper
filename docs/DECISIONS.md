@@ -828,3 +828,169 @@ declared and then silently never evaluated.
 
 No system clock is consulted: `next_review_date` is derived from the contract's
 own `review_date`.
+
+---
+
+## ADR-018 — Single-shot assessment, config-generated prompts, six exemplars
+
+**Date:** 2026-07-25 · **Commit:** Phase 3 Part D · **Status:** accepted
+
+### The prompt is generated from the config
+
+`build_system_prompt()` renders `rubric.yaml` and `patterns.yaml` into the
+system prompt, anchors included verbatim, so the model scores against the same
+level descriptors a human reviewer reads. **Tuning the rubric tunes the
+prompt.** There is no second copy of the anchors to drift out of sync, which
+was the alternative and the obvious source of a silent bug: a rubric edit that
+changes what a 4 means while the prompt still describes the old one.
+
+A test asserts every anchor string appears in the generated prompt, so a
+rendering change that quietly drops them fails loudly.
+
+### Naming hygiene is enforced by a test, not by discipline
+
+`schemas.BANNED_PROMPT_SYNONYMS` turns ADR-004's finding into data, and a test
+asserts the generated prompt contains none of them. The list is curated rather
+than exhaustive: only terms that could plausibly be mistaken for a *key name*
+are banned. Common English that merely appears near a field — "because",
+"level", "criteria", "type" — is excluded deliberately, because banning it
+would make the check unpassable without making the prompt any safer, and
+"level" in particular is load-bearing in the anchors.
+
+### One retry, then surface the failure
+
+A response that fails schema validation is retried **once**, with the
+validation error appended as a corrective message, and `retry_count` is
+recorded on the result. Retrying further would hide a systematic problem behind
+latency instead of reporting it. A `MockProvider` returning `{"mock": true}`
+therefore fails loudly rather than silently producing a meaningless
+assessment — which is a test in its own right.
+
+### Six exemplars, and what they are for
+
+`examples/` holds six requests written the way an internal requester actually
+writes them, each with a hand-authored assessment whose every score quotes the
+anchor level it satisfies. They cover a clear `go`, `not_ai` by existing
+licensed capability, `not_ai` by reporting-in-disguise, `no_go` by the data
+gate, `no_go` by the owner gate, and an `incomplete`.
+
+`tests/test_examples.py` asserts the **engine** turns each hand-authored
+assessment into the expected verdict — it tests the scoring engine, not the
+model. `scripts/run_examples.py` asks the different question: what does the
+model produce from the raw request text? A mismatch there is information about
+where the model reads a request differently from a human assessor, not a test
+failure, which is why it is a script and not a test.
+
+**One exemplar was left scoring "wrong" on purpose.**
+`contract_renewal_drafting` (the owner-gate case) totals 3.08, which bands as
+`no_go` anyway — so the gate does not override a passing score there. The
+honest anchor-faithful scores produce that number, and adoption_risk 4 ("nobody
+has agreed to own it") is genuinely correlated with the missing owner. Inflating
+the scores to make the override dramatic would have been exactly the exemplar
+bias ADR-014 was written to prevent. The test was changed to assert what is
+actually true: the gate changes the *reason* the requester is given, from "you
+scored 3.08" to the one thing they can act on. `predict_laptop_failures` is the
+clean demonstration of a gate overriding a passing score, and asserts it.
+
+### The UI is tested headlessly, not just started
+
+`tests/test_app.py` drives `app.py` through Streamlit's `AppTest` harness: both
+tabs render, a triage completes end to end through the offline path (verdict,
+gates, contract), and a review completes for both a healthy and a failing
+agent. Checking that the server returns HTTP 200 would only prove the process
+started; this proves the script runs and produces the right output.
+
+The triage tab carries an offline checkbox that scores an example's
+hand-authored assessment with no provider at all. That is what makes the demo
+survive a dead Ollama in front of an audience, and it is also how the UI is
+tested without a model.
+
+---
+
+## ADR-019 — A schema that does not demand the work does not get the work
+
+**Date:** 2026-07-25 · **Commit:** Phase 3 Part D · **Status:** accepted
+
+Found by running the six examples against live `qwen2.5:7b` rather than by
+reading the code. Recorded because the failure was invisible to every test.
+
+### Finding 1 — an all-optional schema is satisfied by `{}`
+
+The first live run returned `incomplete` for all six examples with **all seven
+dimensions unknown**, in under 1.5 seconds each. The model was not failing; it
+was complying. Every field on `Assessment` had a default, so Pydantic emitted a
+JSON Schema with **no `required` list at all**, and grammar-constrained
+decoding correctly satisfied it with:
+
+```json
+{"archetype_id": "summarization", "proposed_metric_id": "hours_reclaimed_per_month"}
+```
+
+It identified the archetype correctly and stopped, because the schema said
+everything else was optional. `archetype_id`, `anti_pattern_ids` and
+`dimension_assessments` now carry no default and are therefore required, and
+`DimensionAssessment.score` is required-but-nullable so the model must decide
+explicitly between a score and "not established" rather than omitting the key.
+
+The lesson generalises past this bug: **with constrained decoding, the schema is
+the specification, and any latitude it grants will be taken.** Prompt prose
+asking for more than the schema requires is a suggestion; the schema is the
+contract.
+
+### Finding 2 — prose could not stop id confusion, but the grammar could
+
+With the fields required, the model produced real assessments — and put
+**metric ids in `dimension_id`** (`hours_reclaimed_per_month`,
+`rework_rate_pct`), taking them from the candidate-metrics section adjacent in
+the prompt. Adding an explicit instruction ("those seven ids are the ONLY valid
+values ... never put a metric id in dimension_id") did **not** fix it: the next
+attempt made the identical error.
+
+`build_response_schema()` now pins every id the model may emit to an `enum`
+drawn from the loaded config, and `dimension_assessments` to exactly one entry
+per dimension. Under the enum the mistake is unreachable — the tokens do not
+exist in the grammar. This is ADR-005's principle one level deeper: constrain
+the output rather than ask for it. The schema handed to the model is derived
+from config exactly as the prompt is, so both stay in step with the rubric.
+
+### Finding 3 — the live gap that remains, stated plainly
+
+After both fixes, all six examples produce schema-valid assessments with zero
+retries in 4-7 seconds each. **2 of 6 verdicts match the human anchor-faithful
+reading** (`evals/run_examples_20260725.json`):
+
+| Example | Expected | Model | Deciding gate |
+|---|---|---|---|
+| hr_policy_questions | not_ai | **not_ai** | existing_capability_covers_it ✓ |
+| ticket_volume_by_team | not_ai | **not_ai** | non_ai_alternative_suffices ✓ |
+| ticket_handover_summaries | go | incomplete | — |
+| predict_laptop_failures | no_go | not_ai | existing_capability_covers_it ✗ |
+| contract_renewal_drafting | no_go | not_ai | existing_capability_covers_it ✗ |
+| something_with_the_invoices | incomplete | not_ai | non_ai_alternative_suffices ✗ |
+
+Two distinct failure modes, both worth naming:
+
+**Anti-pattern over-matching.** `existing_licensed_capability` fired on three
+requests where no licensed capability was mentioned. Because it is the
+highest-precedence gate, a false positive there decides the verdict outright.
+This is the same shape as the scenario-C false-positive risk measured in Phase
+1.5 — a model that asserts a blocking pattern when none applies is as damaging
+as one that misses it. The mitigation is not more prompt text (see finding 2);
+the candidate directions are a per-anti-pattern evidence requirement enforced in
+the schema, or a second constrained call that only adjudicates anti-patterns.
+
+**Under-population of dimensions.** The model routinely leaves `adoption_risk`,
+`data_governance` and `non_ai_alternative` unknown — the three most abstract
+dimensions, and the ones least often stated explicitly in a request. That is
+arguably correct behaviour on a terse request, and the engine degrades safely:
+unknowns are recorded, not invented, and the verdict becomes `incomplete`
+rather than a fabricated score.
+
+**This is not presented as a working end-to-end demo.** The scoring engine is
+fully tested and deterministic; the model front-end on a 7B local model is not
+yet reliable enough to trust unsupervised. The honest framing for a demo is to
+show the engine on the reference exemplars (the offline path in the UI) and to
+show the live model as a measured, imperfect front-end — with these numbers on
+the slide rather than hidden. The obvious next experiments are a 14B model and
+an anti-pattern adjudication pass; both are cheap and both are measurable with
+`scripts/run_examples.py` as it stands.

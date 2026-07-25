@@ -1,0 +1,79 @@
+# Reference exemplar: INCOMPLETE.
+# Three dimensions cannot be established from what was submitted, which is over
+# the completeness limit. The honest answer is to name what is missing rather
+# than to guess - that is what replaces the clarifying questions a
+# conversational interview would have asked.
+id: something_with_the_invoices
+title: Do something with the supplier invoices
+expected_verdict: incomplete
+expected_gate: null
+
+requesting_area: Finance
+business_owner: Rocio Delgado (Accounts Payable Supervisor)
+request_text: |
+  We think there is something AI could do with our supplier invoices. The team
+  spends a lot of time on them and it feels like the kind of thing that should
+  be automated by now. Other companies are doing this.
+
+  Can you have a look and tell us what is possible?
+process_description: |
+  Invoices arrive by email and get processed by the AP team.
+stated_benefit: null
+
+reference_assessment:
+  archetype_id: extraction
+  anti_pattern_ids:
+    - solution_first_no_measurable_problem
+  proposed_metric_id: null
+  stated_baseline_value: null
+  dimension_assessments:
+    - dimension_id: business_value
+      score: null
+      confidence: low
+      evidence: >-
+        Not established. "A lot of time" names no hours, no cost, and no
+        invoice volume, so there is no magnitude to place on the scale. The
+        request must state how many invoices are processed and what the current
+        handling time is.
+    - dimension_id: adoption_risk
+      score: null
+      confidence: low
+      evidence: >-
+        Not established. The request does not say whether the AP team was
+        consulted, what would change about their workflow, or what happened to
+        any previous tool built for them.
+    - dimension_id: data_readiness
+      score: 3
+      confidence: low
+      evidence: >-
+        Level 3 at best: invoices arrive by email, so they exist in a reachable
+        place, but nothing is said about their quality, their formats, or any
+        way to judge whether an extracted field is correct.
+    - dimension_id: process_frequency
+      score: null
+      confidence: low
+      evidence: >-
+        Not established. No invoice volume is given, and this scale measures
+        instances per year.
+    - dimension_id: implementation_effort
+      score: null
+      confidence: low
+      evidence: >-
+        Not established. With no stated scope, no target system and no idea
+        which of several possible tasks is wanted, the build cost cannot be
+        placed on the scale.
+    - dimension_id: data_governance
+      score: 3
+      confidence: low
+      evidence: >-
+        Level 3: supplier invoices are commercially sensitive and contain
+        supplier contact details, so processing would need a documented
+        assessment. No indication of a restricted classification.
+    - dimension_id: non_ai_alternative
+      score: 3
+      confidence: low
+      evidence: >-
+        Level 3 provisionally: invoice processing usually splits between
+        structured data a rule can handle and free-text exceptions that need
+        judgement. Without knowing which task is wanted this cannot be scored
+        more precisely.

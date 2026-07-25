@@ -1,0 +1,80 @@
+# Reference exemplar: NO_GO via the no_named_business_owner intake gate.
+# Note the business_owner field is deliberately empty. This gate is a fact
+# about the request form, not a judgement about the use case - the scores are
+# strong and the request may well be worth resubmitting.
+id: contract_renewal_drafting
+title: Draft supplier renewal summaries
+expected_verdict: no_go
+expected_gate: no_named_business_owner
+
+requesting_area: Procurement
+business_owner: ""
+request_text: |
+  Someone in the team suggested we get AI to draft the renewal summary for each
+  supplier contract coming up for renegotiation. At the moment a buyer reads
+  the contract, the spend history and last year's performance notes, then
+  writes a two-page summary for the renewal meeting. It takes half a day per
+  contract and we do about 250 renewals a year.
+
+  I am raising this on behalf of the team - we have not agreed yet who would
+  own it.
+process_description: |
+  Contracts are in the contract repository, spend is in the ERP, and
+  performance notes are in a shared folder per supplier. The buyers have a
+  standard template for the summary and the category managers know what a good
+  one looks like. All three systems are accessible to Procurement.
+stated_benefit: |
+  Half a day per renewal across 250 renewals a year.
+
+reference_assessment:
+  archetype_id: summarization
+  anti_pattern_ids: []
+  proposed_metric_id: hours_reclaimed_per_month
+  stated_baseline_value: null
+  dimension_assessments:
+    - dimension_id: business_value
+      score: 3
+      confidence: high
+      evidence: >-
+        Level 3 by hours: half a day is about 4 hours, times 250 renewals a
+        year, is roughly 1,000 person-hours a year.
+    - dimension_id: adoption_risk
+      score: 4
+      confidence: high
+      evidence: >-
+        Level 4: nobody has agreed to own it, the request is raised on behalf
+        of the team rather than by the buyers who would use it, and the request
+        does not say the buyers were consulted.
+    - dimension_id: data_readiness
+      score: 4
+      confidence: medium
+      evidence: >-
+        Level 4: three accessible systems, and for a generative task the
+        equivalent of labels is a reference set - there is a standard template
+        and category managers who know what a good summary looks like. Not
+        level 5 because no curated evaluation set or written criteria is stated.
+    - dimension_id: process_frequency
+      score: 3
+      confidence: high
+      evidence: >-
+        Level 3: 250 renewals a year is inside the 100 to 1,000 band.
+    - dimension_id: implementation_effort
+      score: 3
+      confidence: medium
+      evidence: >-
+        Level 3: three separate system integrations plus a workflow change,
+        across Procurement and the systems' owners.
+    - dimension_id: data_governance
+      score: 3
+      confidence: medium
+      evidence: >-
+        Level 3: commercially sensitive supplier contracts and pricing.
+        Processing is permitted but would need a documented assessment and the
+        data owner's approval.
+    - dimension_id: non_ai_alternative
+      score: 2
+      confidence: medium
+      evidence: >-
+        Level 2: the template already structures the output, which covers a
+        minority of the work. Reading the contract and the performance notes to
+        decide what matters for the negotiation is judgement-heavy.

@@ -43,6 +43,7 @@ def make_assessment(scores=None, archetype_id="summarization", **kwargs) -> Asse
     """Build an Assessment with the given scores and metric proposal."""
     return Assessment(
         archetype_id=archetype_id,
+        anti_pattern_ids=[],
         dimension_assessments=[
             DimensionAssessment(
                 dimension_id=key,

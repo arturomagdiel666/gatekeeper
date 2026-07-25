@@ -1,0 +1,81 @@
+# Reference exemplar: NOT_AI, blocked by an already-licensed capability.
+# The highest-value check in the model: the company already pays for this.
+id: hr_policy_questions
+title: An assistant that answers HR policy questions in the chat client
+expected_verdict: not_ai
+expected_gate: existing_capability_covers_it
+
+requesting_area: Human Resources
+business_owner: Marcos Pena (HR Operations Lead)
+request_text: |
+  HR Operations gets the same policy questions over and over - how much carry
+  over leave am I allowed, what is the travel expense limit, how do I book
+  parental leave. People email us or stop us in the corridor and we answer from
+  the same handful of policy PDFs every time.
+
+  We would like an AI assistant in the chat client that staff can ask these
+  questions, so it answers from the policy documents instead of us doing it.
+process_description: |
+  The policies live as PDFs on the intranet document library, which is part of
+  the productivity suite we already license company-wide. HR Ops answer roughly
+  40 of these questions a week by email. We have not spoken to the platform
+  team about this. IT mentioned that the assistant bundled with our current
+  licence tier can already search and answer over that same document library,
+  but nobody has tried it.
+stated_benefit: |
+  Give HR Ops their time back and give staff faster answers.
+
+reference_assessment:
+  archetype_id: rag_qa
+  anti_pattern_ids:
+    - existing_licensed_capability
+  proposed_metric_id: search_success_rate_pct
+  stated_baseline_value: null
+  dimension_assessments:
+    - dimension_id: business_value
+      score: 2
+      confidence: medium
+      evidence: >-
+        Level 2 by volume: 40 questions a week is about 2,000 a year, and the
+        handling time per question is small. No figure is given, so the
+        magnitude is estimated from the stated volume.
+    - dimension_id: adoption_risk
+      score: 3
+      confidence: medium
+      evidence: >-
+        Level 3: staff currently email or ask in person, so using an assistant
+        is a new step, and adoption would depend on HR redirecting people to
+        it. The intended users - staff generally - were not consulted.
+    - dimension_id: data_readiness
+      score: 3
+      confidence: medium
+      evidence: >-
+        Level 3: the policy PDFs exist in one document library with an access
+        path, but the request does not say the corpus is curated or current,
+        and there is no agreed way stated to judge whether an answer is good.
+    - dimension_id: process_frequency
+      score: 3
+      confidence: high
+      evidence: >-
+        Level 3: 40 questions a week is roughly 2,000 a year, inside the 100
+        to 1,000 band once seasonal variation is allowed, and at its top edge.
+    - dimension_id: implementation_effort
+      score: 1
+      confidence: medium
+      evidence: >-
+        Level 1: configuring an assistant already included in the current
+        licence tier over a document library it already indexes. Days, not
+        weeks, if the licensed capability is used.
+    - dimension_id: data_governance
+      score: 2
+      confidence: medium
+      evidence: >-
+        Level 2: published internal HR policy documents, not personal records.
+        Already inside the licensed platform's processing boundary.
+    - dimension_id: non_ai_alternative
+      score: 4
+      confidence: high
+      evidence: >-
+        Level 4: configuration of a tool the company already owns would solve
+        most of it. IT has said the bundled assistant already searches this
+        document library and nobody has tried it.

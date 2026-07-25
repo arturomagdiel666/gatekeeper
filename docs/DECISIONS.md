@@ -1175,3 +1175,114 @@ Three honest options, none of them "tune the prompt again":
 The engine is unaffected by any of this: 307 tests, all six exemplars produce
 their expected verdicts offline, and the offline path in the UI demonstrates
 the full pipeline with no model at all.
+
+---
+
+## ADR-022 — The unknown budget was in the wrong unit (and a prompt is not free)
+
+**Date:** 2026-07-25 · **Commit:** Phase 3.2 · **Status:** accepted
+
+### Change 1 — completeness is measured in weight, not in a count
+
+`max_unknown_dimensions: 1` counted dimensions, which treats `business_value`
+(0.22) as equivalent to `non_ai_alternative` (0.10). It is not:
+
+> **The uncertainty of a verdict is proportional to the weight that is missing,
+> not to the number of empty slots.**
+
+Replaced with `max_unknown_weight: 0.25` plus a `never_unknown` list.
+
+**This is a change of unit, not a threshold relaxation** — and it does make some
+previously-`incomplete` cases resolvable, which is stated here so nobody reading
+the repo has to wonder whether it was tuned to make a demo pass. It was not: the
+`never_unknown` list added by the same change is strictly *stricter* than what it
+replaced, and it is what turned one of the final run's results from a silent pass
+into an `incomplete`.
+
+### The lineage — this is the second occurrence
+
+This is the same class of error as the Phase 1.6 `fully-valid` metric (ADR-004),
+which collapsed two independent failure layers — call emission and key fidelity —
+into one number and produced a result that answered neither question. Both are
+**wrong-unit errors**: a quantity was counted in units that did not carry the
+meaning being reasoned about. Twice in one project, in code written carefully
+both times, is enough to call it a pattern worth watching for rather than a
+one-off slip. The tell in both cases was the same: a metric that aggregates over
+things which are not interchangeable.
+
+### `never_unknown` — and why the second reason matters more
+
+- **`business_value`** — an assessment with no view of magnitude is not an
+  assessment.
+- **`data_readiness`, `data_governance`, `non_ai_alternative`** — each is the
+  condition of a blocking gate. **A gate whose dimension is null cannot fire, so
+  an unknown there silently disables a blocking rule. It FAILS OPEN**: the
+  request proceeds as though the check had passed, when in fact it was never
+  run. That is the most dangerous shape missing information can take here.
+
+`config.py` now *enforces* this: a rubric whose gate dimensions are not all in
+`never_unknown` is rejected at load time with "it fails open". A future gate
+added without its guard cannot ship.
+
+**A measured consequence of that guard:** the Phase 3.1 test
+`test_a_gate_cannot_fire_on_an_unknown_dimension` asserted that a request with
+`data_readiness = None` scored 5.00 and returned **go** — with the
+`no_usable_data` gate silently never evaluated. That test documented the
+fail-open bug as though it were correct behaviour. It now asserts `incomplete`.
+
+**An honest interaction, recorded rather than hidden:** given the shipped
+`never_unknown` list, only `adoption_risk` (0.17), `process_frequency` (0.13)
+and `implementation_effort` (0.13) may be unknown at all, and every pair of them
+exceeds 0.25. So in practice the budget permits at most one unknown — barely
+looser than the count-of-1 it replaced. The unit is now right, which is what
+makes future reweighting safe; the effective permissiveness barely changed.
+
+### Change 2 — derived dimensions are not sent to the model
+
+When `process_frequency` and `data_governance` are settled from the intake form,
+their anchors are dead weight in the prompt: the model is not being asked to
+score them. Both are now omitted from the prompt and from the response schema,
+and merged back into the `Assessment` after parsing. On a request with both
+fields filled, the prompt drops from 19,228 to 17,394 characters and the schema
+from 7 required dimension entries to 5.
+
+### The measured result — and what the latency distribution revealed
+
+**4/6, up from 3/6.** The number moved.
+
+More instructive is the latency, which the spec required per-request for a
+reason:
+
+```
+min 4.8s | median 5.1s | max 416.6s | total 442s
+```
+
+Phase 3.1 reported "445s total, ~74s per request" and concluded the longer
+prompt had made the model uniformly slower. **That conclusion was wrong, and the
+mean is what made it wrong.** Five of six requests complete in about five
+seconds; one outlier takes 416s and carries the entire total. The Phase 3.1
+figure was one pathological request divided across six, reported as if it were a
+distribution — a third wrong-unit error, in the reporting this time rather than
+in the code.
+
+The real picture: typical latency is ~5s, and one request occasionally falls
+into a pathological generation. That is a completely different problem from
+"the prompt is too long", and would have been mis-fixed indefinitely on the
+mean.
+
+### Final state of the live path
+
+| | Phase 3 | Phase 3.1 | Phase 3.2 |
+|---|---|---|---|
+| Verdicts matching | 2/6 | 3/6 | **4/6** |
+| Median latency | not measured | not measured | 5.1s |
+
+The two remaining mismatches are model scoring errors, not engine errors:
+`ticket_handover_summaries` scored `data_readiness = 1` on a request describing
+five years of accessible ticket history, firing `no_usable_data`;
+`predict_laptop_failures` left three dimensions unknown. Both are the same
+underlying limitation recorded in ADR-021 — a 7B model will not commit on
+abstract dimensions from a short request — and both are now *visible* rather
+than silent, which is the property this whole build has optimised for.
+
+The live path is frozen here and measured, not tuned further.

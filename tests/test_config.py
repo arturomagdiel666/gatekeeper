@@ -229,12 +229,30 @@ class TestRubricValidationFailures:
         with pytest.raises(ConfigError):
             write_rubric(tmp_path, rubric_data)
 
-    def test_unknown_limit_above_dimension_count_is_rejected(
+    def test_never_unknown_naming_a_missing_dimension_is_rejected(
         self, tmp_path, rubric_data
     ):
-        rubric_data["completeness"]["max_unknown_dimensions"] = 99
-        with pytest.raises(ConfigError, match="exceeds the number of dimensions"):
+        rubric_data["completeness"]["never_unknown"].append("no_such_dimension")
+        with pytest.raises(ConfigError, match="do not exist"):
             write_rubric(tmp_path, rubric_data)
+
+    def test_a_gate_dimension_outside_never_unknown_is_rejected(
+        self, tmp_path, rubric_data
+    ):
+        """The fail-open guard: a gate whose dimension may be unknown cannot fire."""
+        rubric_data["completeness"]["never_unknown"] = ["business_value"]
+        with pytest.raises(ConfigError, match="fails open"):
+            write_rubric(tmp_path, rubric_data)
+
+    def test_every_gate_dimension_is_guarded_in_the_shipped_config(self):
+        rubric = load_rubric()
+        gated = {
+            c.dimension
+            for g in rubric.blocking_gates
+            for c in g.any_of
+            if hasattr(c, "dimension")
+        }
+        assert gated <= set(rubric.completeness.never_unknown)
 
     def test_unknown_top_level_key_is_rejected(self, tmp_path, rubric_data):
         rubric_data["surprise"] = True

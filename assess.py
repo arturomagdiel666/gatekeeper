@@ -33,8 +33,14 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from config import PATTERNS, RUBRIC, Patterns, Rubric
 from contracts import CONTRACTS, ContractsConfig, issue_contract
 from provider import LLMProvider, parse_json_content
-from schemas import Assessment, MeasurementContract, RequestIntake
-from scoring import Outcome, score
+from schemas import (
+    Assessment,
+    Confidence,
+    DimensionAssessment,
+    MeasurementContract,
+    RequestIntake,
+)
+from scoring import Outcome, derive_scores, score
 
 __all__ = [
     "AssessmentResult",
@@ -69,12 +75,25 @@ class AssessmentResult(BaseModel):
     ignored_metric_ids: list[str] = Field(default_factory=list)
     #: How many corrective retries were needed. Above zero is worth watching.
     retry_count: int = 0
+    #: Dimensions settled from the intake form; never shown to the model.
+    derived_dimensions: list[str] = Field(default_factory=list)
+    #: Dimensions the model was actually asked to score.
+    model_scored_dimensions: list[str] = Field(default_factory=list)
 
 
-def _render_dimensions(rubric: Rubric) -> str:
-    """Render every dimension with its axis and all five anchors."""
+def _render_dimensions(rubric: Rubric, omit: set[str] | None = None) -> str:
+    """Render each dimension with its axis and all five anchors.
+
+    Dimensions in ``omit`` are skipped entirely: they are resolved
+    deterministically from the intake for this request, so the model is not
+    being asked to score them and their anchors are dead weight in the prompt.
+    On a 7B model that weight is not free — see ADR-022.
+    """
+    skip = omit or set()
     blocks: list[str] = []
     for dimension in rubric.dimensions:
+        if dimension.id in skip:
+            continue
         lines = [
             f"### {dimension.id}  ({dimension.label})",
             f"Measures: {' '.join(dimension.axis.split())}",
@@ -122,6 +141,7 @@ def build_system_prompt(
     rubric: Rubric | None = None,
     patterns: Patterns | None = None,
     contracts_config: ContractsConfig | None = None,
+    omit_dimensions: set[str] | None = None,
 ) -> str:
     """Assemble the assessment system prompt from the configuration.
 
@@ -145,6 +165,8 @@ def build_system_prompt(
     active_rubric = rubric or RUBRIC
     active_patterns = patterns or PATTERNS
     active_contracts = contracts_config or CONTRACTS
+    skip = omit_dimensions or set()
+    asked = [d for d in active_rubric.dimensions if d.id not in skip]
 
     return f"""You assess requests submitted to an internal IT AI Agent Hub.
 
@@ -155,18 +177,18 @@ gates and thresholds to what you record, and produces the decision.
 
 ## What you produce
 
-dimension_assessments must contain EXACTLY these {len(active_rubric.dimensions)} entries, one per
+dimension_assessments must contain EXACTLY these {len(asked)} entries, one per
 dimension, in this order:
 
-{chr(10).join(f"  {i}. {d.id}" for i, d in enumerate(active_rubric.dimensions, 1))}
+{chr(10).join(f"  {i}. {d.id}" for i, d in enumerate(asked, 1))}
 
-Those {len(active_rubric.dimensions)} ids are the ONLY valid values for dimension_id. They are not
+Those {len(asked)} ids are the ONLY valid values for dimension_id. They are not
 the same thing as proposed_metric_id, which comes from a separate list further
 down — never put a metric id in dimension_id.
 
 Each entry contains:
 
-- dimension_id: one of the {len(active_rubric.dimensions)} ids listed immediately above.
+- dimension_id: one of the {len(asked)} ids listed immediately above.
 - score: an integer from {active_rubric.scale.min} to {active_rubric.scale.max}
   matching the level whose description fits what the request actually says, or
   null if the request does not establish it.
@@ -210,7 +232,7 @@ Plus, at the top level:
 
 ## Dimensions
 
-{_render_dimensions(active_rubric)}
+{_render_dimensions(active_rubric, skip)}
 
 ## Archetypes
 
@@ -238,6 +260,7 @@ def build_response_schema(
     rubric: Rubric | None = None,
     patterns: Patterns | None = None,
     contracts_config: ContractsConfig | None = None,
+    omit_dimensions: set[str] | None = None,
 ) -> dict:
     """Derive the response schema from :class:`~schemas.Assessment` and the config.
 
@@ -265,7 +288,8 @@ def build_response_schema(
     active_contracts = contracts_config or CONTRACTS
 
     schema = Assessment.model_json_schema()
-    dimension_ids = active_rubric.dimension_ids
+    skip = omit_dimensions or set()
+    dimension_ids = [i for i in active_rubric.dimension_ids if i not in skip]
 
     entry = schema["$defs"]["DimensionAssessment"]["properties"]
     entry["dimension_id"] = {"type": "string", "enum": dimension_ids}
@@ -361,12 +385,22 @@ def assess_request(
     active_patterns = patterns or PATTERNS
     active_contracts = contracts_config or CONTRACTS
 
-    system_prompt = build_system_prompt(active_rubric, active_patterns, active_contracts)
+    # Dimensions this intake settles outright are not asked of the model:
+    # omitted from the prompt and from the schema, then merged back after
+    # parsing so the Assessment is still complete.
+    derived = derive_scores(active_rubric, intake)
+    omit = set(derived)
+
+    system_prompt = build_system_prompt(
+        active_rubric, active_patterns, active_contracts, omit
+    )
     messages: list[dict] = [
         {"role": "system", "content": system_prompt},
         {"role": "user", "content": build_user_message(intake)},
     ]
-    schema = build_response_schema(active_rubric, active_patterns, active_contracts)
+    schema = build_response_schema(
+        active_rubric, active_patterns, active_contracts, omit
+    )
 
     assessment: Assessment | None = None
     retry_count = 0
@@ -402,6 +436,20 @@ def assess_request(
             f"{retry_count} retry(ies). Last error:\n{last_error}"
         )
 
+    # Merge the derived dimensions back in, so the Assessment carried on the
+    # result is complete even though the model never saw them.
+    scored_by_model = [e.dimension_id for e in assessment.dimension_assessments]
+    for dimension_id, (score_value, why) in derived.items():
+        if dimension_id not in scored_by_model:
+            assessment.dimension_assessments.append(
+                DimensionAssessment(
+                    dimension_id=dimension_id,
+                    score=score_value,
+                    evidence=why,
+                    confidence=Confidence.HIGH,
+                )
+            )
+
     outcome = score(assessment, active_rubric, active_patterns, intake)
     contract_result = issue_contract(
         outcome,
@@ -418,4 +466,8 @@ def assess_request(
         contract=contract_result.contract,
         ignored_metric_ids=contract_result.ignored_metric_ids,
         retry_count=retry_count,
+        derived_dimensions=sorted(derived),
+        model_scored_dimensions=[
+            i for i in active_rubric.dimension_ids if i not in omit
+        ],
     )

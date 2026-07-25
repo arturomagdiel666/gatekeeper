@@ -128,6 +128,22 @@ def rubric_with(tmp_path, **changes):
     return load_rubric(path)
 
 
+def permissive_rubric(tmp_path, **completeness):
+    """A rubric with a relaxed completeness rule and NO gates.
+
+    The gates must go too: config.py refuses a rubric whose gate dimensions are
+    not in never_unknown, precisely because such a gate fails open. These
+    fixtures exist to exercise the weight rule on its own, so they drop the
+    gates rather than defeat that guard.
+    """
+    data = yaml.safe_load(RUBRIC_PATH.read_text())
+    data["completeness"] = completeness
+    data["blocking_gates"] = []
+    path = tmp_path / "rubric.yaml"
+    path.write_text(yaml.safe_dump(data))
+    return load_rubric(path)
+
+
 def rubric_without_gate(tmp_path, gate_id: str):
     """Load a copy of the real rubric with one blocking gate deleted."""
     data = yaml.safe_load(RUBRIC_PATH.read_text())
@@ -369,7 +385,14 @@ class TestBlockingGates:
         precedences = [g.precedence for g in outcome.triggered_gates]
         assert precedences == sorted(precedences)
 
-    def test_a_gate_cannot_fire_on_an_unknown_dimension(self):
+    def test_an_unknown_gate_dimension_yields_incomplete_not_a_silent_pass(self):
+        """The fail-open guard.
+
+        A gate whose dimension is null cannot fire. Before Phase 3.2 that
+        request sailed through as a `go` with the blocking rule silently never
+        run; now every gate dimension is in never_unknown, so the same input
+        returns `incomplete` and names the reason.
+        """
         outcome = score(
             make_assessment({**BEST_SCORES, "data_readiness": None}),
             RUBRIC,
@@ -378,9 +401,8 @@ class TestBlockingGates:
         )
         assert outcome.triggered_gates == []
         assert outcome.unknown_dimensions == ["data_readiness"]
-        # Every remaining dimension normalizes to 5, so renormalization gives 5.00.
-        assert outcome.weighted_total == pytest.approx(5.00)
-        assert outcome.verdict is Verdict.GO
+        assert outcome.verdict is Verdict.INCOMPLETE
+        assert "gate condition" in outcome.completeness_violation
 
     def test_gate_fires_even_when_the_request_is_too_sparse_to_score(self):
         outcome = score(
@@ -426,56 +448,141 @@ class TestBlockingGates:
 
 
 class TestCompleteness:
-    def test_one_unknown_still_scores_with_renormalized_weights(self):
-        # data_readiness unknown; every remaining dimension normalizes to 4, so
-        # the renormalized weights must still produce exactly 4.00.
+    """Completeness is measured in WEIGHT, plus an absolute never_unknown list.
+
+    Weights: business_value 0.22, adoption_risk 0.17, data_readiness 0.15,
+    process_frequency 0.13, implementation_effort 0.13, data_governance 0.10,
+    non_ai_alternative 0.10. Budget 0.25.
+    """
+
+    def test_one_unknown_within_budget_scores_with_renormalized_weights(self):
+        # process_frequency unknown = 0.13 of weight, inside the 0.25 budget,
+        # and not in never_unknown. Every remaining dimension normalizes to 4,
+        # so renormalization must still produce exactly 4.00.
         scores = {
             "business_value": 4,
             "adoption_risk": 2,
-            "data_readiness": None,
-            "process_frequency": 4,
+            "data_readiness": 4,
+            "process_frequency": None,
             "implementation_effort": 2,
             "data_governance": 2,
             "non_ai_alternative": 2,
         }
         outcome = score(make_assessment(scores), RUBRIC, PATTERNS, OWNED)
-        assert outcome.unknown_dimensions == ["data_readiness"]
+        assert outcome.unknown_dimensions == ["process_frequency"]
+        assert outcome.unknown_weight == pytest.approx(0.13)
+        assert outcome.completeness_violation is None
         assert outcome.weighted_total == pytest.approx(4.00)
         assert outcome.verdict is Verdict.GO
         assert sum(c.effective_weight for c in outcome.contributions) == pytest.approx(1.0)
 
-    def test_too_many_unknowns_refuses_to_produce_a_verdict(self):
-        scores = {**ARITHMETIC_SCORES, "data_readiness": None, "adoption_risk": None}
-        outcome = score(make_assessment(scores), RUBRIC, PATTERNS, OWNED)
+    def test_two_light_unknowns_within_budget_still_resolve(self, tmp_path):
+        """The weight rule in isolation, with never_unknown reduced.
+
+        Against the SHIPPED config no two dimensions can both be unknown: the
+        three not in never_unknown weigh 0.17, 0.13 and 0.13, and every pair
+        exceeds 0.25. That interaction is recorded in ADR-022; here the rule
+        itself is exercised on its own.
+        """
+        permissive = permissive_rubric(
+            tmp_path, max_unknown_weight=0.25, never_unknown=["business_value"]
+        )
+        # data_governance 0.10 + implementation_effort 0.13 = 0.23 <= 0.25
+        scores = {**ARITHMETIC_SCORES, "data_governance": None,
+                  "implementation_effort": None}
+        outcome = score(make_assessment(scores), permissive, PATTERNS, OWNED)
+        assert outcome.unknown_weight == pytest.approx(0.23)
+        assert outcome.completeness_violation is None
+        assert outcome.verdict is not Verdict.INCOMPLETE
+
+    def test_two_unknowns_over_budget_return_incomplete(self, tmp_path):
+        permissive = permissive_rubric(
+            tmp_path, max_unknown_weight=0.25, never_unknown=["business_value"]
+        )
+        # adoption_risk 0.17 + implementation_effort 0.13 = 0.30 > 0.25
+        scores = {**ARITHMETIC_SCORES, "adoption_risk": None,
+                  "implementation_effort": None}
+        outcome = score(make_assessment(scores), permissive, PATTERNS, OWNED)
         assert outcome.verdict is Verdict.INCOMPLETE
+        assert outcome.unknown_weight == pytest.approx(0.30)
+        assert "max_unknown_weight" in outcome.completeness_violation
+        assert "0.30" in outcome.completeness_violation
+        assert "0.25" in outcome.completeness_violation
         assert outcome.weighted_total is None
-        assert outcome.contributions == []
-        assert set(outcome.unknown_dimensions) == {"data_readiness", "adoption_risk"}
+
+    def test_a_heavy_unknown_alone_can_exceed_the_budget(self, tmp_path):
+        """The whole point of the unit change: one heavy slot > two light ones."""
+        permissive = permissive_rubric(
+            tmp_path, max_unknown_weight=0.15, never_unknown=[]
+        )
+        heavy = score(
+            make_assessment({**ARITHMETIC_SCORES, "business_value": None}),
+            permissive, PATTERNS, OWNED,
+        )
+        light = score(
+            make_assessment({**ARITHMETIC_SCORES, "data_governance": None}),
+            permissive, PATTERNS, OWNED,
+        )
+        assert heavy.unknown_weight == pytest.approx(0.22)
+        assert heavy.verdict is Verdict.INCOMPLETE
+        assert light.unknown_weight == pytest.approx(0.10)
+        assert light.verdict is not Verdict.INCOMPLETE
+
+    @pytest.mark.parametrize(
+        "required", ["business_value", "data_readiness", "data_governance",
+                     "non_ai_alternative"],
+    )
+    def test_a_never_unknown_dimension_always_forces_incomplete(self, required):
+        """Whatever budget remains — 0.10 is well inside 0.25 and still fails."""
+        outcome = score(
+            make_assessment({**ARITHMETIC_SCORES, required: None}),
+            RUBRIC, PATTERNS, OWNED,
+        )
+        assert outcome.verdict is Verdict.INCOMPLETE, required
+        assert "never_unknown" in outcome.completeness_violation
+        assert required in outcome.completeness_violation
+
+    def test_the_gate_dimensions_say_why_they_are_required(self):
+        """An unknown gate condition fails OPEN, which is the dangerous case."""
+        outcome = score(
+            make_assessment({**ARITHMETIC_SCORES, "data_readiness": None}),
+            RUBRIC, PATTERNS, OWNED,
+        )
+        assert "gate condition" in outcome.completeness_violation
+        assert "cannot fire" in outcome.completeness_violation
+
+    def test_the_explanation_reports_the_rule_and_the_weight(self):
+        outcome = score(
+            make_assessment({**ARITHMETIC_SCORES, "business_value": None}),
+            RUBRIC, PATTERNS, OWNED,
+        )
+        assert "Rule violated ->" in outcome.explanation
+        assert "0.22 of weight" in outcome.explanation
+        assert "budget 0.25" in outcome.explanation
 
     def test_a_dimension_absent_entirely_counts_as_unknown(self):
-        scores = {k: v for k, v in ARITHMETIC_SCORES.items() if k != "data_governance"}
+        scores = {k: v for k, v in ARITHMETIC_SCORES.items()
+                  if k != "process_frequency"}
         outcome = score(make_assessment(scores), RUBRIC, PATTERNS, OWNED)
-        assert outcome.unknown_dimensions == ["data_governance"]
+        assert outcome.unknown_dimensions == ["process_frequency"]
         assert outcome.verdict is Verdict.GO
 
-    def test_everything_unknown_is_incomplete_even_if_the_limit_allows_it(
-        self, tmp_path
-    ):
+    def test_everything_unknown_is_incomplete(self, tmp_path):
         """Guards the divide-by-zero when no dimension has a score."""
-        permissive = rubric_with(tmp_path, completeness={"max_unknown_dimensions": 7})
+        permissive = permissive_rubric(
+            tmp_path, max_unknown_weight=1.0, never_unknown=[]
+        )
         outcome = score(
             make_assessment(dict.fromkeys(RUBRIC.dimension_ids, None)),
-            permissive,
-            PATTERNS,
-            OWNED,
+            permissive, PATTERNS, OWNED,
         )
         assert outcome.verdict is Verdict.INCOMPLETE
         assert outcome.weighted_total is None
 
     def test_unknown_scores_are_never_invented(self):
-        scores = {**ARITHMETIC_SCORES, "data_readiness": None}
+        scores = {**ARITHMETIC_SCORES, "process_frequency": None}
         outcome = score(make_assessment(scores), RUBRIC, PATTERNS, OWNED)
-        assert "data_readiness" not in {c.dimension_id for c in outcome.contributions}
+        assert "process_frequency" not in {c.dimension_id for c in outcome.contributions}
 
 
 class TestMalformedAssessments:

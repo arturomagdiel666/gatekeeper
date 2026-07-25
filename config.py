@@ -358,11 +358,21 @@ class BlockingGate(BaseModel):
 
 
 class Completeness(BaseModel):
-    """How much of the assessment may be missing and still yield a verdict."""
+    """How much of the assessment may be missing and still yield a verdict.
+
+    Measured in WEIGHT, not in a count of dimensions: the uncertainty of a
+    verdict is proportional to the weight that is missing, not to the number of
+    empty slots. See ADR-022.
+
+    ``never_unknown`` is a separate, absolute rule. It exists mainly because a
+    gate whose dimension is null cannot fire — an unknown there silently
+    disables a blocking rule and FAILS OPEN.
+    """
 
     model_config = ConfigDict(extra="forbid")
 
-    max_unknown_dimensions: int = Field(ge=0)
+    max_unknown_weight: float = Field(ge=0.0, le=1.0)
+    never_unknown: list[str] = Field(default_factory=list)
 
 
 class Rubric(BaseModel):
@@ -407,11 +417,29 @@ class Rubric(BaseModel):
         self._validate_bands()
         self._validate_gates(known_levels=expected_levels)
 
-        if self.completeness.max_unknown_dimensions > len(self.dimensions):
+        known_dimension_ids = {d.id for d in self.dimensions}
+        unknown_required = set(self.completeness.never_unknown) - known_dimension_ids
+        if unknown_required:
             raise ValueError(
-                f"completeness.max_unknown_dimensions "
-                f"({self.completeness.max_unknown_dimensions}) exceeds the "
-                f"number of dimensions ({len(self.dimensions)})"
+                f"completeness.never_unknown names dimensions that do not "
+                f"exist: {sorted(unknown_required)}"
+            )
+
+        # A dimension used as a gate condition MUST be in never_unknown, or the
+        # gate fails open when the model leaves it null.
+        gated = {
+            condition.dimension
+            for gate in self.blocking_gates
+            for condition in gate.any_of
+            if isinstance(condition, DimensionThresholdCondition)
+        }
+        unguarded = gated - set(self.completeness.never_unknown)
+        if unguarded:
+            raise ValueError(
+                f"dimension(s) {sorted(unguarded)} are gate conditions but are "
+                "not in completeness.never_unknown. A gate whose dimension is "
+                "unknown cannot fire, so this would silently disable a "
+                "blocking rule — it fails open."
             )
         return self
 

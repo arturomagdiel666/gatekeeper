@@ -166,13 +166,16 @@ def render_outcome(outcome, contract: MeasurementContract | None) -> None:
                         st.markdown(f"**Instead:** {anti_pattern.better_alternative}")
 
     if outcome.unknown_dimensions:
-        st.warning(
+        message = (
             "The request did not establish: "
             + ", ".join(f"`{d}`" for d in outcome.unknown_dimensions)
-            + f". The limit is {RUBRIC.completeness.max_unknown_dimensions}. "
-            "These are recorded as unknown rather than guessed — answer them "
-            "and resubmit."
+            + f" — {outcome.unknown_weight:.2f} of weight against a budget of "
+            f"{RUBRIC.completeness.max_unknown_weight:.2f}. These are recorded "
+            "as unknown rather than guessed."
         )
+        if outcome.completeness_violation:
+            message += f"\n\n**Rule violated:** {outcome.completeness_violation}"
+        st.warning(message)
 
     if outcome.weighted_total is not None:
         st.progress(
@@ -186,9 +189,14 @@ def render_outcome(outcome, contract: MeasurementContract | None) -> None:
 
     st.subheader("How the score was built")
     if outcome.derived_dimensions:
+        model_scored = [
+            d for d in RUBRIC.dimension_ids if d not in outcome.derived_dimensions
+        ]
         st.caption(
-            "Computed from the intake form rather than scored by the model: "
+            "**Computed from the intake form** (never shown to the model): "
             + ", ".join(f"`{d}`" for d in outcome.derived_dimensions)
+            + "  ·  **Scored by the model**: "
+            + ", ".join(f"`{d}`" for d in model_scored)
         )
     render_dimension_table(outcome)
 

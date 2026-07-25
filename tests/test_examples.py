@@ -173,5 +173,6 @@ class TestGatesDoTheWorkNotTheArithmetic:
         outcome = score(
             example.reference_assessment, RUBRIC, PATTERNS, example.intake
         )
-        assert len(outcome.unknown_dimensions) > RUBRIC.completeness.max_unknown_dimensions
+        assert outcome.completeness_violation
+        assert outcome.unknown_weight > 0
         assert outcome.weighted_total is None

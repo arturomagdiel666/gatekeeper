@@ -13,14 +13,21 @@ import pytest
 from assess import (
     AssessmentError,
     assess_request,
+    build_response_schema,
     build_system_prompt,
     build_user_message,
 )
 from config import PATTERNS, RUBRIC
 from examples import load_example, load_examples
 from provider import ChatResponse, LLMProvider, MockProvider, OllamaProvider
-from schemas import Assessment, RequestIntake, banned_synonyms
-from scoring import Verdict
+from schemas import (
+    Assessment,
+    DataSensitivity,
+    Period,
+    RequestIntake,
+    banned_synonyms,
+)
+from scoring import Verdict, derive_scores
 
 OLLAMA_HOST = os.environ.get("OLLAMA_HOST", "http://localhost:11434")
 
@@ -210,3 +217,83 @@ class TestLiveAssessment:
         assert result.outcome.verdict in set(Verdict)
         # The engine must produce a coherent outcome whatever the model said.
         assert result.outcome.explanation.strip()
+
+
+class TestDerivedDimensionsAreNotAsked:
+    """Change 2: a dimension settled by the intake is not sent to the model.
+
+    Its anchors are dead weight in the prompt, and on a 7B model that weight
+    costs latency and compliance (ADR-022).
+    """
+
+    BOTH = {"times_per_period": 3, "period": Period.WEEK,
+            "data_sensitivity": DataSensitivity.INTERNAL}
+
+    def intake(self, **fields):
+        return load_example("ticket_handover_summaries").intake.model_copy(
+            update={
+                "times_per_period": None,
+                "period": None,
+                "data_sensitivity": DataSensitivity.UNKNOWN,
+                **fields,
+            }
+        )
+
+    def test_both_fields_omit_both_dimensions_from_the_prompt(self):
+        omit = set(derive_scores(RUBRIC, self.intake(**self.BOTH)))
+        assert omit == {"process_frequency", "data_governance"}
+        prompt = build_system_prompt(omit_dimensions=omit)
+        assert "Fewer than about a dozen instances" not in prompt  # freq anchor
+        assert "Public or internal-unclassified data" not in prompt  # gov anchor
+        assert "About 200-1,000 person-hours" in prompt  # business_value survives
+
+    def test_both_fields_omit_both_dimensions_from_the_schema(self):
+        omit = {"process_frequency", "data_governance"}
+        schema = build_response_schema(omit_dimensions=omit)
+        enum = schema["$defs"]["DimensionAssessment"]["properties"]["dimension_id"]["enum"]
+        assert set(enum) == set(RUBRIC.dimension_ids) - omit
+        assert schema["properties"]["dimension_assessments"]["minItems"] == 5
+        assert schema["properties"]["dimension_assessments"]["maxItems"] == 5
+
+    def test_no_fields_produce_the_full_prompt_and_schema(self):
+        assert derive_scores(RUBRIC, self.intake()) == {}
+        prompt = build_system_prompt(omit_dimensions=set())
+        for dimension in RUBRIC.dimensions:
+            assert dimension.anchors[1] .split(".")[0][:30] in " ".join(prompt.split())
+        schema = build_response_schema(omit_dimensions=set())
+        assert schema["properties"]["dimension_assessments"]["minItems"] == 7
+
+    def test_one_field_omits_exactly_one_dimension(self):
+        omit = set(derive_scores(RUBRIC, self.intake(times_per_period=3, period=Period.WEEK)))
+        assert omit == {"process_frequency"}
+        assert build_response_schema(omit_dimensions=omit)["properties"][
+            "dimension_assessments"
+        ]["minItems"] == 6
+
+    def test_the_trimmed_prompt_still_passes_the_banned_synonym_check(self):
+        prompt = build_system_prompt(
+            omit_dimensions={"process_frequency", "data_governance"}
+        ).lower()
+        assert [w for w in banned_synonyms() if w in prompt] == []
+
+    def test_the_merged_assessment_is_complete_after_parsing(self):
+        """The model returns 5 entries; the result carries all 7."""
+        intake = self.intake(**self.BOTH)
+        payload = load_example("ticket_handover_summaries").reference_assessment
+        trimmed = payload.model_copy(deep=True)
+        trimmed.dimension_assessments = [
+            e for e in trimmed.dimension_assessments
+            if e.dimension_id not in {"process_frequency", "data_governance"}
+        ]
+        provider = ScriptedProvider([json.dumps(trimmed.model_dump(mode="json"))])
+        result = assess_request(intake, provider, approval_date=date(2026, 4, 1))
+
+        assert len(trimmed.dimension_assessments) == 5
+        scored = {e.dimension_id for e in result.assessment.dimension_assessments}
+        assert scored == set(RUBRIC.dimension_ids)
+        assert result.derived_dimensions == ["data_governance", "process_frequency"]
+        assert set(result.model_scored_dimensions) == set(RUBRIC.dimension_ids) - {
+            "data_governance", "process_frequency"
+        }
+        assert result.outcome.verdict is not None
+        assert result.outcome.unknown_dimensions == []

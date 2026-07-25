@@ -505,10 +505,35 @@ blocking_gates:
 # =============================================================================
 # COMPLETENESS
 # =============================================================================
-# Unknown dimensions are recorded as null, never guessed. Up to
-# max_unknown_dimensions may be unknown and still produce a verdict — the
-# remaining weights are renormalized to sum to 1.0. Above that limit the scorer
-# refuses and returns `incomplete` with the list of what is missing, because a
-# verdict from a mostly-empty request is worse than no verdict at all.
+# Unknown dimensions are recorded as null, never guessed. Two independent rules
+# decide whether a verdict can still be issued.
+#
+# RULE 1 — max_unknown_weight. The budget is measured in WEIGHT, not in a count
+# of dimensions. Counting treats business_value (0.22) as equivalent to
+# non_ai_alternative (0.10), which it is not: the uncertainty of a verdict is
+# proportional to the weight that is missing, not to the number of empty slots.
+# Below the budget the remaining weights are renormalized to sum to 1.0 and a
+# verdict is issued; above it the scorer returns `incomplete` reporting the
+# accumulated weight against the budget.
+#
+# RULE 2 — never_unknown. These dimensions must always carry a score, whatever
+# budget remains. Two distinct reasons, and the second is the important one:
+#
+#   business_value — an assessment with no view of magnitude is not an
+#     assessment. It is the heaviest dimension and the one the verdict most
+#     depends on.
+#
+#   data_readiness, data_governance, non_ai_alternative — EACH IS THE CONDITION
+#     OF A BLOCKING GATE. A gate whose dimension is null cannot fire, so an
+#     unknown here does not merely widen the error bars: it SILENTLY DISABLES A
+#     BLOCKING RULE. That is the most dangerous shape missing information can
+#     take in this system, because it FAILS OPEN — the request proceeds as
+#     though the check had passed, when in fact it was never run. Any dimension
+#     added to a gate condition in future must be added here at the same time.
 completeness:
-  max_unknown_dimensions: 1
+  max_unknown_weight: 0.25
+  never_unknown:
+    - business_value
+    - data_readiness
+    - data_governance
+    - non_ai_alternative

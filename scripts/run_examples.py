@@ -91,6 +91,8 @@ def main() -> int:
                 weighted_total=outcome.weighted_total,
                 retry_count=result.retry_count,
                 unknown_dimensions=outcome.unknown_dimensions,
+                unknown_weight=outcome.unknown_weight,
+                derived_dimensions=result.derived_dimensions,
                 has_contract=result.contract is not None,
             )
         except AssessmentError as exc:
@@ -107,7 +109,7 @@ def main() -> int:
     print("=" * 92)
     header = (
         f"{'':<2}{'example':<30}{'expected':<12}{'actual':<12}"
-        f"{'total':<8}{'gate (actual)':<28}"
+        f"{'score':<7}{'secs':<7}{'gate (actual)':<30}"
     )
     print(header)
     print("-" * 92)
@@ -121,7 +123,7 @@ def main() -> int:
         print(
             f"{'OK' if match else 'XX':<2}{row['id']:<30}"
             f"{row['expected_verdict']:<12}{str(row['actual_verdict'] or 'ERROR'):<12}"
-            f"{total:<8}{str(row['actual_gate'] or '-'):<28}"
+            f"{total:<7}{row['seconds']:<7}{str(row['actual_gate'] or '-'):<30}"
         )
         if row["error"]:
             print(f"    error: {row['error']}")
@@ -131,10 +133,15 @@ def main() -> int:
                 print(f"    model left unknown: {', '.join(row['unknown_dimensions'])}")
     print("-" * 92)
     retries = sum(r["retry_count"] or 0 for r in rows)
+    latencies = sorted(r["seconds"] for r in rows)
+    median = latencies[len(latencies) // 2]
     print(
         f"{matches}/{len(rows)} verdicts match the human reading | "
-        f"{retries} schema retry(ies) | "
-        f"{sum(r['seconds'] for r in rows):.0f}s total"
+        f"{retries} schema retry(ies)"
+    )
+    print(
+        f"Latency per request: min {latencies[0]:.1f}s | median {median:.1f}s | "
+        f"max {latencies[-1]:.1f}s | total {sum(latencies):.0f}s"
     )
     print(
         "A mismatch is information: it shows where the model reads a request "

@@ -52,6 +52,7 @@ __all__ = [
     "UnsupportedAntiPattern",
     "normalize_for_quote_check",
     "quote_is_supported",
+    "derive_scores",
     "DimensionContribution",
     "Outcome",
     "score",
@@ -216,6 +217,12 @@ class Outcome(BaseModel):
     #: Dimensions computed from a structured intake field rather than scored by
     #: the model. Reported so a reader can see which numbers were judgements.
     derived_dimensions: list[str] = Field(default_factory=list)
+    #: Total rubric weight sitting on unknown dimensions — the unit the
+    #: completeness budget is actually measured in.
+    unknown_weight: float = 0.0
+    #: Which completeness rule was violated, or ``None`` if the assessment was
+    #: complete enough to score.
+    completeness_violation: str | None = None
     #: True when the verdict rests on a hard-block anti-pattern gate and nothing
     #: deterministic. Such a verdict is a RECOMMENDATION awaiting human
     #: confirmation, not a rejection.
@@ -280,6 +287,35 @@ def _index_assessments(
     return indexed, ignored
 
 
+def derive_scores(
+    rubric: Rubric, intake: RequestIntake | None
+) -> dict[str, tuple[int, str]]:
+    """Dimensions this intake determines outright, as ``id -> (score, why)``.
+
+    Pure and side-effect free, so ``assess.py`` can ask the same question
+    before building the prompt that ``score()`` answers afterwards. A dimension
+    that appears here is not asked of the model at all — neither its anchors
+    nor its schema entry are sent.
+    """
+    if intake is None:
+        return {}
+    derived: dict[str, tuple[int, str]] = {}
+    for dimension in rubric.dimensions:
+        rule = dimension.derivation
+        if rule is None:
+            continue
+        if isinstance(rule, VolumeDerivation):
+            source_value = intake.instances_per_year
+        elif isinstance(rule, SensitivityDerivation):
+            source_value = getattr(intake.data_sensitivity, "value", None)
+        else:  # pragma: no cover - the union is closed
+            continue
+        score_value = rule.derive(source_value)
+        if score_value is not None:
+            derived[dimension.id] = (score_value, rule.describe(source_value))
+    return derived
+
+
 def _apply_intake_derivations(
     indexed: dict[str, DimensionAssessment],
     rubric: Rubric,
@@ -300,30 +336,15 @@ def _apply_intake_derivations(
 
     Mutates ``indexed`` in place and returns the ids that were derived.
     """
-    if intake is None:
-        return []
     derived: list[str] = []
-    for dimension in rubric.dimensions:
-        rule = dimension.derivation
-        if rule is None:
-            continue
-        if isinstance(rule, VolumeDerivation):
-            source_value = intake.instances_per_year
-            score_value = rule.derive(source_value)
-        elif isinstance(rule, SensitivityDerivation):
-            source_value = getattr(intake.data_sensitivity, "value", None)
-            score_value = rule.derive(source_value)
-        else:  # pragma: no cover - the union is closed
-            continue
-        if score_value is None:
-            continue
-        indexed[dimension.id] = DimensionAssessment(
-            dimension_id=dimension.id,
+    for dimension_id, (score_value, why) in derive_scores(rubric, intake).items():
+        indexed[dimension_id] = DimensionAssessment(
+            dimension_id=dimension_id,
             score=score_value,
-            evidence=rule.describe(source_value),
+            evidence=why,
             confidence=Confidence.HIGH,
         )
-        derived.append(dimension.id)
+        derived.append(dimension_id)
     return derived
 
 
@@ -493,6 +514,8 @@ def _build_explanation(
     contributions: list[DimensionContribution],
     triggered_gates: list[TriggeredGate],
     unknown_dimensions: list[str],
+    unknown_weight: float,
+    violation: str | None,
     unsupported: list[UnsupportedAntiPattern],
     rubric: Rubric,
     patterns: Patterns,
@@ -516,10 +539,7 @@ def _build_explanation(
             )
     elif verdict is Verdict.INCOMPLETE:
         headline = (
-            f"Verdict: INCOMPLETE — {len(unknown_dimensions)} of "
-            f"{len(rubric.dimensions)} dimensions are unknown, above the limit "
-            f"of {rubric.completeness.max_unknown_dimensions}. No score was "
-            "computed; the missing information is listed below."
+            f"Verdict: INCOMPLETE — {violation or 'the assessment is not complete enough to score'}. No score was computed; the missing information is listed below."
         )
     else:
         headline = (
@@ -552,7 +572,13 @@ def _build_explanation(
 
     if unknown_dimensions:
         lines.append("")
-        lines.append(f"Unknown dimensions: {', '.join(unknown_dimensions)}")
+        lines.append(
+            f"Unknown dimensions: {', '.join(unknown_dimensions)} "
+            f"({unknown_weight:.2f} of weight, budget "
+            f"{rubric.completeness.max_unknown_weight:.2f})"
+        )
+        if violation:
+            lines.append(f"  Rule violated -> {violation}")
 
     if unsupported:
         lines.append("")
@@ -614,12 +640,45 @@ def score(
         if dimension.id not in indexed or indexed[dimension.id].score is None
     ]
 
-    # A total is only meaningful when enough of the interview came back, and
-    # only computable when at least one dimension has a score to weight.
-    scorable = (
-        len(unknown_dimensions) <= rubric.completeness.max_unknown_dimensions
-        and len(unknown_dimensions) < len(rubric.dimensions)
+    # Completeness is measured in WEIGHT, not in a count of dimensions: the
+    # uncertainty of a verdict is proportional to the weight that is missing,
+    # not to the number of empty slots (ADR-022). A second, absolute rule
+    # covers dimensions that must never be unknown — chiefly the gate
+    # conditions, where an unknown silently disables a blocking rule.
+    unknown_set = set(unknown_dimensions)
+    unknown_weight = round(
+        sum(d.weight for d in rubric.dimensions if d.id in unknown_set),
+        TOTAL_PRECISION,
     )
+    budget = rubric.completeness.max_unknown_weight
+    missing_required = [
+        i for i in rubric.completeness.never_unknown if i in unknown_set
+    ]
+
+    completeness_violation: str | None = None
+    if missing_required:
+        completeness_violation = (
+            "never_unknown: "
+            + ", ".join(missing_required)
+            + " must always carry a score"
+            + (
+                " (each is a gate condition, and a gate whose dimension is "
+                "unknown cannot fire)"
+                if any(i != "business_value" for i in missing_required)
+                else ""
+            )
+        )
+    elif unknown_weight > budget + 1e-9:
+        completeness_violation = (
+            f"max_unknown_weight: {unknown_weight:.2f} of weight is unknown, "
+            f"above the budget of {budget:.2f}"
+        )
+    elif not unknown_set:
+        pass
+    if len(unknown_dimensions) >= len(rubric.dimensions):
+        completeness_violation = "every dimension is unknown; nothing to weight"
+
+    scorable = completeness_violation is None
 
     if scorable:
         contributions, weighted_total = _compute_contributions(indexed, rubric)
@@ -662,6 +721,8 @@ def score(
         ignored_anti_pattern_ids=ignored_anti_pattern_ids,
         unsupported_anti_patterns=unsupported,
         derived_dimensions=derived_dimensions,
+        unknown_weight=unknown_weight,
+        completeness_violation=completeness_violation,
         requires_human_confirmation=requires_confirmation,
         confirmation_reason=confirmation_reason,
         explanation=_build_explanation(
@@ -670,6 +731,8 @@ def score(
             contributions,
             triggered_gates,
             unknown_dimensions,
+            unknown_weight,
+            completeness_violation,
             unsupported,
             rubric,
             patterns,

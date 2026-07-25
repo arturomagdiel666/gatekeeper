@@ -18,7 +18,9 @@ actionable message. Enforced invariants:
   and only the highest band may include its upper bound
 * verdict bands contain only ``go`` and ``no_go``; ``not_ai`` is a gate and
   ``incomplete`` is a refusal to score, so neither may be reached by a band
-* the Not-AI gate names a dimension that actually exists
+* blocking gate ids are unique, every gate condition names a dimension that
+  actually exists, and every threshold lies on the scale
+* a blocking gate forces only ``no_go`` or ``not_ai`` — never ``go``
 * the unknown-dimension limit cannot exceed the number of dimensions
 
 ``RUBRIC`` and ``PATTERNS`` are loaded and validated at import time, so a broken
@@ -28,7 +30,7 @@ config breaks loudly and immediately rather than halfway through an interview.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Literal
+from typing import Annotated, Literal
 
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
@@ -38,7 +40,9 @@ __all__ = [
     "Scale",
     "Dimension",
     "VerdictBand",
-    "NotAiGate",
+    "DimensionThresholdCondition",
+    "HardBlockAntiPatternCondition",
+    "BlockingGate",
     "Completeness",
     "Rubric",
     "Archetype",
@@ -61,6 +65,11 @@ PATTERNS_PATH = PROJECT_ROOT / "patterns.yaml"
 WEIGHT_EPSILON = 1e-6
 
 Direction = Literal["higher_is_better", "lower_is_better"]
+
+#: A blocking gate may only stop a case, never wave one through.
+GateVerdict = Literal["no_go", "not_ai"]
+
+Comparison = Literal["at_least", "at_most"]
 
 
 class ConfigError(RuntimeError):
@@ -141,14 +150,58 @@ class VerdictBand(BaseModel):
         return self
 
 
-class NotAiGate(BaseModel):
-    """Conditions that force a ``not_ai`` verdict, overriding the bands."""
+class DimensionThresholdCondition(BaseModel):
+    """A gate condition on one dimension's raw score."""
 
     model_config = ConfigDict(extra="forbid")
 
-    hard_block_anti_patterns: bool
-    dimension_id: str
-    min_raw_score: int
+    type: Literal["dimension_threshold"]
+    dimension: str
+    comparison: Comparison
+    threshold: int
+
+    def is_met(self, raw_score: int) -> bool:
+        """Return whether a raw score satisfies this condition."""
+        if self.comparison == "at_least":
+            return raw_score >= self.threshold
+        return raw_score <= self.threshold
+
+    def describe(self, raw_score: int) -> str:
+        """Explain, for the outcome, why this condition fired."""
+        comparison = "at least" if self.comparison == "at_least" else "at most"
+        return f"{self.dimension} scored {raw_score}, {comparison} {self.threshold}"
+
+
+class HardBlockAntiPatternCondition(BaseModel):
+    """A gate condition met when any hard-blocking anti-pattern matched."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    type: Literal["hard_block_anti_pattern"]
+
+
+GateCondition = Annotated[
+    DimensionThresholdCondition | HardBlockAntiPatternCondition,
+    Field(discriminator="type"),
+]
+
+
+class BlockingGate(BaseModel):
+    """A categorical condition that forces a verdict, overriding the bands.
+
+    Fires when *any* of its conditions is met. A gate can never force a ``go``:
+    gates exist to stop a case, not to wave one through. When several fire, the
+    lowest ``precedence`` decides the verdict and every gate that fired is still
+    reported; ties are broken by declaration order in the config.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: str
+    verdict: GateVerdict
+    precedence: int
+    reason: str
+    any_of: list[GateCondition] = Field(min_length=1)
 
 
 class Completeness(BaseModel):
@@ -168,7 +221,8 @@ class Rubric(BaseModel):
     scale: Scale
     dimensions: list[Dimension] = Field(min_length=1)
     verdict_bands: list[VerdictBand] = Field(min_length=1)
-    not_ai_gate: NotAiGate
+    #: May be empty: removing every gate leaves pure band behaviour.
+    blocking_gates: list[BlockingGate] = Field(default_factory=list)
     completeness: Completeness
 
     @model_validator(mode="after")
@@ -198,18 +252,7 @@ class Rubric(BaseModel):
                 )
 
         self._validate_bands()
-
-        known_ids = {d.id for d in self.dimensions}
-        if self.not_ai_gate.dimension_id not in known_ids:
-            raise ValueError(
-                f"not_ai_gate.dimension_id {self.not_ai_gate.dimension_id!r} is "
-                f"not a declared dimension. Known ids: {sorted(known_ids)}"
-            )
-        if self.not_ai_gate.min_raw_score not in expected_levels:
-            raise ValueError(
-                f"not_ai_gate.min_raw_score ({self.not_ai_gate.min_raw_score}) "
-                f"is outside the scale {sorted(expected_levels)}"
-            )
+        self._validate_gates(known_levels=expected_levels)
 
         if self.completeness.max_unknown_dimensions > len(self.dimensions):
             raise ValueError(
@@ -218,6 +261,30 @@ class Rubric(BaseModel):
                 f"number of dimensions ({len(self.dimensions)})"
             )
         return self
+
+    def _validate_gates(self, known_levels: set[int]) -> None:
+        """Require every gate to name real dimensions and in-scale thresholds."""
+        dupes = _duplicates([g.id for g in self.blocking_gates])
+        if dupes:
+            raise ValueError(f"duplicate blocking gate ids: {dupes}")
+
+        known_ids = {d.id for d in self.dimensions}
+        for gate in self.blocking_gates:
+            for condition in gate.any_of:
+                if not isinstance(condition, DimensionThresholdCondition):
+                    continue
+                if condition.dimension not in known_ids:
+                    raise ValueError(
+                        f"blocking gate {gate.id!r} names dimension "
+                        f"{condition.dimension!r}, which is not a declared "
+                        f"dimension. Known ids: {sorted(known_ids)}"
+                    )
+                if condition.threshold not in known_levels:
+                    raise ValueError(
+                        f"blocking gate {gate.id!r} has threshold "
+                        f"{condition.threshold}, outside the scale "
+                        f"{sorted(known_levels)}"
+                    )
 
     def _validate_bands(self) -> None:
         """Require the bands to tile the scale with no gap or overlap."""
@@ -264,6 +331,11 @@ class Rubric(BaseModel):
     def dimension_by_id(self, dimension_id: str) -> Dimension | None:
         """Return the dimension with this id, or ``None`` if there is none."""
         return next((d for d in self.dimensions if d.id == dimension_id), None)
+
+    @property
+    def gates_by_precedence(self) -> list[BlockingGate]:
+        """Gates ordered by precedence, ties broken by declaration order."""
+        return sorted(self.blocking_gates, key=lambda gate: gate.precedence)
 
     @property
     def dimension_ids(self) -> list[str]:

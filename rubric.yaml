@@ -24,7 +24,7 @@
 #   4. The total is rounded to 6 decimal places before band matching, so an
 #      exact boundary value like 3.5 lands predictably instead of being lost to
 #      binary floating-point error.
-#   5. Gates are evaluated BEFORE the bands. See `not_ai_gate` below.
+#   5. Gates are evaluated BEFORE the bands. See `blocking_gates` below.
 #
 # WRITING ANCHORS
 #   Anchors are what make scoring reproducible between two different
@@ -239,29 +239,94 @@ verdict_bands:
     upper_inclusive: true
 
 # =============================================================================
-# THE NOT-AI GATE
+# BLOCKING GATES
 # =============================================================================
-# `not_ai` is an override, not a low score. It is evaluated BEFORE the bands and
-# wins outright. This is deliberate and is the core of the product: a use case
-# can score 4.6 and still be Not-AI because a SQL query already solves it. If
-# Not-AI were merely the bottom band, that case would come out as Go — which is
-# precisely the mistake Gatekeeper exists to prevent.
+# Some conditions are categorical, not gradual. A weighted average cannot
+# express "this is disqualifying" — no weight small enough to be fair to a
+# normal case is large enough to stop an extreme one. When a condition is
+# binary, it belongs here rather than in the weights.
 #
-# Gates are also evaluated before the completeness check, because they are
-# positive findings: knowing "a rule already solves this" is enough to stop,
-# even when half the interview is still unanswered.
-not_ai_gate:
+# Gates are evaluated BEFORE the completeness check and BEFORE the bands, and
+# they win outright. They are checked first because they are positive findings:
+# knowing "a rule already solves this" is enough to stop, even when half the
+# interview is still unanswered.
+#
+# A gate fires when ANY of its conditions is met (`any_of`). Two condition
+# types exist:
+#
+#   type: dimension_threshold      — a raw score on `dimension`, compared with
+#                                    `at_least` or `at_most` against `threshold`
+#   type: hard_block_anti_pattern  — any anti-pattern in patterns.yaml carrying
+#                                    `hard_block: true` was matched
+#
+# A gate CANNOT fire on a dimension the interview left unknown. An unknown is
+# not evidence of anything, and inventing one here would defeat the point of
+# recording it as unknown.
+#
+# `precedence` breaks ties when several gates fire: the LOWEST number decides
+# the verdict, and every gate that fired is still reported in the outcome. Gates
+# sharing a precedence are resolved in the order they appear below.
+#
+# `verdict` may only be `no_go` or `not_ai` — a gate can never force a Go.
+# Deleting a gate from this list restores ordinary band behaviour for that
+# condition, with no code change.
+blocking_gates:
 
-  # Any anti-pattern in patterns.yaml carrying `hard_block: true` that the
-  # interview matched fires the gate. Set this to false to downgrade every
-  # anti-pattern to advisory (they will still be reported in the outcome).
-  hard_block_anti_patterns: true
+  # The core of the product. A use case can score 4.6 and still be Not-AI
+  # because a SQL query already solves it. If Not-AI were merely the bottom
+  # band, that case would come out as Go — precisely the mistake Gatekeeper
+  # exists to prevent. Outranks every other gate: if a rule solves it AND the
+  # data does not exist, the useful answer is still "this is not an AI problem".
+  - id: not_ai_alternative_suffices
+    verdict: not_ai
+    precedence: 1
+    reason: >-
+      A non-AI solution would do this job. Build that instead — it will be
+      cheaper, exactly auditable, and it will not drift.
+    any_of:
+      - type: dimension_threshold
+        dimension: non_ai_alternative
+        comparison: at_least
+        threshold: 4
+      - type: hard_block_anti_pattern
 
-  # A raw score at or above this level on the named dimension fires the gate on
-  # its own. With the anchors above, 4 means "a query or a process change would
-  # solve most of it" — at that point the answer is a query, not a model.
-  dimension_id: non_ai_alternative
-  min_raw_score: 4
+  # Without data there is nothing to learn from or ground answers in, at any
+  # budget. This is a sequencing verdict, not a permanent one: instrument the
+  # process, then come back. It is a gate because data_maturity carries 0.20 of
+  # weight, which cannot offset a strong score everywhere else — a case with no
+  # data at all but excellent everything else totals 4.20 and would otherwise
+  # band as Go.
+  - id: no_usable_data
+    verdict: no_go
+    precedence: 2
+    reason: >-
+      The data this depends on does not exist in usable form yet. Instrument
+      the process and capture the outcome from today onward, then re-triage.
+    any_of:
+      - type: dimension_threshold
+        dimension: data_maturity
+        comparison: at_most
+        threshold: 1
+
+  # Exposure at the top of the regulatory scale — legal force, safety
+  # consequences, irreversible harm, or a regulator who must approve first — is
+  # a stop condition, not a penalty to be averaged away. regulatory_risk carries
+  # the smallest weight in the rubric (0.10), so the entire distance from
+  # "embarrassing but reversible" to "a regulator must approve" is a 0.40 swing;
+  # an otherwise strong case at level 5 totals 4.60 and would band as Go.
+  - id: unacceptable_regulatory_exposure
+    verdict: no_go
+    precedence: 2
+    reason: >-
+      Regulatory, safety, or liability exposure is at the top of the scale.
+      This needs a compliance and legal path agreed before any build, not a
+      triage score. Re-triage once the scope is narrowed or the review path is
+      in place.
+    any_of:
+      - type: dimension_threshold
+        dimension: regulatory_risk
+        comparison: at_least
+        threshold: 5
 
 # =============================================================================
 # COMPLETENESS

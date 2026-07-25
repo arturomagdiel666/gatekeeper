@@ -8,19 +8,25 @@ of arithmetic and the exact sentence of evidence behind it.
 
 The order of evaluation matters and is deliberate:
 
-1. **Gates first.** A hard-block anti-pattern, or a high enough score on the
-   gate dimension, produces ``not_ai`` and overrides everything. Gates are
-   positive findings — learning that a SQL query already solves the problem is
-   enough to stop, even mid-interview — so they are checked before the
-   completeness rule.
+1. **Gates first.** Any blocking gate declared in ``rubric.yaml`` that fires
+   forces its verdict and overrides everything. Gates are positive findings —
+   learning that a SQL query already solves the problem is enough to stop, even
+   mid-interview — so they are checked before the completeness rule. A gate
+   cannot fire on a dimension the interview left unknown.
 2. **Completeness next.** Too many unknown dimensions yields ``incomplete``
    rather than a verdict computed from a mostly-empty interview.
 3. **Bands last.** The weighted total is matched against the rubric's bands,
    which only ever produce ``go`` or ``no_go``.
 
-A use case can therefore score 4.6 and still come out ``not_ai``. That is the
-entire point of the product: if Not-AI were the bottom band, exactly the cases
-Gatekeeper exists to catch would pass as Go.
+Gates exist because some conditions are categorical rather than gradual, and no
+weighted average can express "this is disqualifying": a weight small enough to
+be fair to a normal case is too small to stop an extreme one. A use case can
+therefore score 4.6 and still come out ``not_ai`` or ``no_go``. That is the
+entire point of the product — if these conditions were merely low scores,
+exactly the cases Gatekeeper exists to catch would pass as Go.
+
+When several gates fire, the one with the lowest ``precedence`` decides the
+verdict and every gate that fired is still reported.
 """
 
 from __future__ import annotations
@@ -29,11 +35,12 @@ from enum import Enum
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from config import Patterns, Rubric
+from config import DimensionThresholdCondition, Patterns, Rubric
 from schemas import Assessment, DimensionAssessment
 
 __all__ = [
     "Verdict",
+    "TriggeredGate",
     "DimensionContribution",
     "Outcome",
     "score",
@@ -55,6 +62,30 @@ class Verdict(str, Enum):
     NO_GO = "no_go"
     NOT_AI = "not_ai"
     INCOMPLETE = "incomplete"
+
+
+class TriggeredGate(BaseModel):
+    """A blocking gate that fired, and what specifically fired it.
+
+    Attributes:
+        gate_id: The gate's id in ``rubric.yaml``.
+        verdict: The verdict this gate forces.
+        precedence: Lower decides when several gates fire.
+        reason: The gate's human-readable explanation from the config.
+        detail: What in this particular assessment met the condition — the
+            dimension and score, or the anti-patterns matched.
+        matched_anti_pattern_ids: Hard-blocking anti-patterns that contributed,
+            empty unless this gate has an anti-pattern condition.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    gate_id: str
+    verdict: Verdict
+    precedence: int
+    reason: str
+    detail: str
+    matched_anti_pattern_ids: list[str] = Field(default_factory=list)
 
 
 class DimensionContribution(BaseModel):
@@ -99,7 +130,8 @@ class Outcome(BaseModel):
             gate firing on an interview too sparse to score).
         contributions: Per-dimension breakdown; these sum to
             ``weighted_total``.
-        triggered_gates: Ids of the Not-AI gates that fired, empty if none.
+        triggered_gates: Every blocking gate that fired, ordered by precedence
+            so the first is the one that decided the verdict. Empty if none.
         unknown_dimensions: Ids of dimensions the interview left unknown.
         ignored_dimension_ids: Assessed ids that are not in the rubric, or
             duplicate entries after the first. Reported rather than raised, so
@@ -115,11 +147,16 @@ class Outcome(BaseModel):
     verdict: Verdict
     weighted_total: float | None
     contributions: list[DimensionContribution] = Field(default_factory=list)
-    triggered_gates: list[str] = Field(default_factory=list)
+    triggered_gates: list[TriggeredGate] = Field(default_factory=list)
     unknown_dimensions: list[str] = Field(default_factory=list)
     ignored_dimension_ids: list[str] = Field(default_factory=list)
     ignored_anti_pattern_ids: list[str] = Field(default_factory=list)
     explanation: str = ""
+
+    @property
+    def triggered_gate_ids(self) -> list[str]:
+        """Ids of the gates that fired, in precedence order."""
+        return [gate.gate_id for gate in self.triggered_gates]
 
 
 def match_band(weighted_total: float, rubric: Rubric) -> Verdict:
@@ -178,29 +215,54 @@ def _evaluate_gates(
     indexed: dict[str, DimensionAssessment],
     rubric: Rubric,
     patterns: Patterns,
-) -> tuple[list[str], list[str]]:
-    """Evaluate the Not-AI gates.
+) -> tuple[list[TriggeredGate], list[str]]:
+    """Evaluate every blocking gate declared in the rubric.
 
-    Returns the ids of the gates that fired, plus any matched anti-pattern ids
-    that are not in the patterns file.
+    A gate fires when any one of its conditions is met. A condition on a
+    dimension the interview left unknown can never be met — an unknown is not
+    evidence, and treating it as one would defeat the point of recording it.
+
+    Returns the gates that fired, ordered by precedence (so the first decides
+    the verdict), plus any matched anti-pattern ids absent from the patterns
+    file.
     """
-    triggered: list[str] = []
     ignored_anti_patterns: list[str] = []
-
+    matched_hard_blocks: list[str] = []
     for anti_pattern_id in assessment.anti_pattern_ids:
         anti_pattern = patterns.anti_pattern_by_id(anti_pattern_id)
         if anti_pattern is None:
             ignored_anti_patterns.append(anti_pattern_id)
-            continue
-        if rubric.not_ai_gate.hard_block_anti_patterns and anti_pattern.hard_block:
-            triggered.append(f"anti_pattern:{anti_pattern_id}")
+        elif anti_pattern.hard_block:
+            matched_hard_blocks.append(anti_pattern_id)
 
-    gate = rubric.not_ai_gate
-    gate_entry = indexed.get(gate.dimension_id)
-    if gate_entry is not None and gate_entry.score is not None:
-        if gate_entry.score >= gate.min_raw_score:
-            triggered.append(f"{gate.dimension_id}>={gate.min_raw_score}")
-
+    triggered: list[TriggeredGate] = []
+    for gate in rubric.gates_by_precedence:
+        details: list[str] = []
+        contributing_anti_patterns: list[str] = []
+        for condition in gate.any_of:
+            if isinstance(condition, DimensionThresholdCondition):
+                entry = indexed.get(condition.dimension)
+                if entry is None or entry.score is None:
+                    continue
+                if condition.is_met(entry.score):
+                    details.append(condition.describe(entry.score))
+            elif matched_hard_blocks:
+                contributing_anti_patterns.extend(matched_hard_blocks)
+                details.append(
+                    "hard-blocking anti-pattern(s) matched: "
+                    + ", ".join(matched_hard_blocks)
+                )
+        if details:
+            triggered.append(
+                TriggeredGate(
+                    gate_id=gate.id,
+                    verdict=Verdict(gate.verdict),
+                    precedence=gate.precedence,
+                    reason=" ".join(gate.reason.split()),
+                    detail="; ".join(details),
+                    matched_anti_pattern_ids=contributing_anti_patterns,
+                )
+            )
     return triggered, ignored_anti_patterns
 
 
@@ -245,7 +307,7 @@ def _build_explanation(
     verdict: Verdict,
     weighted_total: float | None,
     contributions: list[DimensionContribution],
-    triggered_gates: list[str],
+    triggered_gates: list[TriggeredGate],
     unknown_dimensions: list[str],
     rubric: Rubric,
     patterns: Patterns,
@@ -255,11 +317,11 @@ def _build_explanation(
     lines: list[str] = []
     scale_max = rubric.scale.max
 
-    if verdict is Verdict.NOT_AI:
+    if triggered_gates:
         headline = (
-            f"Verdict: NOT_AI — overridden by "
-            f"{len(triggered_gates)} gate(s). This is not a low score; it is a "
-            "finding that the problem should not be solved with AI."
+            f"Verdict: {verdict.value.upper()} — forced by "
+            f"{len(triggered_gates)} blocking gate(s). This is not a low score; "
+            "it is a categorical finding that the bands do not get to overrule."
         )
         if weighted_total is not None:
             headline += (
@@ -288,22 +350,17 @@ def _build_explanation(
 
     if triggered_gates:
         lines.append("")
-        lines.append("Gates triggered:")
-        for gate_id in triggered_gates:
-            if gate_id.startswith("anti_pattern:"):
-                anti_pattern = patterns.anti_pattern_by_id(
-                    gate_id.split(":", 1)[1]
-                )
-                if anti_pattern is not None:
-                    lines.append(f"  - {gate_id} — {anti_pattern.label}")
-                    lines.append(f"      Instead: {anti_pattern.better_alternative}")
-                    continue
-            dimension = rubric.dimension_by_id(rubric.not_ai_gate.dimension_id)
-            label = dimension.label if dimension else rubric.not_ai_gate.dimension_id
+        lines.append("Gates triggered (the first decided the verdict):")
+        for gate in triggered_gates:
             lines.append(
-                f"  - {gate_id} — {label} scored at or above the Not-AI "
-                "threshold: a non-AI solution would do the job."
+                f"  - {gate.gate_id} -> {gate.verdict.value} ({gate.detail})"
             )
+            lines.append(f"      {gate.reason}")
+            for anti_pattern_id in gate.matched_anti_pattern_ids:
+                anti_pattern = patterns.anti_pattern_by_id(anti_pattern_id)
+                if anti_pattern is not None:
+                    lines.append(f"      {anti_pattern.label}.")
+                    lines.append(f"      Instead: {anti_pattern.better_alternative}")
 
     if unknown_dimensions:
         lines.append("")
@@ -362,7 +419,8 @@ def score(assessment: Assessment, rubric: Rubric, patterns: Patterns) -> Outcome
         contributions, weighted_total = [], None
 
     if triggered_gates:
-        verdict = Verdict.NOT_AI
+        # Gates arrive in precedence order, so the first one decides.
+        verdict = triggered_gates[0].verdict
     elif not scorable:
         verdict = Verdict.INCOMPLETE
     else:

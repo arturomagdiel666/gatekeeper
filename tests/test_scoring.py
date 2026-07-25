@@ -69,17 +69,45 @@ def rubric_with(tmp_path, **changes):
     return load_rubric(path)
 
 
-class TestDirectionNormalization:
-    """If direction were ignored, this case would total 1.00 instead of 2.60."""
+def rubric_without_gate(tmp_path, gate_id: str):
+    """Load a copy of the real rubric with one blocking gate deleted."""
+    data = yaml.safe_load(RUBRIC_PATH.read_text())
+    data["blocking_gates"] = [
+        gate for gate in data["blocking_gates"] if gate["id"] != gate_id
+    ]
+    path = tmp_path / "rubric.yaml"
+    path.write_text(yaml.safe_dump(data))
+    return load_rubric(path)
 
-    def test_all_raw_ones_totals_2_60(self):
-        #  1 x 0.25 = 0.25 | 1 x 0.15 = 0.15 | 1 x 0.20 = 0.20
-        # (6-1)=5 x 0.15 = 0.75 | 5 x 0.10 = 0.50 | 5 x 0.15 = 0.75
-        #                                            total = 2.60
+
+# Every dimension at its most favourable, used as the base for the gate tests:
+# each one then spoils exactly one dimension, so the gate is provably what
+# changed the verdict and not the arithmetic.
+BEST_SCORES = {
+    "economic_impact": 5,
+    "process_frequency": 5,
+    "data_maturity": 5,
+    "implementation_effort": 1,
+    "regulatory_risk": 1,
+    "non_ai_alternative": 1,
+}
+
+
+class TestDirectionNormalization:
+    """If direction were ignored, this case would total 2.00 instead of 2.80."""
+
+    def test_all_raw_twos_totals_2_80(self):
+        # Raw 2 everywhere. No gate fires (data_maturity 2 > 1,
+        # regulatory_risk 2 < 5, non_ai_alternative 2 < 4), so this isolates
+        # the arithmetic:
+        #  2 x 0.25 = 0.50 | 2 x 0.15 = 0.30 | 2 x 0.20 = 0.40
+        # (6-2)=4 x 0.15 = 0.60 | 4 x 0.10 = 0.40 | 4 x 0.15 = 0.60
+        #                                            total = 2.80
         outcome = score(
-            make_assessment(dict.fromkeys(RUBRIC.dimension_ids, 1)), RUBRIC, PATTERNS
+            make_assessment(dict.fromkeys(RUBRIC.dimension_ids, 2)), RUBRIC, PATTERNS
         )
-        assert outcome.weighted_total == pytest.approx(2.60)
+        assert outcome.triggered_gates == []
+        assert outcome.weighted_total == pytest.approx(2.80)
         assert outcome.verdict is Verdict.NO_GO
 
     def test_lower_is_better_dimensions_are_flipped_in_the_breakdown(self):
@@ -168,8 +196,9 @@ class TestNotAiGate:
         # exactly the case that would slip through if not_ai were a low band.
         assert outcome.weighted_total == pytest.approx(GOLDEN_TOTAL)
         assert match_band(outcome.weighted_total, RUBRIC) is Verdict.GO
-        assert outcome.triggered_gates == [
-            "anti_pattern:deterministic_rule_suffices"
+        assert outcome.triggered_gate_ids == ["not_ai_alternative_suffices"]
+        assert outcome.triggered_gates[0].matched_anti_pattern_ids == [
+            "deterministic_rule_suffices"
         ]
 
     def test_non_ai_alternative_threshold_fires_on_its_own(self):
@@ -179,7 +208,8 @@ class TestNotAiGate:
         outcome = score(make_assessment(scores), RUBRIC, PATTERNS)
         assert outcome.verdict is Verdict.NOT_AI
         assert outcome.weighted_total == pytest.approx(3.80)
-        assert outcome.triggered_gates == ["non_ai_alternative>=4"]
+        assert outcome.triggered_gate_ids == ["not_ai_alternative_suffices"]
+        assert outcome.triggered_gates[0].matched_anti_pattern_ids == []
 
     def test_non_ai_alternative_below_threshold_does_not_fire(self):
         scores = {**GOLDEN_SCORES, "non_ai_alternative": 3}
@@ -191,6 +221,18 @@ class TestNotAiGate:
         outcome = score(
             make_assessment(
                 GOLDEN_SCORES, anti_pattern_ids=["chatbot_without_job_to_be_done"]
+            ),
+            RUBRIC,
+            PATTERNS,
+        )
+        assert outcome.triggered_gates == []
+        assert outcome.verdict is Verdict.GO
+
+    def test_data_does_not_exist_yet_is_advisory_not_a_hard_block(self):
+        """It routes through the no_usable_data gate, not through not_ai."""
+        outcome = score(
+            make_assessment(
+                GOLDEN_SCORES, anti_pattern_ids=["data_does_not_exist_yet"]
             ),
             RUBRIC,
             PATTERNS,
@@ -218,6 +260,82 @@ class TestNotAiGate:
         )
         assert outcome.ignored_anti_pattern_ids == ["invented_by_the_model"]
         assert outcome.verdict is Verdict.GO
+
+
+class TestBlockingGates:
+    """Phase 2.1: conditions too categorical for any weight to express.
+
+    Each case scores every other dimension at its best, so the weighted total
+    lands in the `go` band and only the gate can account for the verdict.
+    """
+
+    def test_no_usable_data_blocks_an_otherwise_perfect_case(self):
+        # 5 x 0.25 = 1.25 | 5 x 0.15 = 0.75 | 1 x 0.20 = 0.20   <- the penalty
+        # (6-1)=5 x 0.15 = 0.75 | 5 x 0.10 = 0.50 | 5 x 0.15 = 0.75
+        #                                            total = 4.20 -> go band
+        outcome = score(
+            make_assessment({**BEST_SCORES, "data_maturity": 1}), RUBRIC, PATTERNS
+        )
+        assert outcome.weighted_total == pytest.approx(4.20)
+        assert match_band(outcome.weighted_total, RUBRIC) is Verdict.GO
+        assert outcome.verdict is Verdict.NO_GO
+        assert outcome.triggered_gate_ids == ["no_usable_data"]
+        assert "data_maturity scored 1" in outcome.triggered_gates[0].detail
+
+    def test_unacceptable_regulatory_exposure_blocks_an_otherwise_perfect_case(self):
+        # 1.25 + 0.75 + 1.00 + 0.75 + (6-5)=1 x 0.10 = 0.10 + 0.75
+        #                                            total = 4.60 -> go band
+        outcome = score(
+            make_assessment({**BEST_SCORES, "regulatory_risk": 5}), RUBRIC, PATTERNS
+        )
+        assert outcome.weighted_total == pytest.approx(4.60)
+        assert match_band(outcome.weighted_total, RUBRIC) is Verdict.GO
+        assert outcome.verdict is Verdict.NO_GO
+        assert outcome.triggered_gate_ids == ["unacceptable_regulatory_exposure"]
+
+    def test_precedence_not_ai_outranks_no_go_and_both_are_reported(self):
+        outcome = score(
+            make_assessment(
+                {**BEST_SCORES, "data_maturity": 1, "non_ai_alternative": 4}
+            ),
+            RUBRIC,
+            PATTERNS,
+        )
+        assert outcome.verdict is Verdict.NOT_AI
+        assert outcome.triggered_gate_ids == [
+            "not_ai_alternative_suffices",
+            "no_usable_data",
+        ]
+        assert outcome.triggered_gates[0].precedence < outcome.triggered_gates[1].precedence
+
+    def test_a_gate_cannot_fire_on_an_unknown_dimension(self):
+        outcome = score(
+            make_assessment({**BEST_SCORES, "data_maturity": None}), RUBRIC, PATTERNS
+        )
+        assert outcome.triggered_gates == []
+        assert outcome.unknown_dimensions == ["data_maturity"]
+        # Every remaining dimension normalizes to 5, so renormalization gives 5.00.
+        assert outcome.weighted_total == pytest.approx(5.00)
+        assert outcome.verdict is Verdict.GO
+
+    def test_deleting_a_gate_restores_band_behaviour(self, tmp_path):
+        """Acceptance criterion 3 — config only, no Python edit."""
+        no_data = make_assessment({**BEST_SCORES, "data_maturity": 1})
+        assert score(no_data, RUBRIC, PATTERNS).verdict is Verdict.NO_GO
+
+        without = rubric_without_gate(tmp_path, "no_usable_data")
+        outcome = score(no_data, without, PATTERNS)
+        assert outcome.triggered_gates == []
+        assert outcome.weighted_total == pytest.approx(4.20)
+        assert outcome.verdict is Verdict.GO
+
+    def test_gate_explanation_names_the_gate_and_its_reason(self):
+        outcome = score(
+            make_assessment({**BEST_SCORES, "regulatory_risk": 5}), RUBRIC, PATTERNS
+        )
+        assert "unacceptable_regulatory_exposure -> no_go" in outcome.explanation
+        assert "regulatory_risk scored 5" in outcome.explanation
+        assert "compliance and legal path" in outcome.explanation
 
 
 class TestCompleteness:
@@ -364,7 +482,8 @@ class TestGoldenPathEndToEnd:
             PATTERNS,
         )
         assert "NOT_AI" in outcome.explanation
-        assert "Gates triggered:" in outcome.explanation
+        assert "Gates triggered" in outcome.explanation
+        assert "not_ai_alternative_suffices -> not_ai" in outcome.explanation
         assert "Instead:" in outcome.explanation
 
     def test_explanation_of_an_incomplete_case_lists_what_is_missing(self):

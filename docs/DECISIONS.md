@@ -275,3 +275,97 @@ scenario-D failures the model emitted a perfect `verdict="go"` while the
 rationale evaporated. Under a lax validator, Gatekeeper would have emitted a Go
 verdict with no justification and nobody would have noticed. That is the worst
 available failure mode for an agent whose entire product is the verdict.
+
+---
+
+## ADR-010 — Gates are a general mechanism, not a Not-AI special case
+
+**Date:** 2026-07-25 · **Commit:** Phase 2.1 Part A · **Status:** accepted ·
+**Supersedes:** the `not_ai_gate` block introduced in ADR-008
+
+### The defect
+
+ADR-008 built the gate mechanism for `not_ai` alone. Review of Phase 2 found
+two further conditions that are categorical rather than gradual, and which
+therefore fell through to the bands where their weights are far too small to
+stop them. Both are demonstrable arithmetic, not a matter of taste.
+
+**A use case with no data at all scored `go`.** With `data_maturity` at raw 1
+and every other dimension at its best:
+
+```
+economic_impact       5 x 0.25 = 1.25
+process_frequency     5 x 0.15 = 0.75
+data_maturity         1 x 0.20 = 0.20   <- the entire penalty
+implementation_effort (6-1)=5 x 0.15 = 0.75
+regulatory_risk       (6-1)=5 x 0.10 = 0.50
+non_ai_alternative    (6-1)=5 x 0.15 = 0.75
+                              total = 4.20  -> go
+```
+
+`data_does_not_exist_yet` had been left advisory on the reasoning that it would
+"depress `data_maturity` and land in `no_go` through the bands". It cannot:
+0.20 of weight cannot offset 4.00 from everywhere else.
+
+**A use case with maximum regulatory exposure scored `go`.**
+`regulatory_risk` carries the smallest weight in the rubric (0.10), so the
+whole distance from "embarrassing and reversible" to "legal force,
+protected-class exposure, irreversible harm, a regulator must approve" is a
+0.40 swing. An otherwise strong case totals 4.60 and passes. Gatekeeper would
+have greenlit a use case a regulator has to approve.
+
+### The general principle
+
+**No weighted average can express "this is disqualifying."** A weight small
+enough to be fair to an ordinary case is too small to stop an extreme one, and
+a weight large enough to stop the extreme case distorts every ordinary one.
+When a condition is binary, it belongs in a gate, not in the weights.
+
+### The fix
+
+`not_ai_gate` is generalized into a `blocking_gates` list in `rubric.yaml`.
+Each gate declares an `id`, the `verdict` it forces, a `precedence`, a
+human-readable `reason`, and `any_of` conditions — either a dimension threshold
+(`at_least` / `at_most`) or a reference to hard-blocking anti-patterns.
+
+Three gates ship:
+
+| Gate | Condition | Forces |
+|---|---|---|
+| `not_ai_alternative_suffices` | `non_ai_alternative` ≥ 4, **or** any hard-blocking anti-pattern | `not_ai` |
+| `no_usable_data` | `data_maturity` ≤ 1 | `no_go` |
+| `unacceptable_regulatory_exposure` | `regulatory_risk` ≥ 5 | `no_go` |
+
+Design constraints, each enforced at config-load time:
+
+- A gate may force only `no_go` or `not_ai` — **never** `go`. Gates stop cases;
+  they do not wave them through.
+- **Precedence is explicit in config, not implicit in evaluation order.**
+  `not_ai` (1) outranks `no_go` (2): if a rule already solves it *and* the data
+  does not exist, the useful answer is still "this is not an AI problem". Every
+  gate that fired is reported; the lowest precedence decides.
+- **A gate cannot fire on an unknown dimension.** An unknown is not evidence,
+  and letting it fire a gate would defeat the purpose of recording it as
+  unknown. The dimension is reported in `unknown_dimensions` as usual.
+- Evaluation order is unchanged: gates → completeness → bands.
+- Deleting a gate from `rubric.yaml` restores band behaviour for that
+  condition, with no code change.
+
+### `data_does_not_exist_yet` stays advisory
+
+It remains `hard_block: false` in `patterns.yaml`, with its `better_alternative`
+documenting that `no_usable_data` is what actually stops it. Hard-blocking it
+would route a genuine AI use case whose only problem is *sequencing* into
+`not_ai` — "never" instead of "not yet". The gate sends it to `no_go`, which
+is the correct verdict and leaves the door open to re-triage once the data
+exists. One line of YAML to reverse if that judgement is wrong.
+
+### Consequence for `Outcome`
+
+`triggered_gates` changes from `list[str]` to `list[TriggeredGate]`, carrying
+the gate id, forced verdict, precedence, config `reason`, the `detail` of what
+actually fired it (e.g. "data_maturity scored 1, at most 1"), and any
+contributing anti-pattern ids. `Outcome.triggered_gate_ids` gives the plain id
+list. This is a wider change than the phase brief implied; it was taken so the
+outcome stays self-explaining now that a gate can produce two different
+verdicts for several different reasons.

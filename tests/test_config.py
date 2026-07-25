@@ -74,6 +74,21 @@ class TestShippedConfigLoads:
     def test_bands_only_produce_go_and_no_go(self):
         assert {b.verdict for b in load_rubric().verdict_bands} == {"go", "no_go"}
 
+    def test_the_three_shipped_gates_are_present_in_precedence_order(self):
+        rubric = load_rubric()
+        assert [(g.id, g.verdict) for g in rubric.gates_by_precedence] == [
+            ("not_ai_alternative_suffices", "not_ai"),
+            ("no_usable_data", "no_go"),
+            ("unacceptable_regulatory_exposure", "no_go"),
+        ]
+
+    def test_not_ai_outranks_no_go(self):
+        by_id = {g.id: g for g in load_rubric().blocking_gates}
+        assert (
+            by_id["not_ai_alternative_suffices"].precedence
+            < by_id["no_usable_data"].precedence
+        )
+
     def test_patterns_load_with_archetypes_and_anti_patterns(self):
         patterns = load_patterns()
         assert {a.id for a in patterns.archetypes} == {
@@ -176,14 +191,40 @@ class TestRubricValidationFailures:
             write_rubric(tmp_path, rubric_data)
 
     def test_gate_naming_an_unknown_dimension_is_rejected(self, tmp_path, rubric_data):
-        rubric_data["not_ai_gate"]["dimension_id"] = "no_such_dimension"
+        rubric_data["blocking_gates"][0]["any_of"][0]["dimension"] = "no_such_dimension"
         with pytest.raises(ConfigError, match="not a declared dimension"):
             write_rubric(tmp_path, rubric_data)
 
     def test_gate_threshold_off_the_scale_is_rejected(self, tmp_path, rubric_data):
-        rubric_data["not_ai_gate"]["min_raw_score"] = 9
+        rubric_data["blocking_gates"][0]["any_of"][0]["threshold"] = 9
         with pytest.raises(ConfigError, match="outside the scale"):
             write_rubric(tmp_path, rubric_data)
+
+    def test_duplicate_gate_ids_are_rejected(self, tmp_path, rubric_data):
+        rubric_data["blocking_gates"][1]["id"] = rubric_data["blocking_gates"][0]["id"]
+        with pytest.raises(ConfigError, match="duplicate blocking gate ids"):
+            write_rubric(tmp_path, rubric_data)
+
+    def test_a_gate_cannot_force_a_go(self, tmp_path, rubric_data):
+        """Gates exist to stop a case, never to wave one through."""
+        rubric_data["blocking_gates"][0]["verdict"] = "go"
+        with pytest.raises(ConfigError):
+            write_rubric(tmp_path, rubric_data)
+
+    def test_a_gate_needs_at_least_one_condition(self, tmp_path, rubric_data):
+        rubric_data["blocking_gates"][0]["any_of"] = []
+        with pytest.raises(ConfigError):
+            write_rubric(tmp_path, rubric_data)
+
+    def test_unknown_condition_type_is_rejected(self, tmp_path, rubric_data):
+        rubric_data["blocking_gates"][0]["any_of"][0]["type"] = "vibes"
+        with pytest.raises(ConfigError):
+            write_rubric(tmp_path, rubric_data)
+
+    def test_removing_every_gate_is_allowed(self, tmp_path, rubric_data):
+        """Gates are optional: an empty list leaves pure band behaviour."""
+        rubric_data["blocking_gates"] = []
+        assert write_rubric(tmp_path, rubric_data).blocking_gates == []
 
     def test_unknown_limit_above_dimension_count_is_rejected(
         self, tmp_path, rubric_data

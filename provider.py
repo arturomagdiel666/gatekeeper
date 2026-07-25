@@ -23,6 +23,15 @@ as an already-parsed ``dict``, while OpenAI returns them as a JSON *string*.
 :func:`normalize_arguments` accepts both and always yields a ``dict``, so no
 caller ever has to care which backend produced the response.
 
+**Two output modes, never both.** A call may request native ``tools`` *or*
+constrained JSON via ``response_schema``, and passing both raises. They are
+alternative strategies, not additive ones: Ollama's ``format=`` constrains the
+generated *message content*, while tool schemas constrain *tool-call
+arguments* — two different channels. The Phase 1.6 schema-shape matrix
+(``evals/spike_schema_shape_*.json``) was run precisely to tell these apart,
+so silently accepting both would reintroduce the ambiguity it eliminated. Use
+:func:`parse_json_content` to read a constrained-JSON reply.
+
 This module is a generic, reusable LLM layer — it contains no
 Gatekeeper-specific business logic.
 """
@@ -47,6 +56,7 @@ __all__ = [
     "MockProvider",
     "get_provider",
     "normalize_arguments",
+    "parse_json_content",
 ]
 
 DEFAULT_OLLAMA_MODEL = "qwen2.5:7b"
@@ -91,6 +101,59 @@ def _warn_malformed(arguments: Any) -> None:
         type(arguments).__name__,
         arguments,
     )
+
+
+def _reject_conflicting_output_modes(
+    tools: list[dict] | None, response_schema: dict | None
+) -> None:
+    """Raise if a call asks for native tools and constrained JSON at once.
+
+    Raises:
+        ValueError: If both ``tools`` and ``response_schema`` are supplied.
+    """
+    if tools and response_schema is not None:
+        raise ValueError(
+            "tools and response_schema are mutually exclusive: they are "
+            "alternative strategies, not additive ones. Ollama's format= "
+            "constrains the generated message content, NOT the arguments of a "
+            "native tool call, so requesting both leaves it ambiguous which "
+            "channel should carry the payload. Pass tools for flat "
+            "control-flow decisions, or response_schema for a structured "
+            "payload — never both in one call."
+        )
+
+
+def parse_json_content(response: ChatResponse) -> dict:
+    """Parse a constrained-JSON reply's ``text`` into a ``dict``.
+
+    Intended for responses produced with ``response_schema``. Failures are
+    never swallowed — the raw text is reproduced in the exception message so a
+    caller can see exactly what the model emitted.
+
+    Args:
+        response: The response whose ``text`` should hold a JSON object.
+
+    Returns:
+        The parsed JSON object.
+
+    Raises:
+        ValueError: If ``text`` is not parseable JSON, or parses to something
+            other than a JSON object.
+    """
+    text = response.text or ""
+    try:
+        parsed = json.loads(text)
+    except (json.JSONDecodeError, ValueError) as exc:
+        raise ValueError(
+            f"Expected a JSON object in the response text but parsing failed "
+            f"({exc}). Raw text was: {text!r}"
+        ) from exc
+    if not isinstance(parsed, dict):
+        raise ValueError(
+            f"Expected a JSON object in the response text but got "
+            f"{type(parsed).__name__}. Raw text was: {text!r}"
+        )
+    return parsed
 
 
 def normalize_arguments(arguments: Any) -> dict:
@@ -187,6 +250,7 @@ class LLMProvider(ABC):
         messages: list[dict],
         tools: list[dict] | None = None,
         temperature: float = 0.2,
+        response_schema: dict | None = None,
         **kwargs: Any,
     ) -> ChatResponse:
         """Send a chat conversation and return the normalized response.
@@ -200,11 +264,21 @@ class LLMProvider(ABC):
             tools: Optional list of tool schemas (OpenAI-style function
                 schemas). Accepted by every provider even if it ignores them.
             temperature: Sampling temperature.
+            response_schema: Optional JSON Schema dict (typically
+                ``SomeModel.model_json_schema()``) constraining the reply to a
+                JSON object, read back with :func:`parse_json_content`. Note
+                that providers differ in how strict they are about schema
+                dialect — OpenAI's strict mode additionally requires
+                ``additionalProperties: false`` and every property listed in
+                ``required``, which is the caller's responsibility.
             **kwargs: Provider-specific extras, passed through when supported.
 
         Returns:
             A :class:`ChatResponse` with normalized ``text`` and
             ``tool_calls``, plus the raw provider payload.
+
+        Raises:
+            ValueError: If both ``tools`` and ``response_schema`` are given.
         """
 
 
@@ -235,6 +309,7 @@ class OllamaProvider(LLMProvider):
         messages: list[dict],
         tools: list[dict] | None = None,
         temperature: float = 0.2,
+        response_schema: dict | None = None,
         **kwargs: Any,
     ) -> ChatResponse:
         """Send the conversation to Ollama and normalize the reply.
@@ -243,8 +318,15 @@ class OllamaProvider(LLMProvider):
         no tool call; that case yields an empty list. Ollama's ``arguments``
         are already a ``dict`` and are passed through unchanged, and Ollama
         does not emit tool-call ids, so ``id`` is always ``None``.
+
+        ``response_schema`` is forwarded as Ollama's ``format=`` argument,
+        which constrains decoding of the message content; the JSON then
+        arrives in ``text``.
         """
+        _reject_conflicting_output_modes(tools, response_schema)
         options = {"temperature": temperature, **kwargs.pop("options", {})}
+        if response_schema is not None:
+            kwargs["format"] = response_schema
         response = self._client.chat(
             model=self.model,
             messages=messages,
@@ -321,6 +403,7 @@ class OpenAIProvider(LLMProvider):
         messages: list[dict],
         tools: list[dict] | None = None,
         temperature: float = 0.2,
+        response_schema: dict | None = None,
         **kwargs: Any,
     ) -> ChatResponse:
         """Send the conversation to OpenAI and normalize the reply.
@@ -330,7 +413,12 @@ class OpenAIProvider(LLMProvider):
         input, flagged via ``malformed_tool_calls``, with the original
         preserved in ``raw``). The provider's ``tool_calls[].id`` is kept so
         tool results can be sent back with a matching ``tool_call_id``.
+
+        ``response_schema`` is mapped to a ``json_schema`` response format in
+        strict mode; the schema's ``title`` names it, falling back to
+        ``"response"``.
         """
+        _reject_conflicting_output_modes(tools, response_schema)
         request: dict[str, Any] = {
             "model": self.model,
             "messages": messages,
@@ -339,6 +427,15 @@ class OpenAIProvider(LLMProvider):
         }
         if tools:
             request["tools"] = tools
+        if response_schema is not None:
+            request["response_format"] = {
+                "type": "json_schema",
+                "json_schema": {
+                    "name": response_schema.get("title") or "response",
+                    "schema": response_schema,
+                    "strict": True,
+                },
+            }
         response = self._client.chat.completions.create(**request)
 
         raw: dict = response.model_dump()
@@ -371,7 +468,9 @@ class MockProvider(LLMProvider):
     Always returns the same canned reply. When ``tools`` is passed, it also
     echoes one fixed tool call (with ``arguments`` already a ``dict`` and the
     stable id ``"mock_call_1"``) so downstream tool-handling code can be
-    exercised deterministically.
+    exercised deterministically. When ``response_schema`` is passed, ``text``
+    carries a canned JSON object instead — injectable via the constructor so
+    later phases can mock a realistic payload without a live model.
     """
 
     CANNED_TEXT = "MOCK: READY."
@@ -380,12 +479,25 @@ class MockProvider(LLMProvider):
         "arguments": {"echo": "mock"},
         "id": "mock_call_1",
     }
+    CANNED_JSON: dict = {"mock": True}
+
+    def __init__(self, canned_json: dict | None = None) -> None:
+        """Initialize the mock.
+
+        Args:
+            canned_json: Object returned (JSON-encoded in ``text``) when a
+                call passes ``response_schema``. Defaults to ``CANNED_JSON``.
+        """
+        self.canned_json = (
+            dict(self.CANNED_JSON) if canned_json is None else canned_json
+        )
 
     def chat(
         self,
         messages: list[dict],
         tools: list[dict] | None = None,
         temperature: float = 0.2,
+        response_schema: dict | None = None,
         **kwargs: Any,
     ) -> ChatResponse:
         """Return the canned response; no network involved.
@@ -394,13 +506,30 @@ class MockProvider(LLMProvider):
             messages: Accepted (and recorded in ``raw``) but not interpreted.
             tools: If truthy, the response includes ``CANNED_TOOL_CALL``.
             temperature: Ignored.
+            response_schema: If given, ``text`` is the JSON-encoded
+                ``canned_json`` object rather than ``CANNED_TEXT``. The schema
+                itself is recorded in ``raw`` but not enforced.
             **kwargs: Ignored.
+
+        Raises:
+            ValueError: If both ``tools`` and ``response_schema`` are given.
         """
+        _reject_conflicting_output_modes(tools, response_schema)
         tool_calls = [dict(self.CANNED_TOOL_CALL)] if tools else []
+        text = (
+            json.dumps(self.canned_json)
+            if response_schema is not None
+            else self.CANNED_TEXT
+        )
         return ChatResponse(
-            text=self.CANNED_TEXT,
+            text=text,
             tool_calls=tool_calls,
-            raw={"mock": True, "messages": messages, "tools": tools or []},
+            raw={
+                "mock": True,
+                "messages": messages,
+                "tools": tools or [],
+                "response_schema": response_schema,
+            },
         )
 
 

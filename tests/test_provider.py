@@ -11,6 +11,7 @@ import urllib.error
 import urllib.request
 
 import pytest
+from pydantic import BaseModel
 
 from provider import (
     ChatResponse,
@@ -18,6 +19,7 @@ from provider import (
     OllamaProvider,
     get_provider,
     normalize_arguments,
+    parse_json_content,
 )
 
 OLLAMA_HOST = os.environ.get("OLLAMA_HOST", "http://localhost:11434")
@@ -163,6 +165,65 @@ class TestNormalizeArguments:
         assert normalize_arguments(None) == {}
 
 
+class TestStructuredOutput:
+    """Phase 2 Part A: constrained-JSON support in the provider layer."""
+
+    SCHEMA = {
+        "title": "Tiny",
+        "type": "object",
+        "properties": {"city": {"type": "string"}},
+        "required": ["city"],
+    }
+
+    def test_mock_returns_canned_json_when_schema_passed(self):
+        response = MockProvider().chat(
+            [{"role": "user", "content": "hi"}], response_schema=self.SCHEMA
+        )
+        assert parse_json_content(response) == MockProvider.CANNED_JSON
+        assert response.raw["response_schema"] == self.SCHEMA
+
+    def test_mock_canned_json_is_injectable(self):
+        payload = {"city": "Xalapa"}
+        response = MockProvider(canned_json=payload).chat(
+            [{"role": "user", "content": "hi"}], response_schema=self.SCHEMA
+        )
+        assert parse_json_content(response) == payload
+
+    def test_mock_without_schema_still_returns_plain_text(self):
+        response = MockProvider().chat([{"role": "user", "content": "hi"}])
+        assert response.text == MockProvider.CANNED_TEXT
+
+    def test_tools_and_response_schema_together_raise(self):
+        tools = [{"type": "function", "function": {"name": "anything"}}]
+        with pytest.raises(ValueError, match="mutually exclusive"):
+            MockProvider().chat(
+                [{"role": "user", "content": "hi"}],
+                tools=tools,
+                response_schema=self.SCHEMA,
+            )
+
+
+class TestParseJsonContent:
+    def test_parses_json_object(self):
+        response = ChatResponse(text='{"verdict_free": true, "n": 3}')
+        assert parse_json_content(response) == {"verdict_free": True, "n": 3}
+
+    def test_malformed_json_raises_with_raw_text_in_message(self):
+        response = ChatResponse(text='{"broken":')
+        with pytest.raises(ValueError, match=r'\{"broken":') as excinfo:
+            parse_json_content(response)
+        assert "parsing failed" in str(excinfo.value)
+
+    def test_non_object_json_raises_with_raw_text_in_message(self):
+        response = ChatResponse(text="[1, 2, 3]")
+        with pytest.raises(ValueError, match=r"\[1, 2, 3\]"):
+            parse_json_content(response)
+
+    def test_empty_text_raises(self):
+        with pytest.raises(ValueError):
+            parse_json_content(ChatResponse(text=""))
+
+
 @pytest.mark.skipif(
     not _ollama_reachable(),
     reason=f"Ollama not reachable at {OLLAMA_HOST}",
@@ -179,3 +240,21 @@ class TestOllamaIntegration:
         assert response.text.strip()
         assert isinstance(response.tool_calls, list)
         assert response.raw
+
+    def test_response_schema_returns_schema_valid_json(self):
+        class City(BaseModel):
+            name: str
+            population: int
+
+        response = OllamaProvider().chat(
+            [
+                {
+                    "role": "user",
+                    "content": (
+                        "Return the city Xalapa with a population of 500000."
+                    ),
+                }
+            ],
+            response_schema=City.model_json_schema(),
+        )
+        City.model_validate(parse_json_content(response))

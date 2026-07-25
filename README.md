@@ -42,24 +42,37 @@ if you plan to use the fallback.
 Six dimensions, each scored 1-5 by the interview and weighted into a single
 total on the same 1-5 scale:
 
-| Dimension | Measures | Weight | Direction |
+| Dimension | Measures (one axis each) | Weight | Direction |
 |---|---|---|---|
-| `economic_impact` | Size of the financial upside if it works | 0.25 | higher is better |
-| `process_frequency` | How often the target process runs | 0.15 | higher is better |
-| `data_maturity` | Whether usable data exists and is accessible | 0.20 | higher is better |
-| `implementation_effort` | Build, integration, and change-management cost | 0.15 | lower is better |
-| `regulatory_risk` | Compliance, privacy, and liability exposure | 0.10 | lower is better |
-| `non_ai_alternative` | How well a rule or query would solve it instead | 0.15 | lower is better |
+| `economic_impact` | Magnitude of the upside, annualized | 0.25 | higher is better |
+| `process_frequency` | Instance volume per year | 0.15 | higher is better |
+| `data_maturity` | Data exists, is obtainable, and output quality can be judged | 0.20 | higher is better |
+| `implementation_effort` | Total cost to production, including change management | 0.15 | lower is better |
+| `regulatory_risk` | Consequence of a bad output reaching a person | 0.10 | lower is better |
+| `non_ai_alternative` | How completely a non-AI solution would suffice | 0.15 | lower is better |
 
 A `lower is better` score is flipped (`6 - raw`) before weighting, so 5 always
 means "good for this use case". Totals at or above **3.5** are `go`, below are
 `no_go`.
 
-**`not_ai` is a gate, not a low score.** It is evaluated before the bands and
-overrides them, fired by a hard-blocking anti-pattern from `patterns.yaml` or
-by `non_ai_alternative` scoring 4 or above. A use case can total 4.10 and still
-be Not-AI because a SQL query already solves it — catching exactly that case is
-the point of the product.
+### Blocking gates override the bands
+
+Some conditions are categorical, not gradual, and no weighted average can
+express "this is disqualifying" — a weight small enough to be fair to an
+ordinary case is too small to stop an extreme one. Those conditions are
+declared as `blocking_gates` in `rubric.yaml`, evaluated before the bands:
+
+| Gate | Fires when | Forces |
+|---|---|---|
+| `not_ai_alternative_suffices` | `non_ai_alternative` ≥ 4, or a hard-blocking anti-pattern matched | `not_ai` |
+| `no_usable_data` | `data_maturity` ≤ 1 | `no_go` |
+| `unacceptable_regulatory_exposure` | `regulatory_risk` ≥ 5 | `no_go` |
+
+A use case can total 4.10 and still be Not-AI because a SQL query already
+solves it, or total 4.60 and still be No-Go because a regulator has to approve
+it. Catching exactly those cases is the point of the product. When several
+gates fire, the lowest `precedence` decides and all are reported; a gate can
+never force a `go`, and never fires on a dimension left unknown.
 
 A dimension the interview could not establish is recorded as unknown, never
 guessed. One unknown is tolerated (remaining weights are renormalized); more
@@ -77,7 +90,9 @@ edited directly:
   and observable ("about one quarter, two or three teams to coordinate"), never
   vague ("medium effort").
 - **Verdict bands** — must tile the 1.0-5.0 scale with no gap or overlap.
-- **The Not-AI gate** — which dimension fires it and at what threshold.
+- **Blocking gates** — which conditions force a verdict outright, and in what
+  precedence. Deleting a gate restores ordinary band behaviour for that
+  condition.
 - **Archetypes and anti-patterns** in `patterns.yaml`, including which
   anti-patterns `hard_block`.
 

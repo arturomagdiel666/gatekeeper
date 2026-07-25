@@ -49,65 +49,92 @@ dimensions:
   - id: economic_impact
     label: Economic impact
     description: >-
-      The size of the financial upside if the system works as intended. Money
-      saved, money earned, or loss avoided — annualized. Judge the prize, not
-      the probability of winning it; the cost side is captured by
+      The size of the upside if the system works as intended: money saved,
+      money earned, or loss avoided, annualized. Judge the prize, not the
+      probability of winning it — the cost side is captured by
       implementation_effort and the odds by data_maturity.
+      MAGNITUDE IS THE ONLY AXIS HERE. Whether anyone has yet quantified the
+      benefit is a question of *confidence*, not of size: if no figure has been
+      named, estimate the order of magnitude anyway and record
+      `confidence: low` on the assessment. A missing number must never pull
+      this score down — that would make the rubric's heaviest dimension partly
+      a measure of stakeholder engagement rather than of impact.
     weight: 0.25
     direction: higher_is_better
-    # The currency bands below are the main thing to retune for a different
+    # The currency bands are the main thing to retune for a different
     # organization: what is transformational for a 50-person firm is a rounding
-    # error for a large one. Scale them, keep the structure.
+    # error for a large one. Scale them, keep the structure. Each level gives a
+    # non-monetary equivalent at the same order of magnitude, for benefits that
+    # are real but not denominated in currency.
     anchors:
       1: >-
-        Under roughly 10k USD a year, or nobody will name a number and the
-        benefit is described only as "efficiency" or "innovation".
+        Under roughly 10k USD a year — equivalently, under about 200
+        person-hours a year, or a handful of people or cases affected.
       2: >-
-        Roughly 10k-50k USD a year — real, but the same order of magnitude as
-        the cost of building and running the system.
+        Roughly 10k-50k USD a year — equivalently, about 200-1,000 person-hours
+        a year, or a few dozen people or cases affected.
       3: >-
-        Roughly 50k-250k USD a year, or a non-monetary benefit (cycle time,
-        customer wait, backlog) that a named owner will personally vouch for.
+        Roughly 50k-250k USD a year — equivalently, about 1,000-5,000
+        person-hours a year (very roughly 0.5-2.5 full-time equivalents), or
+        hundreds of people or cases affected.
       4: >-
-        Roughly 250k-1M USD a year, or a loss the business already tracks and
-        reports on today.
+        Roughly 250k-1M USD a year — equivalently, about 5,000-20,000
+        person-hours a year (very roughly 2.5-10 full-time equivalents),
+        thousands of people or cases affected, or several serious incidents
+        avoided a year.
       5: >-
-        Over roughly 1M USD a year, or the process is directly tied to revenue,
-        a regulatory penalty, or a safety cost that leadership already escalates.
+        Over roughly 1M USD a year — equivalently, more than about 20,000
+        person-hours a year (10+ full-time equivalents), tens of thousands of
+        people or cases affected, or the avoidance of incidents carrying
+        regulatory or safety consequences.
 
   # ---------------------------------------------------------------------------
   - id: process_frequency
     label: Process frequency
     description: >-
-      How often the target process actually runs. Frequency is what lets a fixed
-      build cost compound into a return. A rare process can be extremely
-      valuable per instance and still be a poor automation target, because there
-      are too few instances to repay the build or to learn from.
+      How often the target process actually runs, measured in instances per
+      year. Frequency is what lets a fixed build cost compound into a return: a
+      rare process can be extremely valuable per instance and still be a poor
+      automation target, because there are too few instances to repay the build
+      or to learn from.
+      VOLUME IS THE ONLY AXIS HERE. How much each instance differs from the
+      last — heterogeneity — is a separate construct that drives feasibility
+      rather than return, and it is deliberately not measured on this scale.
+      See the proposed seventh dimension in docs/DECISIONS.md.
     weight: 0.15
     direction: higher_is_better
     anchors:
       1: >-
-        A handful of times a year, or genuinely ad hoc. Each instance is
-        bespoke enough that little carries over to the next.
+        Fewer than about a dozen instances a year.
       2: >-
-        Roughly monthly, or a few dozen instances a year.
+        Roughly monthly — about 12 to 100 instances a year.
       3: >-
-        Roughly weekly, or a few hundred instances a year.
+        Roughly weekly — about 100 to 1,000 instances a year.
       4: >-
-        Roughly daily; hundreds to a few thousand instances a year, with a
-        recognizable steady-state pattern.
+        Roughly daily — about 1,000 to 10,000 instances a year.
       5: >-
-        Continuously or many times an hour; thousands of instances a month. The
-        queue never empties and people are visibly rate-limited by it.
+        Many times an hour, or continuous — more than about 10,000 instances a
+        year.
 
   # ---------------------------------------------------------------------------
   - id: data_maturity
     label: Data maturity
     description: >-
       Whether the data needed to build this exists today, can actually be
-      obtained by this team this quarter, and is good enough to learn from or
-      ground answers in. This is the dimension teams most consistently
-      overestimate — score what has been seen, not what is believed to exist.
+      obtained by this team this quarter, and whether you can tell a good
+      output from a bad one.
+      THE CONSTRUCT IS "CAN YOU EVALUATE IT", NOT "DO YOU HAVE LABELS". What
+      counts as evidence depends on the archetype (see patterns.yaml). Tasks
+      with a right answer — classification, extraction, forecasting,
+      anomaly_detection, recommendation — need labels or an unambiguous outcome
+      variable. Open-ended tasks — summarization, rag_qa — have no outcome
+      variable and never will; for them the equivalent evidence is a curated
+      reference or evaluation set plus agreed quality criteria. Requiring
+      labels of everything would cap generative use cases below the top of this
+      scale by construction, penalizing exactly the cases most often brought to
+      triage.
+      This is the dimension teams most consistently overestimate — score what
+      has been seen, not what is believed to exist.
     weight: 0.20
     direction: higher_is_better
     anchors:
@@ -120,17 +147,23 @@ dimensions:
         locked in free text or documents with no access path. Getting to it is
         its own project with its own budget.
       3: >-
-        Data exists in one or two systems and there is a plausible access path,
-        but quality is unverified and there is no labeled set or ground truth to
-        measure against.
+        Data exists in one or two systems and there is a plausible access path.
+        Either its quality is unverified, or there is no agreed way yet to
+        judge whether an output is good.
       4: >-
         Data is centralized, reasonably clean, and has a named owner who can
-        grant access. Some labeled examples or a usable proxy for the outcome
-        exist.
+        grant access. A partial means of judging output quality exists: for a
+        task with a right answer, some labeled examples or a usable proxy for
+        the outcome; for an open-ended task, a few reference examples or draft
+        quality criteria.
       5: >-
-        Several years of clean, structured, accessible history with labels or an
-        unambiguous outcome variable, plus an owner who can grant access this
-        quarter without an escalation.
+        Several years of clean, structured, accessible history, plus an owner
+        who can grant access this quarter without an escalation, plus a settled
+        way to judge an output: for a task with a right answer, labels or an
+        unambiguous outcome variable; for an open-ended task, a curated
+        evaluation set with agreed quality criteria (e.g. what a good
+        discharge-note summary must contain) and someone qualified to apply
+        them.
 
   # ---------------------------------------------------------------------------
   - id: implementation_effort

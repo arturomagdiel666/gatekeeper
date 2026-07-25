@@ -301,6 +301,12 @@ anti_patterns:
       Instrument the process first and revisit in a few months with real history.
       Capturing the outcome variable from today onward is usually cheap and is a
       prerequisite for anything here.
+      Note this is deliberately advisory rather than hard-blocking: the
+      `no_usable_data` gate in rubric.yaml is what actually stops these cases,
+      and it routes them to `no_go` rather than `not_ai`. The distinction
+      matters — this is a sequencing problem ("not yet"), not a judgement that
+      the use case is unsuited to AI ("never"), and it should be re-triaged
+      once the data exists.
 
   - id: solution_first_no_measurable_problem
     label: Solution-first framing with no measurable problem

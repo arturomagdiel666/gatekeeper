@@ -369,3 +369,129 @@ contributing anti-pattern ids. `Outcome.triggered_gate_ids` gives the plain id
 list. This is a wider change than the phase brief implied; it was taken so the
 outcome stays self-explaining now that a gate can produce two different
 verdicts for several different reasons.
+
+---
+
+## ADR-011 — One dimension, one axis
+
+**Date:** 2026-07-25 · **Commit:** Phase 2.1 Part B · **Status:** accepted
+
+Review of the Phase 2 anchors found three dimensions measuring two things at
+once. A dimension that mixes constructs cannot be scored reproducibly, because
+two honest assessors reading the same evidence land on different levels
+depending on which construct they weighted.
+
+Each dimension now measures exactly one axis:
+
+| Dimension | Axis |
+|---|---|
+| `economic_impact` | Magnitude of the upside, annualized |
+| `process_frequency` | Instance volume per year |
+| `data_maturity` | Whether the data exists, is obtainable, and output quality can be judged |
+| `implementation_effort` | Total cost to production, including change management |
+| `regulatory_risk` | Consequence of a bad output reaching a person |
+| `non_ai_alternative` | How completely a non-AI solution would suffice |
+
+### `economic_impact` was partly measuring stakeholder engagement
+
+Level 1 read *"nobody will name a number and the benefit is described only as
+efficiency or innovation"*; level 3 read *"a non-monetary benefit that a named
+owner will personally vouch for"*. The discriminator between them had become
+**whether a sponsor vouches**, not **how large the impact is** — so a small but
+well-sponsored benefit scored 3 while a large but unquantified one scored 1.
+On the rubric's heaviest dimension (0.25), that is a systematic bias toward
+whoever is best at internal politics.
+
+All five levels are rewritten so magnitude is the only axis, each with a
+non-monetary equivalent at the same order of magnitude (person-hours, people or
+cases affected, incidents avoided). Quantification confidence is explicitly
+routed elsewhere: the anchor text instructs the assessor to estimate the order
+of magnitude and record `confidence: low` on the `DimensionAssessment`, using
+the field that already exists in `schemas.py`.
+
+### `data_maturity` was structurally biased against generative use cases
+
+Level 5 required *"labels or an unambiguous outcome variable"*. Summarization
+and retrieval-augmented QA have no outcome variable and never will, so every
+generative archetype was capped below the top of the scale **by construction**,
+carrying a systematic penalty of up to 0.20 — on precisely the class of use
+case most often brought to a triage tool.
+
+The underlying construct was misidentified. It is not "do you have labels", it
+is **"can you tell whether an output is good"**. Levels 4 and 5 now make the
+evidence requirement conditional on what the archetype needs, cross-referencing
+`patterns.yaml` explicitly:
+
+- Tasks with a right answer (`classification`, `extraction`, `forecasting`,
+  `anomaly_detection`, `recommendation`) — labels or an outcome variable.
+- Open-ended tasks (`summarization`, `rag_qa`) — a curated reference or
+  evaluation set with agreed quality criteria, and someone qualified to apply
+  them.
+
+This is worth recording beyond the immediate fix. An ROI instrument that
+demands labels is biased against generative use cases as a class, and in
+industrial OT much of what is interesting — summarizing alarm floods,
+interrogating equipment manuals, drafting shift reports — is exactly that. If
+the evaluation instrument is biased against the class of use case the field is
+adopting, that bias is a finding in its own right, not merely a bug.
+
+### `process_frequency` conflated volume with heterogeneity
+
+Level 1 mixed *"a handful of times a year"* (volume) with *"each instance is
+bespoke enough that little carries over"* (heterogeneity). These are
+independent: a process running three times a year identically is a different
+proposition from one running three times a year bespoke. Every level now
+measures instances per year and nothing else.
+
+### Proposed seventh dimension — `instance_heterogeneity` (NOT adopted)
+
+Heterogeneity was removed from `process_frequency` rather than deleted as a
+concern, because it genuinely drives whether a build is feasible. It is
+recorded here as a proposal for decision, **not implemented** — weights are
+settled and adding a dimension would require redistributing all six.
+
+> **`instance_heterogeneity`** — how much each instance of the process differs
+> from the last. `lower_is_better`. Level 1: instances are near-identical, the
+> same fields in the same places. Level 5: every instance is bespoke, with
+> little structure carrying from one to the next.
+>
+> It belongs to feasibility rather than return, which is an argument for
+> folding it into `implementation_effort` instead of adding a seventh
+> dimension. Adopting it would mean rebalancing all six weights and rerunning
+> the worked examples.
+
+### Known property, recorded not fixed
+
+`non_ai_alternative` gates at raw ≥ 4, so levels 4 and 5 never reach banding —
+any case that would score them is already `not_ai`. It therefore carries 0.15
+of weight across an effective range of only three levels (1–3), making it
+somewhat less influential in the weighted total than its weight suggests. This
+is not necessarily wrong: the dimension does its heaviest work as a gate, not
+as a weight. It is recorded so that a future weight retune accounts for it
+rather than rediscovering it.
+
+### Consequence for the test suite
+
+The worked example previously named `GOLDEN_SCORES` scored the hospital
+scenario `economic_impact = 5` from a description naming no figure, and
+`data_maturity = 5` with no mention of labels, an owner, or quality criteria.
+As an arithmetic fixture it was valid — `score()` receives a fixed
+`Assessment` and derives nothing from prose — but it was the only worked case
+in the repository and would inevitably have been reached for as the few-shot
+exemplar when Phase 3 writes the interview prompts, teaching the model to
+inflate the heaviest-weighted dimension. That bias would not have been caught
+by any test, because the arithmetic was never wrong.
+
+It is now split in two:
+
+- `ARITHMETIC_SCORES` — renamed, documented as synthetic, with the longhand
+  table rewritten to show `raw -> normalized x weight = contribution` and the
+  direction of each dimension named, so it can be checked with a calculator
+  without reverse engineering.
+- `TestHospitalReferenceExemplar` — the same scenario scored honestly against
+  the anchors, each score quoting the anchor level it satisfies. Three of six
+  dimensions come out **unknown**, because two sentences do not establish them,
+  so the honest verdict is `incomplete`. That is a better exemplar than a full
+  set of scores: it demonstrates the interview refusing to invent what it was
+  not told. A second test shows the completion path, where three hypothetical
+  follow-up answers yield a weighted total of 3.20 and a `no_go`.

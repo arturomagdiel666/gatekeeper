@@ -26,6 +26,9 @@ This module only assembles the prompt and moves data between them.
 
 from __future__ import annotations
 
+import logging
+import os
+import threading
 from datetime import date
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
@@ -49,8 +52,19 @@ __all__ = [
     "build_response_schema",
     "build_user_message",
     "assess_request",
+    "assess_timeout_seconds",
     "MAX_RETRIES",
+    "DEFAULT_TIMEOUT_SECONDS",
 ]
+
+logger = logging.getLogger(__name__)
+
+#: Seconds to wait for the provider before abandoning the call. Phase 3.2
+#: measured per-request latency as bimodal: five of six requests completed in
+#: about five seconds, one took 416.6s. 30s is roughly six times the median and
+#: far below the pathological tail, so it cuts the tail without touching normal
+#: operation. Override with ASSESS_TIMEOUT_SECONDS.
+DEFAULT_TIMEOUT_SECONDS = 30.0
 
 #: One retry, then surface the failure. Retrying further hides a systematic
 #: problem behind latency instead of reporting it.
@@ -61,15 +75,101 @@ class AssessmentError(RuntimeError):
     """Raised when the model could not produce a valid assessment."""
 
 
+class _ProviderTimeout(RuntimeError):
+    """Internal: the provider did not answer within the budget."""
+
+
+def assess_timeout_seconds() -> float:
+    """The provider timeout in seconds, from ``ASSESS_TIMEOUT_SECONDS``.
+
+    A missing, unparseable, or non-positive value falls back to
+    :data:`DEFAULT_TIMEOUT_SECONDS` with a logged warning — a malformed
+    override must not silently disable the timeout.
+    """
+    raw = os.environ.get("ASSESS_TIMEOUT_SECONDS")
+    if raw is None or not raw.strip():
+        return DEFAULT_TIMEOUT_SECONDS
+    try:
+        value = float(raw)
+    except ValueError:
+        logger.warning(
+            "ASSESS_TIMEOUT_SECONDS=%r is not a number; using %.0fs",
+            raw,
+            DEFAULT_TIMEOUT_SECONDS,
+        )
+        return DEFAULT_TIMEOUT_SECONDS
+    if value <= 0:
+        logger.warning(
+            "ASSESS_TIMEOUT_SECONDS=%r is not positive; using %.0fs",
+            raw,
+            DEFAULT_TIMEOUT_SECONDS,
+        )
+        return DEFAULT_TIMEOUT_SECONDS
+    return value
+
+
+def _chat_with_timeout(
+    provider: LLMProvider,
+    messages: list[dict],
+    schema: dict,
+    temperature: float,
+    timeout: float,
+):
+    """Call the provider, giving up after ``timeout`` seconds.
+
+    Runs the call on a **daemon** thread and joins with a deadline. Two
+    deliberate consequences:
+
+    * The abandoned call cannot be killed — Python offers no way to interrupt a
+      blocking socket read in another thread — so it keeps running and keeps
+      occupying the model until it finishes on its own. What the timeout buys is
+      that the *caller* is freed, not that the work stops.
+    * The thread is a daemon precisely so that orphan does not hold the
+      interpreter open at exit, which is what would otherwise turn a 416-second
+      outlier into a 416-second hang for a script that had already moved on.
+
+    Raises:
+        _ProviderTimeout: If the provider did not answer in time.
+    """
+    outcome: dict = {}
+
+    def run() -> None:
+        try:
+            outcome["response"] = provider.chat(
+                messages, response_schema=schema, temperature=temperature
+            )
+        except BaseException as exc:  # re-raised on the calling thread
+            outcome["error"] = exc
+
+    thread = threading.Thread(target=run, daemon=True, name="gatekeeper-assess")
+    thread.start()
+    thread.join(timeout)
+    if thread.is_alive():
+        raise _ProviderTimeout(
+            f"the provider did not answer within {timeout:g}s"
+        )
+    if "error" in outcome:
+        raise outcome["error"]
+    return outcome["response"]
+
+
 class AssessmentResult(BaseModel):
     """Everything produced by assessing one request."""
 
     model_config = ConfigDict(extra="forbid")
 
     intake: RequestIntake
-    assessment: Assessment
-    outcome: Outcome
+    #: ``None`` only when the call timed out — there is no assessment to carry.
+    assessment: Assessment | None = None
+    #: ``None`` only when the call timed out; nothing was scored.
+    outcome: Outcome | None = None
     contract: MeasurementContract | None = None
+    #: True when the provider exceeded the timeout budget. This is an
+    #: INFRASTRUCTURE result, not a model result: it says nothing about the
+    #: request and must never be counted as a wrong verdict.
+    timed_out: bool = False
+    #: The budget that was applied, so a timeout can be read in context.
+    timeout_seconds: float | None = None
     #: Metric proposals the model made that were not candidates for the
     #: archetype. Recorded rather than honoured, like hallucinated dimension ids.
     ignored_metric_ids: list[str] = Field(default_factory=list)
@@ -360,6 +460,7 @@ def assess_request(
     contracts_config: ContractsConfig | None = None,
     approval_date: date | None = None,
     temperature: float = 0.2,
+    timeout_seconds: float | None = None,
 ) -> AssessmentResult:
     """Assess a request end to end: model call, scoring, and contract.
 
@@ -372,14 +473,19 @@ def assess_request(
         approval_date: Date recorded on an issued contract. Defaults to today.
             Injected so tests can pin it; the scorer itself never reads a clock.
         temperature: Sampling temperature for the assessment call.
+        timeout_seconds: Seconds to wait for the provider; defaults to
+            ``ASSESS_TIMEOUT_SECONDS`` or :data:`DEFAULT_TIMEOUT_SECONDS`.
 
     Returns:
         An :class:`AssessmentResult` with the assessment, the scored outcome,
-        and a contract when the verdict is ``go``.
+        and a contract when the verdict is ``go``. On timeout, a result with
+        ``timed_out=True`` and no assessment — the call is **not** retried and
+        **not** raised, because a slow provider is an infrastructure condition
+        and the caller should be free to fall back rather than to fail.
 
     Raises:
-        AssessmentError: If the model could not produce a schema-valid
-            assessment within :data:`MAX_RETRIES` retries.
+        AssessmentError: If the model answered but could not produce a
+            schema-valid assessment within :data:`MAX_RETRIES` retries.
     """
     active_rubric = rubric or RUBRIC
     active_patterns = patterns or PATTERNS
@@ -405,10 +511,28 @@ def assess_request(
     assessment: Assessment | None = None
     retry_count = 0
     last_error = ""
+    budget = timeout_seconds if timeout_seconds is not None else assess_timeout_seconds()
     for attempt in range(MAX_RETRIES + 1):
-        response = provider.chat(
-            messages, response_schema=schema, temperature=temperature
-        )
+        try:
+            response = _chat_with_timeout(
+                provider, messages, schema, temperature, budget
+            )
+        except _ProviderTimeout:
+            # Deliberately not retried: a call that ran past the budget once is
+            # the pathological tail, and a second attempt only doubles the wait.
+            logger.warning(
+                "assessment timed out after %gs; returning a timed_out result",
+                budget,
+            )
+            return AssessmentResult(
+                intake=intake,
+                timed_out=True,
+                timeout_seconds=budget,
+                derived_dimensions=sorted(derived),
+                model_scored_dimensions=[
+                    i for i in active_rubric.dimension_ids if i not in omit
+                ],
+            )
         try:
             assessment = Assessment.model_validate(parse_json_content(response))
             break

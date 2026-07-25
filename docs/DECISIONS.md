@@ -1286,3 +1286,68 @@ abstract dimensions from a short request — and both are now *visible* rather
 than silent, which is the property this whole build has optimised for.
 
 The live path is frozen here and measured, not tuned further.
+
+---
+
+## ADR-023 — A timeout on the live path, sized from the measured distribution
+
+**Date:** 2026-07-25 · **Commit:** Phase 3.2 follow-up · **Status:** accepted
+
+Phase 3.2 measured per-request latency as **bimodal**: five of six requests
+completed in about five seconds (median 5.1s), one took 416.6s. A single
+budget therefore separates the two modes cleanly. `assess.py` now abandons the
+provider call after `ASSESS_TIMEOUT_SECONDS`, default **30s** — roughly six
+times the median and an order of magnitude below the tail, so it cuts the tail
+without touching normal operation. A test asserts the default still sits
+between those two measured numbers, so a future latency change that invalidates
+the choice fails loudly rather than silently mis-sizing the budget.
+
+### A timeout is not a retry, and not a failure
+
+The call is **not retried**: a call that has already run past the budget is by
+definition the pathological mode, and a second attempt only doubles the wait.
+It is also **not raised**: `assess_request` returns an `AssessmentResult` with
+`timed_out=True` and no assessment, so the caller is free to fall back rather
+than forced to fail. `assessment` and `outcome` become optional on that model
+for exactly this case.
+
+### What the timeout does and does not buy
+
+Implemented as a **daemon thread** joined with a deadline, and both halves of
+that are deliberate:
+
+- The abandoned call **cannot be killed** — Python offers no way to interrupt a
+  blocking socket read in another thread. It keeps running and keeps occupying
+  the model until it finishes. What the timeout buys is that the *caller* is
+  freed, not that the work stops. Claiming otherwise would be the more
+  comfortable and less true description.
+- The thread is a **daemon** so that orphan does not hold the interpreter open
+  at exit. Without that, a 416-second outlier would turn into a 416-second hang
+  for a script that had already moved on — trading a visible slow request for
+  an invisible one.
+
+A genuine provider error (connection refused, and so on) still propagates
+normally: it is re-raised on the calling thread rather than being flattened into
+a timeout, because "Ollama is not running" and "Ollama is slow" call for
+different responses.
+
+### A timeout is an infrastructure result, not a model result
+
+This is the load-bearing distinction, and it is enforced in both consumers.
+
+`scripts/run_examples.py` gives timeouts **their own outcome class**: they are
+marked `--` rather than `XX`, excluded from both the numerator and the
+denominator of the match rate, and counted on their own line. Folding them into
+the mismatch count would aggregate over two things that are not
+interchangeable — an infrastructure condition and a wrong verdict — which is
+precisely the **wrong-unit error this project has now made three times**
+(ADR-004's `fully-valid` metric, ADR-022's dimension count, and ADR-022's own
+report of a bimodal latency as a mean). Having named the pattern, the cheap
+thing is to stop repeating it where it is foreseeable.
+
+`app.py` treats it the same way in the language it shows the user: the message
+says plainly that this says nothing about the request, and where an exemplar is
+loaded it falls back automatically to that exemplar's stored assessment,
+**labelled visibly as offline** — the engine, gates and contract shown are real,
+the dimension scores were written by hand. With no exemplar loaded it shows the
+message alone rather than inventing something to display.

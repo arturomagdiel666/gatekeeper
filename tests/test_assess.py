@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import time
 import urllib.error
 import urllib.request
 from datetime import date
@@ -11,7 +12,9 @@ from datetime import date
 import pytest
 
 from assess import (
+    DEFAULT_TIMEOUT_SECONDS,
     AssessmentError,
+    assess_timeout_seconds,
     assess_request,
     build_response_schema,
     build_system_prompt,
@@ -297,3 +300,107 @@ class TestDerivedDimensionsAreNotAsked:
         }
         assert result.outcome.verdict is not None
         assert result.outcome.unknown_dimensions == []
+
+
+class SlowProvider(LLMProvider):
+    """Blocks for `delay` seconds, then returns a valid assessment."""
+
+    def __init__(self, delay: float) -> None:
+        self.delay = delay
+        self.calls = 0
+
+    def chat(self, messages, tools=None, temperature=0.2, response_schema=None, **kwargs):
+        self.calls += 1
+        time.sleep(self.delay)
+        return ChatResponse(text=valid_assessment_json(), raw={"slow": True})
+
+
+class TestTimeout:
+    """A slow provider is an infrastructure condition, not a model error."""
+
+    def test_a_slow_provider_returns_timed_out_without_raising(self):
+        provider = SlowProvider(delay=5.0)
+        result = assess_request(
+            load_example("ticket_handover_summaries").intake,
+            provider,
+            timeout_seconds=0.2,
+        )
+        assert result.timed_out is True
+        assert result.timeout_seconds == 0.2
+        assert result.assessment is None
+        assert result.outcome is None
+        assert result.contract is None
+
+    def test_a_timeout_is_not_retried(self):
+        """One slow call is the pathological tail; a second only doubles it."""
+        provider = SlowProvider(delay=5.0)
+        assess_request(
+            load_example("ticket_handover_summaries").intake,
+            provider,
+            timeout_seconds=0.2,
+        )
+        assert provider.calls == 1
+
+    def test_the_timeout_returns_promptly_rather_than_waiting_it_out(self):
+        provider = SlowProvider(delay=10.0)
+        started = time.perf_counter()
+        assess_request(
+            load_example("ticket_handover_summaries").intake,
+            provider,
+            timeout_seconds=0.2,
+        )
+        assert time.perf_counter() - started < 3.0
+
+    def test_a_fast_provider_is_untouched_by_the_budget(self):
+        provider = ScriptedProvider([valid_assessment_json()])
+        result = assess_request(
+            load_example("ticket_handover_summaries").intake,
+            provider,
+            timeout_seconds=30.0,
+        )
+        assert result.timed_out is False
+        assert result.outcome is not None
+        assert result.assessment is not None
+
+    def test_a_provider_error_still_propagates_rather_than_looking_like_a_timeout(self):
+        class BrokenProvider(LLMProvider):
+            def chat(self, messages, tools=None, temperature=0.2, response_schema=None, **kwargs):
+                raise ConnectionError("ollama is not running")
+
+        with pytest.raises(ConnectionError, match="not running"):
+            assess_request(
+                load_example("ticket_handover_summaries").intake,
+                BrokenProvider(),
+                timeout_seconds=5.0,
+            )
+
+    def test_derived_dimensions_are_still_reported_on_a_timeout(self):
+        """The intake-derived half does not depend on the model answering."""
+        result = assess_request(
+            load_example("ticket_handover_summaries").intake,
+            SlowProvider(delay=5.0),
+            timeout_seconds=0.2,
+        )
+        assert result.derived_dimensions == ["data_governance", "process_frequency"]
+
+
+class TestTimeoutConfiguration:
+    def test_the_default_is_thirty_seconds(self, monkeypatch):
+        monkeypatch.delenv("ASSESS_TIMEOUT_SECONDS", raising=False)
+        assert assess_timeout_seconds() == DEFAULT_TIMEOUT_SECONDS == 30.0
+
+    def test_the_default_sits_between_the_median_and_the_tail(self):
+        """Phase 3.2 measured median 5.1s and a 416.6s outlier."""
+        assert DEFAULT_TIMEOUT_SECONDS > 5.1 * 5
+        assert DEFAULT_TIMEOUT_SECONDS < 416.6 / 5
+
+    def test_the_env_var_overrides_it(self, monkeypatch):
+        monkeypatch.setenv("ASSESS_TIMEOUT_SECONDS", "7.5")
+        assert assess_timeout_seconds() == 7.5
+
+    @pytest.mark.parametrize("bad", ["nonsense", "-1", "0", ""])
+    def test_a_malformed_override_falls_back_rather_than_disabling_the_timeout(
+        self, monkeypatch, bad
+    ):
+        monkeypatch.setenv("ASSESS_TIMEOUT_SECONDS", bad)
+        assert assess_timeout_seconds() == DEFAULT_TIMEOUT_SECONDS

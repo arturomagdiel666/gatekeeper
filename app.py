@@ -413,6 +413,36 @@ def triage_tab() -> None:
             )
             return
 
+    if result.timed_out:
+        st.info(
+            f"The model did not answer within "
+            f"{result.timeout_seconds:g} seconds, so the call was stopped. "
+            "Nothing is wrong with the request — this is an infrastructure "
+            "result, not a verdict, and it says nothing about whether the "
+            "request is a good one."
+        )
+        if preset is not None:
+            st.warning(
+                "**Showing the stored offline assessment for this example "
+                "instead.** The scoring engine, the gates and the contract "
+                "below are real; the dimension scores were written by hand "
+                "rather than by the model on this run."
+            )
+            offline_outcome = score(
+                preset.reference_assessment, RUBRIC, PATTERNS, intake
+            )
+            offline_contract = issue_contract(
+                offline_outcome, preset.reference_assessment, intake, date.today()
+            ).contract
+            render_outcome(offline_outcome, offline_contract)
+        else:
+            st.caption(
+                "No example is loaded, so there is no stored assessment to "
+                "fall back to. Load one from the dropdown to see the engine "
+                "run without the model."
+            )
+        return
+
     if result.retry_count:
         st.caption(f"Needed {result.retry_count} corrective retry to match the schema.")
     if result.ignored_metric_ids:

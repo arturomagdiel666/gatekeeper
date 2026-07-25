@@ -153,3 +153,64 @@ class TestReviewEndToEnd:
         assert not app.exception
         labels = {item.label for item in app.metric}
         assert {"Adoption rate", "Cost / successful task", "Value / task"} <= labels
+
+
+class TestTimeoutFallback:
+    """A timeout must degrade to the offline path, not to a stack trace."""
+
+    def _timed_out(self, monkeypatch):
+        """Make assess_request always report a timeout.
+
+        Patching the module attribute works because app.py resolves
+        `from assess import assess_request` when AppTest executes the script,
+        which happens after this patch is applied.
+        """
+        import assess
+
+        def fake(intake, provider, **kwargs):
+            return assess.AssessmentResult(
+                intake=intake, timed_out=True, timeout_seconds=30.0
+            )
+
+        monkeypatch.setattr(assess, "assess_request", fake)
+
+    def test_a_timeout_with_an_exemplar_loaded_falls_back_and_says_so(
+        self, monkeypatch
+    ):
+        self._timed_out(monkeypatch)
+        app = fresh_app()
+        select_by_label(app, "Load a reference example").select(
+            "Shift handover summaries for the service desk"
+        ).run()
+        triage_button(app).click().run()
+        assert not app.exception
+
+        info = " ".join(str(i.value) for i in app.info)
+        assert "did not answer within 30 seconds" in info
+        assert "not a verdict" in info
+
+        warning = " ".join(str(i.value) for i in app.warning)
+        assert "stored offline assessment" in warning
+        assert "written by hand" in warning
+
+        # The engine really ran: the verdict and the contract are rendered.
+        rendered = " ".join(str(i.value) for i in app.markdown)
+        assert "GO" in rendered
+        assert "Measurement Contract" in " ".join(
+            str(i.value) for i in app.subheader
+        )
+
+    def test_a_timeout_with_no_exemplar_shows_the_message_only(self, monkeypatch):
+        self._timed_out(monkeypatch)
+        app = fresh_app()
+        # Blank form: type a request without loading an example.
+        app.text_area[0].set_value("We would like an agent for something.").run()
+        triage_button(app).click().run()
+        assert not app.exception
+
+        assert "did not answer within" in " ".join(str(i.value) for i in app.info)
+        captions = " ".join(str(i.value) for i in app.caption)
+        assert "no stored assessment to fall back to" in captions
+        assert "Measurement Contract" not in " ".join(
+            str(i.value) for i in app.subheader
+        )

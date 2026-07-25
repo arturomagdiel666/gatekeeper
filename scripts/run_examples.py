@@ -75,6 +75,7 @@ def main() -> int:
             "weighted_total": None,
             "retry_count": None,
             "unknown_dimensions": [],
+            "timed_out": False,
             "error": None,
         }
         try:
@@ -84,6 +85,15 @@ def main() -> int:
                 approval_date=date(2026, 4, 1),
                 temperature=args.temperature,
             )
+            if result.timed_out:
+                row.update(
+                    timed_out=True,
+                    timeout_seconds=result.timeout_seconds,
+                    seconds=round(time.perf_counter() - started, 1),
+                )
+                rows.append(row)
+                print(f" TIMEOUT ({row['seconds']}s)")
+                continue
             outcome = result.outcome
             row.update(
                 actual_verdict=outcome.verdict.value,
@@ -114,7 +124,22 @@ def main() -> int:
     print(header)
     print("-" * 92)
     matches = 0
+    timeouts = 0
+    completed = 0
     for row in rows:
+        # A TIMEOUT is its own outcome class. It is an infrastructure result,
+        # not a model result, and counting it as a wrong verdict would repeat
+        # the wrong-unit error this project has now made three times: it would
+        # aggregate over two things that are not interchangeable.
+        if row["timed_out"]:
+            timeouts += 1
+            print(
+                f"{'--':<2}{row['id']:<30}{row['expected_verdict']:<12}"
+                f"{'TIMEOUT':<12}{'-':<7}{row['seconds']:<7}"
+                f"(no answer within {row.get('timeout_seconds', 0):g}s)"
+            )
+            continue
+        completed += 1
         match = row["actual_verdict"] == row["expected_verdict"]
         matches += int(match)
         total = (
@@ -136,7 +161,8 @@ def main() -> int:
     latencies = sorted(r["seconds"] for r in rows)
     median = latencies[len(latencies) // 2]
     print(
-        f"{matches}/{len(rows)} verdicts match the human reading | "
+        f"{matches}/{completed} completed verdicts match the human reading | "
+        f"{timeouts} timed out (not counted as mismatches) | "
         f"{retries} schema retry(ies)"
     )
     print(

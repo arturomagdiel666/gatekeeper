@@ -1,0 +1,411 @@
+"""Loading and validation of Gatekeeper's YAML configuration.
+
+``rubric.yaml`` and ``patterns.yaml`` are the tunable source of truth for how a
+use case is scored: weights, anchors, verdict bands, and the Not-AI gate all
+live there so a domain expert can retune Gatekeeper without touching Python,
+and so the same case can be run against several rubric configurations without a
+code change.
+
+That flexibility is only safe if a malformed config can never reach the scorer,
+so this module validates aggressively at load time and fails with a specific,
+actionable message. Enforced invariants:
+
+* dimension, archetype, and anti-pattern ids are unique
+* dimension weights sum to 1.0 (within ``WEIGHT_EPSILON``)
+* every dimension has exactly one anchor per level on the declared scale
+* ``direction`` is one of the two known values
+* verdict bands tile the scale exactly — no gap, no overlap, full coverage —
+  and only the highest band may include its upper bound
+* verdict bands contain only ``go`` and ``no_go``; ``not_ai`` is a gate and
+  ``incomplete`` is a refusal to score, so neither may be reached by a band
+* the Not-AI gate names a dimension that actually exists
+* the unknown-dimension limit cannot exceed the number of dimensions
+
+``RUBRIC`` and ``PATTERNS`` are loaded and validated at import time, so a broken
+config breaks loudly and immediately rather than halfway through an interview.
+"""
+
+from __future__ import annotations
+
+from pathlib import Path
+from typing import Literal
+
+import yaml
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
+
+__all__ = [
+    "ConfigError",
+    "Scale",
+    "Dimension",
+    "VerdictBand",
+    "NotAiGate",
+    "Completeness",
+    "Rubric",
+    "Archetype",
+    "AntiPattern",
+    "Patterns",
+    "load_rubric",
+    "load_patterns",
+    "RUBRIC",
+    "PATTERNS",
+    "RUBRIC_PATH",
+    "PATTERNS_PATH",
+]
+
+PROJECT_ROOT = Path(__file__).resolve().parent
+RUBRIC_PATH = PROJECT_ROOT / "rubric.yaml"
+PATTERNS_PATH = PROJECT_ROOT / "patterns.yaml"
+
+#: Tolerance for the "weights must sum to 1.0" check, so that a config written
+#: with ordinary decimals is not rejected over binary floating-point error.
+WEIGHT_EPSILON = 1e-6
+
+Direction = Literal["higher_is_better", "lower_is_better"]
+
+
+class ConfigError(RuntimeError):
+    """Raised when a configuration file is missing, unparseable, or invalid."""
+
+
+def _duplicates(values: list[str]) -> list[str]:
+    """Return the values that appear more than once, in first-seen order."""
+    seen: set[str] = set()
+    dupes: list[str] = []
+    for value in values:
+        if value in seen and value not in dupes:
+            dupes.append(value)
+        seen.add(value)
+    return dupes
+
+
+class Scale(BaseModel):
+    """The integer range every dimension is scored on."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    min: int
+    max: int
+
+    @model_validator(mode="after")
+    def _check_order(self) -> "Scale":
+        if self.max <= self.min:
+            raise ValueError(
+                f"scale.max ({self.max}) must be greater than scale.min ({self.min})"
+            )
+        return self
+
+    @property
+    def levels(self) -> list[int]:
+        """Every valid score on this scale, ascending."""
+        return list(range(self.min, self.max + 1))
+
+
+class Dimension(BaseModel):
+    """One scored dimension of the rubric."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: str
+    label: str
+    description: str
+    weight: float = Field(gt=0.0, le=1.0)
+    direction: Direction
+    anchors: dict[int, str]
+
+
+class VerdictBand(BaseModel):
+    """A range of weighted totals mapping to a verdict.
+
+    Matches when ``lower <= total < upper``, or ``lower <= total <= upper`` when
+    ``upper_inclusive`` is set (permitted only on the highest band).
+
+    Only ``go`` and ``no_go`` are accepted here: ``not_ai`` must be reachable
+    solely through the gate, and ``incomplete`` is a refusal to score rather
+    than a band. Widening this ``Literal`` would silently break that guarantee.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    verdict: Literal["go", "no_go"]
+    lower: float
+    upper: float
+    upper_inclusive: bool = False
+
+    @model_validator(mode="after")
+    def _check_order(self) -> "VerdictBand":
+        if self.upper <= self.lower:
+            raise ValueError(
+                f"verdict band {self.verdict!r}: upper ({self.upper}) must be "
+                f"greater than lower ({self.lower})"
+            )
+        return self
+
+
+class NotAiGate(BaseModel):
+    """Conditions that force a ``not_ai`` verdict, overriding the bands."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    hard_block_anti_patterns: bool
+    dimension_id: str
+    min_raw_score: int
+
+
+class Completeness(BaseModel):
+    """How much of the interview may be missing and still yield a verdict."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    max_unknown_dimensions: int = Field(ge=0)
+
+
+class Rubric(BaseModel):
+    """The validated contents of ``rubric.yaml``."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    version: str
+    scale: Scale
+    dimensions: list[Dimension] = Field(min_length=1)
+    verdict_bands: list[VerdictBand] = Field(min_length=1)
+    not_ai_gate: NotAiGate
+    completeness: Completeness
+
+    @model_validator(mode="after")
+    def _validate_rubric(self) -> "Rubric":
+        dupes = _duplicates([d.id for d in self.dimensions])
+        if dupes:
+            raise ValueError(f"duplicate dimension ids: {dupes}")
+
+        total = sum(d.weight for d in self.dimensions)
+        if abs(total - 1.0) > WEIGHT_EPSILON:
+            raise ValueError(
+                f"dimension weights must sum to 1.0 but sum to {total!r} "
+                f"(off by {total - 1.0:+.6f}). Weights: "
+                + ", ".join(f"{d.id}={d.weight}" for d in self.dimensions)
+            )
+
+        expected_levels = set(self.scale.levels)
+        for dimension in self.dimensions:
+            actual = set(dimension.anchors)
+            if actual != expected_levels:
+                missing = sorted(expected_levels - actual)
+                extra = sorted(actual - expected_levels)
+                raise ValueError(
+                    f"dimension {dimension.id!r} must have exactly one anchor "
+                    f"per level {sorted(expected_levels)}; "
+                    f"missing={missing}, unexpected={extra}"
+                )
+
+        self._validate_bands()
+
+        known_ids = {d.id for d in self.dimensions}
+        if self.not_ai_gate.dimension_id not in known_ids:
+            raise ValueError(
+                f"not_ai_gate.dimension_id {self.not_ai_gate.dimension_id!r} is "
+                f"not a declared dimension. Known ids: {sorted(known_ids)}"
+            )
+        if self.not_ai_gate.min_raw_score not in expected_levels:
+            raise ValueError(
+                f"not_ai_gate.min_raw_score ({self.not_ai_gate.min_raw_score}) "
+                f"is outside the scale {sorted(expected_levels)}"
+            )
+
+        if self.completeness.max_unknown_dimensions > len(self.dimensions):
+            raise ValueError(
+                f"completeness.max_unknown_dimensions "
+                f"({self.completeness.max_unknown_dimensions}) exceeds the "
+                f"number of dimensions ({len(self.dimensions)})"
+            )
+        return self
+
+    def _validate_bands(self) -> None:
+        """Require the bands to tile the scale with no gap or overlap."""
+        bands = sorted(self.verdict_bands, key=lambda b: b.lower)
+        if bands[0].lower != float(self.scale.min):
+            raise ValueError(
+                f"the lowest verdict band starts at {bands[0].lower} but the "
+                f"scale starts at {self.scale.min}; totals below that would "
+                "match no band"
+            )
+        for previous, current in zip(bands, bands[1:]):
+            if current.lower < previous.upper:
+                raise ValueError(
+                    f"verdict bands overlap: {previous.verdict!r} ends at "
+                    f"{previous.upper} but {current.verdict!r} starts at "
+                    f"{current.lower}"
+                )
+            if current.lower > previous.upper:
+                raise ValueError(
+                    f"verdict bands leave a gap: {previous.verdict!r} ends at "
+                    f"{previous.upper} but {current.verdict!r} starts at "
+                    f"{current.lower}; totals in between would match no band"
+                )
+            if previous.upper_inclusive:
+                raise ValueError(
+                    f"only the highest verdict band may set upper_inclusive, "
+                    f"but {previous.verdict!r} does; it would overlap "
+                    f"{current.verdict!r} at exactly {previous.upper}"
+                )
+        highest = bands[-1]
+        if highest.upper != float(self.scale.max):
+            raise ValueError(
+                f"the highest verdict band ends at {highest.upper} but the "
+                f"scale ends at {self.scale.max}; totals above that would "
+                "match no band"
+            )
+        if not highest.upper_inclusive:
+            raise ValueError(
+                f"the highest verdict band ({highest.verdict!r}) must set "
+                f"upper_inclusive: true, otherwise a perfect total of "
+                f"{self.scale.max} would match no band"
+            )
+
+    def dimension_by_id(self, dimension_id: str) -> Dimension | None:
+        """Return the dimension with this id, or ``None`` if there is none."""
+        return next((d for d in self.dimensions if d.id == dimension_id), None)
+
+    @property
+    def dimension_ids(self) -> list[str]:
+        """Every dimension id, in declared order."""
+        return [d.id for d in self.dimensions]
+
+    def normalize(self, dimension: Dimension, raw_score: int) -> int:
+        """Convert a raw score so that higher always means better.
+
+        A ``lower_is_better`` dimension is flipped about the scale
+        (``min + max - raw``), so that on a 1-5 scale a raw 1 becomes 5. This
+        is the step that makes weighting meaningful across dimensions that
+        point in opposite directions.
+        """
+        if dimension.direction == "higher_is_better":
+            return raw_score
+        return self.scale.min + self.scale.max - raw_score
+
+
+class Archetype(BaseModel):
+    """A canonical shape an AI use case can take."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: str
+    label: str
+    description: str
+    typical_data_needs: str
+    typical_risks: list[str]
+    signals: list[str]
+    notes_on_roi: str
+
+
+class AntiPattern(BaseModel):
+    """A signal that a request is not an AI problem."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: str
+    label: str
+    description: str
+    signals: list[str]
+    hard_block: bool
+    better_alternative: str
+
+
+class Patterns(BaseModel):
+    """The validated contents of ``patterns.yaml``."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    version: str
+    archetypes: list[Archetype] = Field(min_length=1)
+    anti_patterns: list[AntiPattern] = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def _validate_patterns(self) -> "Patterns":
+        for label, values in (
+            ("archetype", [a.id for a in self.archetypes]),
+            ("anti-pattern", [a.id for a in self.anti_patterns]),
+        ):
+            dupes = _duplicates(values)
+            if dupes:
+                raise ValueError(f"duplicate {label} ids: {dupes}")
+        return self
+
+    def archetype_by_id(self, archetype_id: str) -> Archetype | None:
+        """Return the archetype with this id, or ``None`` if there is none."""
+        return next((a for a in self.archetypes if a.id == archetype_id), None)
+
+    def anti_pattern_by_id(self, anti_pattern_id: str) -> AntiPattern | None:
+        """Return the anti-pattern with this id, or ``None`` if there is none."""
+        return next((a for a in self.anti_patterns if a.id == anti_pattern_id), None)
+
+    @property
+    def hard_block_ids(self) -> list[str]:
+        """Ids of every anti-pattern that forces a ``not_ai`` verdict."""
+        return [a.id for a in self.anti_patterns if a.hard_block]
+
+
+def _load_yaml(path: Path) -> dict:
+    """Read and parse a YAML file into a dict, or raise :class:`ConfigError`."""
+    try:
+        text = path.read_text()
+    except OSError as exc:
+        raise ConfigError(f"Could not read config file {path}: {exc}") from exc
+    try:
+        data = yaml.safe_load(text)
+    except yaml.YAMLError as exc:
+        raise ConfigError(f"{path} is not valid YAML: {exc}") from exc
+    if not isinstance(data, dict):
+        raise ConfigError(
+            f"{path} must contain a YAML mapping at the top level, got "
+            f"{type(data).__name__}"
+        )
+    return data
+
+
+def load_rubric(path: Path | str | None = None) -> Rubric:
+    """Load and validate a rubric file.
+
+    Args:
+        path: Rubric to load; defaults to the project's ``rubric.yaml``. Pass an
+            alternative here to score the same case against a different rubric
+            configuration without changing any code.
+
+    Returns:
+        The validated :class:`Rubric`.
+
+    Raises:
+        ConfigError: If the file is missing, unparseable, or violates any
+            invariant. The message names the file and the specific problem.
+    """
+    resolved = Path(path) if path is not None else RUBRIC_PATH
+    data = _load_yaml(resolved)
+    try:
+        return Rubric.model_validate(data)
+    except ValidationError as exc:
+        raise ConfigError(f"Invalid rubric config at {resolved}:\n{exc}") from exc
+
+
+def load_patterns(path: Path | str | None = None) -> Patterns:
+    """Load and validate a patterns file.
+
+    Args:
+        path: Patterns file to load; defaults to the project's
+            ``patterns.yaml``.
+
+    Returns:
+        The validated :class:`Patterns`.
+
+    Raises:
+        ConfigError: If the file is missing, unparseable, or invalid.
+    """
+    resolved = Path(path) if path is not None else PATTERNS_PATH
+    data = _load_yaml(resolved)
+    try:
+        return Patterns.model_validate(data)
+    except ValidationError as exc:
+        raise ConfigError(f"Invalid patterns config at {resolved}:\n{exc}") from exc
+
+
+#: Validated at import time so a broken config fails immediately and loudly.
+RUBRIC: Rubric = load_rubric()
+PATTERNS: Patterns = load_patterns()

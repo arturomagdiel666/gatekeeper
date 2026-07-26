@@ -43,6 +43,8 @@ class Example(BaseModel):
     people_affected: int | None = None
     times_per_period: int | None = None
     period: Period | None = None
+    minutes_per_instance: float | None = None
+    cost_per_instance: float | None = None
     prior_tool_for_these_users: PriorTool = PriorTool.UNKNOWN
     where_the_data_lives: str | None = None
     data_sensitivity: DataSensitivity = DataSensitivity.UNKNOWN
@@ -61,6 +63,8 @@ class Example(BaseModel):
             people_affected=self.people_affected,
             times_per_period=self.times_per_period,
             period=self.period,
+            minutes_per_instance=self.minutes_per_instance,
+            cost_per_instance=self.cost_per_instance,
             prior_tool_for_these_users=self.prior_tool_for_these_users,
             where_the_data_lives=self.where_the_data_lives,
             data_sensitivity=self.data_sensitivity,

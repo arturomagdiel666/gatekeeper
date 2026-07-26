@@ -45,6 +45,9 @@ __all__ = [
     "VerdictBand",
     "VolumeDerivation",
     "SensitivityDerivation",
+    "MagnitudeBand",
+    "MagnitudeDenomination",
+    "MagnitudeDerivation",
     "DimensionThresholdCondition",
     "AntiPatternCondition",
     "IntakeFieldCondition",
@@ -149,6 +152,10 @@ class VolumeDerivation(BaseModel):
     bands: list[VolumeBand] = Field(min_length=1)
     otherwise: int
 
+    #: Authoritative: this derivation replaces the model's score outright, and
+    #: the dimension is not put to the model at all.
+    is_fallback: bool = False
+
     def derive(self, instances_per_year: float | None) -> int | None:
         """Score for an annualized volume, or ``None`` if none was stated."""
         if instances_per_year is None:
@@ -174,6 +181,8 @@ class SensitivityDerivation(BaseModel):
     source: Literal["intake_sensitivity"]
     mapping: dict[str, int]
 
+    is_fallback: bool = False
+
     def derive(self, sensitivity: str | None) -> int | None:
         """Score for a classification, or ``None`` if unmapped or unknown."""
         if sensitivity is None:
@@ -185,8 +194,133 @@ class SensitivityDerivation(BaseModel):
         return f"Derived from the intake form: data classified {sensitivity!r}."
 
 
+#: Which intake quantity feeds a magnitude denomination. ``volume_only`` needs
+#: no second field: it scores the count of instances itself, which is the
+#: weakest of the three denominations and is why it carries low confidence.
+MagnitudeSource = Literal["minutes_per_instance", "cost_per_instance", "volume_only"]
+
+
+class MagnitudeBand(BaseModel):
+    """One band of an annualized-magnitude to score mapping."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    below: float
+    score: int
+
+
+class MagnitudeDenomination(BaseModel):
+    """One denomination a magnitude may be expressed and banded in.
+
+    ``unit`` is descriptive and appears in the evidence string; ``from`` names
+    the intake quantity that feeds it, and is the only part Python switches on.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    unit: str
+    from_: MagnitudeSource = Field(alias="from")
+    confidence: Literal["low", "medium", "high"]
+    bands: list[MagnitudeBand] = Field(min_length=1)
+    otherwise: int
+
+    def score_for(self, annualized_value: float) -> int:
+        """The level whose band contains this annualized value."""
+        for band in sorted(self.bands, key=lambda b: b.below):
+            if annualized_value < band.below:
+                return band.score
+        return self.otherwise
+
+
+class MagnitudeDerivation(BaseModel):
+    """Compute an annualized magnitude from the intake, when none was stated.
+
+    A **fallback** derivation, and the only one of the three. The other two
+    replace the model's score outright because the intake states the fact
+    directly — a volume is a volume. A magnitude is not stated directly by any
+    single field: it is the product of two, and only where the request itself
+    named no figure does computing it beat reading it. So this derivation
+    applies ``when_unknown`` and never overwrites a score the assessment made.
+
+    Denominations are tried in declaration order and the first that can be
+    computed wins, so the priority is visible in ``rubric.yaml`` rather than
+    encoded here (ADR-026).
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    source: Literal["intake_magnitude"]
+    applies: Literal["when_unknown"]
+    currency_code: str = "USD"
+    denominations: list[MagnitudeDenomination] = Field(min_length=1)
+
+    @property
+    def is_fallback(self) -> bool:
+        """Always true — see the class docstring."""
+        return True
+
+    def derive(
+        self,
+        *,
+        instances_per_year: float | None,
+        minutes_per_instance: float | None,
+        cost_per_instance: float | None,
+    ) -> tuple[int, str, str] | None:
+        """Compute ``(score, evidence, confidence)``, or ``None`` if it cannot.
+
+        Returning ``None`` is the fourth branch of the resolution order in the
+        dimension's ``scoring_rule``: no magnitude was stated, and the intake
+        does not carry enough to compute one. The caller leaves the dimension
+        unknown, which for a ``never_unknown`` dimension yields ``incomplete``.
+
+        The evidence string carries the arithmetic in full, so the level can be
+        re-derived by hand from the request form without reading any code.
+        """
+        if instances_per_year is None:
+            return None
+        for denomination in self.denominations:
+            if denomination.from_ == "minutes_per_instance":
+                if minutes_per_instance is None:
+                    continue
+                value = instances_per_year * minutes_per_instance / 60.0
+                arithmetic = (
+                    f"{instances_per_year:,.0f} instances a year x "
+                    f"{minutes_per_instance:g} minutes each / 60 = "
+                    f"{value:,.0f} person-hours a year"
+                )
+            elif denomination.from_ == "cost_per_instance":
+                if cost_per_instance is None:
+                    continue
+                value = instances_per_year * cost_per_instance
+                arithmetic = (
+                    f"{instances_per_year:,.0f} instances a year x "
+                    f"{cost_per_instance:g} {self.currency_code} each = "
+                    f"{value:,.0f} {self.currency_code} a year"
+                )
+            else:  # volume_only
+                value = instances_per_year
+                arithmetic = (
+                    f"{value:,.0f} instances a year, counted as cases affected "
+                    "— the intake stated neither a per-instance duration nor a "
+                    "per-instance cost, so this is a count of instances rather "
+                    "than a measure of benefit"
+                )
+            score_value = denomination.score_for(value)
+            return (
+                score_value,
+                (
+                    "Computed from the intake form because the request stated no "
+                    f"magnitude: {arithmetic} -> level {score_value} on the "
+                    f"{denomination.unit} denomination."
+                ),
+                denomination.confidence,
+            )
+        return None
+
+
 DimensionDerivation = Annotated[
-    VolumeDerivation | SensitivityDerivation, Field(discriminator="source")
+    VolumeDerivation | SensitivityDerivation | MagnitudeDerivation,
+    Field(discriminator="source"),
 ]
 
 
@@ -204,6 +338,13 @@ class Dimension(BaseModel):
     id: str
     label: str
     axis: str
+    #: Optional procedure for arriving at a score, rendered into the assessment
+    #: prompt directly beneath the axis. It exists because ``description`` is
+    #: NOT rendered — it is documentation for whoever tunes the rubric — so a
+    #: rule the model has to follow had nowhere prompt-visible to live except
+    #: ``axis``, which must stay a statement of the single construct measured if
+    #: "one dimension, one axis" is to remain checkable by a reader (ADR-026).
+    scoring_rule: str | None = None
     description: str
     weight: float = Field(gt=0.0, le=1.0)
     direction: Direction
@@ -441,6 +582,15 @@ class Rubric(BaseModel):
                 "unknown cannot fire, so this would silently disable a "
                 "blocking rule — it fails open."
             )
+
+        # NOT enforced here: "a dimension with a fallback derivation must be in
+        # never_unknown". It is true of the shipped config and it is what makes
+        # an uncomputable magnitude surface as `incomplete` rather than
+        # renormalize away — but as a load-time invariant it forbids a rubric
+        # with `never_unknown: []`, which is exactly the configuration the
+        # completeness tests need in order to exercise the WEIGHT rule on its
+        # own (ADR-022). The property is pinned by a test against the shipped
+        # rubric instead, where it costs no expressiveness.
         return self
 
     def _validate_gates(self, known_levels: set[int]) -> None:

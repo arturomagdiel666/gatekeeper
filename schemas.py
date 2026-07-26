@@ -170,6 +170,13 @@ class RequestIntake(BaseModel):
             given, ``process_frequency`` is computed from it in code rather
             than inferred by the model.
         period: The unit ``times_per_period`` is counted in.
+        minutes_per_instance: How long one instance takes a person today. With
+            the volume above this is what makes ``business_value`` computable
+            instead of estimated — the two fields multiply into annual
+            person-hours (ADR-026).
+        cost_per_instance: What one instance costs today, in the rubric's
+            currency. The alternative denomination for the same computation,
+            for processes whose benefit is cash rather than time.
         prior_tool_for_these_users: What happened to the last tool built for
             these users — the single most informative fact about adoption risk,
             and one that never appears in free text.
@@ -191,6 +198,8 @@ class RequestIntake(BaseModel):
     people_affected: int | None = None
     times_per_period: int | None = None
     period: Period | None = None
+    minutes_per_instance: float | None = Field(default=None, gt=0.0)
+    cost_per_instance: float | None = Field(default=None, gt=0.0)
     prior_tool_for_these_users: PriorTool = PriorTool.UNKNOWN
     where_the_data_lives: str | None = None
     data_sensitivity: DataSensitivity = DataSensitivity.UNKNOWN

@@ -23,6 +23,7 @@ from schemas import (
     Assessment,
     Confidence,
     DimensionAssessment,
+    Period,
     RequestIntake,
 )
 from scoring import Verdict, match_band, score
@@ -701,3 +702,209 @@ class TestEndToEnd:
         assert "INCOMPLETE" in outcome.explanation
         assert "data_readiness" in outcome.explanation
         assert "adoption_risk" in outcome.explanation
+
+
+class TestBusinessValueIsDerivedRatherThanEstimated:
+    """ADR-026: the four branches of the business_value resolution order.
+
+    The agreement study measured every disagreement on this dimension (11 of 30
+    cases) on a case where at least one scorer had marked confidence low, and
+    the cause was an instruction — "estimate the order of magnitude from the
+    process described" — not an anchor. These tests pin the replacement.
+    """
+
+    # 180 per day x 260 days = 46,800 instances a year. The magnitude bands are
+    # hand-checkable from rubric.yaml:
+    #   x 12 min / 60      =   9,360 person-hours -> level 4 (5,000-20,000)
+    #   x 2 min / 60       =   1,560 person-hours -> level 3 (1,000-5,000)
+    #   x 25 USD           = 1,170,000 USD        -> level 5 (over 1M)
+    #   volume alone       =  46,800 cases        -> level 4 (5,000-50,000)
+    def intake(self, **fields) -> RequestIntake:
+        return OWNED.model_copy(
+            update={"times_per_period": 180, "period": Period.DAY, **fields}
+        )
+
+    def unscored(self, **overrides) -> Assessment:
+        """The arithmetic fixture with business_value refused by the model."""
+        return make_assessment(
+            {**ARITHMETIC_SCORES, "business_value": None, **overrides}
+        )
+
+    def business_value_of(self, outcome):
+        return next(
+            c for c in outcome.contributions if c.dimension_id == "business_value"
+        )
+
+    def test_branch_1_a_stated_magnitude_is_never_overridden(self):
+        """The model read a figure out of the request; arithmetic must defer."""
+        outcome = score(
+            make_assessment({**ARITHMETIC_SCORES, "business_value": 2}),
+            RUBRIC,
+            PATTERNS,
+            self.intake(minutes_per_instance=12),
+        )
+        entry = self.business_value_of(outcome)
+        assert entry.raw_score == 2, "the fallback overwrote a stated magnitude"
+        assert outcome.fallback_derived_dimensions == []
+        assert entry.evidence == "Request evidence for business_value."
+
+    def test_branch_2_person_hours_are_computed_from_volume_and_duration(self):
+        outcome = score(
+            self.unscored(), RUBRIC, PATTERNS, self.intake(minutes_per_instance=12)
+        )
+        entry = self.business_value_of(outcome)
+        assert entry.raw_score == 4
+        assert entry.confidence == "medium"
+        assert outcome.fallback_derived_dimensions == ["business_value"]
+        assert outcome.unknown_dimensions == []
+        assert outcome.verdict is not Verdict.INCOMPLETE
+
+    def test_branch_2_the_arithmetic_is_verifiable_by_hand_in_the_evidence(self):
+        outcome = score(
+            self.unscored(), RUBRIC, PATTERNS, self.intake(minutes_per_instance=12)
+        )
+        evidence = self.business_value_of(outcome).evidence
+        # Every number needed to redo the calculation, and the level it produced.
+        assert "46,800 instances a year" in evidence
+        assert "12 minutes each" in evidence
+        assert "9,360 person-hours a year" in evidence
+        assert "level 4" in evidence
+        assert "person_hours_per_year" in evidence
+
+    def test_branch_2_a_cost_per_instance_scores_the_currency_denomination(self):
+        outcome = score(
+            self.unscored(), RUBRIC, PATTERNS, self.intake(cost_per_instance=25)
+        )
+        entry = self.business_value_of(outcome)
+        assert entry.raw_score == 5
+        assert "1,170,000 USD a year" in entry.evidence
+        assert "currency_per_year" in entry.evidence
+
+    def test_branch_2_duration_wins_over_cost_when_both_are_given(self):
+        """A fixed priority order, not the larger of the two.
+
+        Taking the higher would reintroduce the upward skew the study measured
+        (A above B in 11 of 30, below in none). Here cost would give 5 and
+        duration gives 4; duration is declared first, so 4 it is.
+        """
+        outcome = score(
+            self.unscored(),
+            RUBRIC,
+            PATTERNS,
+            self.intake(minutes_per_instance=12, cost_per_instance=25),
+        )
+        assert self.business_value_of(outcome).raw_score == 4
+
+    def test_branch_2_a_shorter_task_lands_in_a_lower_band(self):
+        """The score tracks the arithmetic, not the volume."""
+        outcome = score(
+            self.unscored(), RUBRIC, PATTERNS, self.intake(minutes_per_instance=2)
+        )
+        assert self.business_value_of(outcome).raw_score == 3
+
+    def test_branch_3_volume_alone_scores_low_confidence_and_says_so(self):
+        outcome = score(self.unscored(), RUBRIC, PATTERNS, self.intake())
+        entry = self.business_value_of(outcome)
+        assert entry.raw_score == 4
+        assert entry.confidence == "low", "a bare instance count is not a magnitude"
+        assert "counted as cases affected" in entry.evidence
+        assert "neither a per-instance duration nor a per-instance cost" in entry.evidence
+
+    def test_branch_4_nothing_computable_leaves_it_unknown_and_returns_incomplete(self):
+        """Acceptance criterion 4, and the registered prediction about `incomplete`."""
+        outcome = score(self.unscored(), RUBRIC, PATTERNS, OWNED)
+        assert outcome.fallback_derived_dimensions == []
+        assert outcome.unknown_dimensions == ["business_value"]
+        assert outcome.verdict is Verdict.INCOMPLETE
+        assert "never_unknown" in outcome.completeness_violation
+        assert "business_value" in outcome.completeness_violation
+        assert outcome.weighted_total is None
+
+    def test_branch_4_also_holds_with_no_intake_at_all(self):
+        outcome = score(self.unscored(), RUBRIC, PATTERNS, intake=None)
+        assert outcome.verdict is Verdict.INCOMPLETE
+
+    def test_a_gate_still_beats_an_uncomputable_magnitude(self):
+        """Gates evaluate before completeness, and that ordering is unchanged.
+
+        This is the mechanism ADR-024 named for the corpus producing zero
+        `incomplete`: a vague request that also trips a gate is gated, not
+        returned. Recorded here so the interaction stays visible.
+        """
+        outcome = score(
+            self.unscored(non_ai_alternative=5), RUBRIC, PATTERNS, OWNED
+        )
+        assert outcome.verdict is Verdict.NOT_AI
+        assert outcome.completeness_violation is not None
+
+    def test_the_shipped_rubric_keeps_the_refusal_visible(self):
+        """The invariant deliberately NOT enforced at load time (see config.py).
+
+        A fallback derivation is only honest if an uncomputable value surfaces
+        as `incomplete` instead of renormalizing away, and that depends on
+        never_unknown. Pinned here against the shipped config rather than as a
+        load-time rule, which would forbid the permissive rubrics the
+        completeness tests need.
+        """
+        for dimension in RUBRIC.dimensions:
+            if dimension.derivation is not None and dimension.derivation.is_fallback:
+                assert dimension.id in RUBRIC.completeness.never_unknown, dimension.id
+
+
+class TestBusinessValueAnchorsMeasureOnlyMagnitude:
+    """Acceptance criterion 3, for the dimension that was violating it.
+
+    Phase 2.1 wrote down "one dimension, one axis" and these two anchors were
+    rewritten AFTER it, still carrying a second construct — so the rule is
+    checked by a test now rather than by a reader.
+    """
+
+    ANCHORS = RUBRIC.dimension_by_id("business_value").anchors
+
+    SECOND_AXIS_TERMS = (
+        "revenue",
+        "regulator",
+        "regulatory",
+        "cycle-time",
+        "cycle time",
+        "already reports",
+        "reports on",
+        "strategic",
+    )
+
+    def test_no_anchor_smuggles_in_strategic_salience(self):
+        offenders = {
+            level: [t for t in self.SECOND_AXIS_TERMS if t in text.lower()]
+            for level, text in self.ANCHORS.items()
+        }
+        assert {k: v for k, v in offenders.items() if v} == {}
+
+    def test_every_anchor_states_a_magnitude_in_one_of_the_three_denominations(self):
+        for level, text in self.ANCHORS.items():
+            lowered = text.lower()
+            assert any(
+                unit in lowered
+                for unit in ("person-hours", "usd", "cases or tickets")
+            ), (level, text)
+
+    def test_the_cases_denomination_bands_are_mutually_exclusive(self):
+        """Level 4 said 5,000-50,000 while level 5 said "tens of thousands"."""
+        assert "5,000-50,000 cases" in self.ANCHORS[4]
+        assert "more than about 50,000 cases" in self.ANCHORS[5].lower()
+        assert "tens of thousands" not in self.ANCHORS[5].lower()
+
+    def test_the_derivation_bands_match_the_anchor_prose(self):
+        """The mapping IS the anchor semantics, so drift between them is a bug."""
+        derivation = RUBRIC.dimension_by_id("business_value").derivation
+        by_unit = {d.unit: d for d in derivation.denominations}
+        assert [b.below for b in by_unit["person_hours_per_year"].bands] == [
+            200, 1000, 5000, 20000
+        ]
+        assert [b.below for b in by_unit["currency_per_year"].bands] == [
+            10000, 50000, 250000, 1000000
+        ]
+        assert [b.below for b in by_unit["cases_per_year"].bands] == [
+            50, 500, 5000, 50000
+        ]
+        assert all(d.otherwise == 5 for d in derivation.denominations)
+        assert derivation.currency_code == "USD"

@@ -352,6 +352,24 @@ def triage_tab() -> None:
                 if preset
                 else sensitivity_choices.index("unknown"),
             )
+            # These two are what business_value is computed FROM when the request
+            # states no magnitude of its own (ADR-026). Without them on the form
+            # the fallback derivation would be unreachable from the only UI, and
+            # a vague request would go straight to `incomplete`.
+            row_c = st.columns(2)
+            minutes_per_instance = row_c[0].number_input(
+                "Minutes one instance takes today", 0.0, 100_000.0,
+                value=float(preset.minutes_per_instance or 0.0) if preset else 0.0,
+                help=(
+                    "With 'how often it runs', this multiplies into annual "
+                    "person-hours — the magnitude business_value is scored on."
+                ),
+            )
+            cost_per_instance = row_c[1].number_input(
+                "Cost of one instance today (USD)", 0.0, 10_000_000.0,
+                value=float(preset.cost_per_instance or 0.0) if preset else 0.0,
+                help="The cash alternative to the minutes above.",
+            )
         use_reference = st.checkbox(
             "Score the example's hand-authored assessment instead of calling the model",
             value=False,
@@ -379,6 +397,8 @@ def triage_tab() -> None:
         people_affected=people_affected or None,
         times_per_period=times_per_period or None,
         period=Period(period_value) if period_value != "(not stated)" else None,
+        minutes_per_instance=minutes_per_instance or None,
+        cost_per_instance=cost_per_instance or None,
         prior_tool_for_these_users=PriorTool(prior_tool),
         where_the_data_lives=where_the_data_lives.strip() or None,
         data_sensitivity=DataSensitivity(data_sensitivity),

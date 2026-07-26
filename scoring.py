@@ -39,6 +39,7 @@ from config import (
     AntiPatternCondition,
     DimensionThresholdCondition,
     IntakeFieldCondition,
+    MagnitudeDerivation,
     Patterns,
     Rubric,
     SensitivityDerivation,
@@ -53,6 +54,7 @@ __all__ = [
     "normalize_for_quote_check",
     "quote_is_supported",
     "derive_scores",
+    "derive_fallback_scores",
     "DimensionContribution",
     "Outcome",
     "score",
@@ -217,6 +219,11 @@ class Outcome(BaseModel):
     #: Dimensions computed from a structured intake field rather than scored by
     #: the model. Reported so a reader can see which numbers were judgements.
     derived_dimensions: list[str] = Field(default_factory=list)
+    #: Dimensions the assessment left unknown and the intake form was able to
+    #: compute — the fallback branch. Kept separate from ``derived_dimensions``
+    #: because the two answer different questions: that list is "the model was
+    #: never asked", this one is "the model refused and the form covered it".
+    fallback_derived_dimensions: list[str] = Field(default_factory=list)
     #: Total rubric weight sitting on unknown dimensions — the unit the
     #: completeness budget is actually measured in.
     unknown_weight: float = 0.0
@@ -296,13 +303,20 @@ def derive_scores(
     before building the prompt that ``score()`` answers afterwards. A dimension
     that appears here is not asked of the model at all — neither its anchors
     nor its schema entry are sent.
+
+    **Authoritative derivations only.** A fallback derivation
+    (:class:`~config.MagnitudeDerivation`) is deliberately absent: it fires only
+    where the assessment left the dimension unknown, so the dimension must
+    still be put to the model and must still appear in the prompt. Excluding it
+    here is what keeps those two facts from contradicting each other — see
+    :func:`derive_fallback_scores`.
     """
     if intake is None:
         return {}
     derived: dict[str, tuple[int, str]] = {}
     for dimension in rubric.dimensions:
         rule = dimension.derivation
-        if rule is None:
+        if rule is None or rule.is_fallback:
             continue
         if isinstance(rule, VolumeDerivation):
             source_value = intake.instances_per_year
@@ -313,6 +327,44 @@ def derive_scores(
         score_value = rule.derive(source_value)
         if score_value is not None:
             derived[dimension.id] = (score_value, rule.describe(source_value))
+    return derived
+
+
+def derive_fallback_scores(
+    rubric: Rubric, intake: RequestIntake | None
+) -> dict[str, tuple[int, str, Confidence]]:
+    """Dimensions this intake can compute, as ``id -> (score, why, confidence)``.
+
+    The complement of :func:`derive_scores`: these derivations do NOT replace an
+    assessed score, they fill one the assessment left unknown. The motivating
+    case is ``business_value``, where the rubric used to instruct the model to
+    "estimate the order of magnitude from the process described" — an
+    instruction two independent scorers followed to two different answers on 11
+    of 30 cases (ADR-026). The instruction is now to refuse; this is what
+    catches the refusal and turns it into arithmetic where the intake form
+    carries the numbers.
+
+    Unlike an authoritative derivation the confidence varies, because the
+    denominations are not equally good: hours or currency computed from a stated
+    per-instance figure is ``medium``, a bare count of instances is ``low``.
+    """
+    if intake is None:
+        return {}
+    derived: dict[str, tuple[int, str, Confidence]] = {}
+    for dimension in rubric.dimensions:
+        rule = dimension.derivation
+        if rule is None or not rule.is_fallback:
+            continue
+        if not isinstance(rule, MagnitudeDerivation):  # pragma: no cover
+            continue
+        computed = rule.derive(
+            instances_per_year=intake.instances_per_year,
+            minutes_per_instance=intake.minutes_per_instance,
+            cost_per_instance=intake.cost_per_instance,
+        )
+        if computed is not None:
+            score_value, why, confidence = computed
+            derived[dimension.id] = (score_value, why, Confidence(confidence))
     return derived
 
 
@@ -346,6 +398,39 @@ def _apply_intake_derivations(
         )
         derived.append(dimension_id)
     return derived
+
+
+def _apply_fallback_derivations(
+    indexed: dict[str, DimensionAssessment],
+    rubric: Rubric,
+    intake: RequestIntake | None,
+) -> list[str]:
+    """Fill unknown dimensions the intake can compute, leaving assessed ones alone.
+
+    The asymmetry with :func:`_apply_intake_derivations` is the whole point. An
+    authoritative derivation overwrites: if the form says the process runs 180
+    times a day, the model's opinion about frequency is noise. A fallback
+    derivation defers: a magnitude the request actually states is better
+    evidence than one computed from two form fields, so this only runs where the
+    assessment recorded ``score: None``.
+
+    Mutates ``indexed`` in place and returns the ids that were filled.
+    """
+    filled: list[str] = []
+    for dimension_id, (score_value, why, confidence) in derive_fallback_scores(
+        rubric, intake
+    ).items():
+        existing = indexed.get(dimension_id)
+        if existing is not None and existing.score is not None:
+            continue
+        indexed[dimension_id] = DimensionAssessment(
+            dimension_id=dimension_id,
+            score=score_value,
+            evidence=why,
+            confidence=confidence,
+        )
+        filled.append(dimension_id)
+    return filled
 
 
 def _evaluate_gates(
@@ -630,6 +715,10 @@ def score(
     # Deterministic derivations run BEFORE the gates, so a gate that keys on a
     # derived dimension sees the derived value rather than the model's guess.
     derived_dimensions = _apply_intake_derivations(indexed, rubric, intake)
+    # Fallbacks run next, and still before the gates and the completeness rule:
+    # a magnitude computed from the form is a score like any other, and the
+    # dimension must be known or unknown before anything reads it.
+    fallback_dimensions = _apply_fallback_derivations(indexed, rubric, intake)
     triggered_gates, ignored_anti_pattern_ids, unsupported = _evaluate_gates(
         assessment, indexed, rubric, patterns, intake
     )
@@ -721,6 +810,7 @@ def score(
         ignored_anti_pattern_ids=ignored_anti_pattern_ids,
         unsupported_anti_patterns=unsupported,
         derived_dimensions=derived_dimensions,
+        fallback_derived_dimensions=fallback_dimensions,
         unknown_weight=unknown_weight,
         completeness_violation=completeness_violation,
         requires_human_confirmation=requires_confirmation,

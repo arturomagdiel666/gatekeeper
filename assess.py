@@ -197,6 +197,16 @@ def _render_dimensions(rubric: Rubric, omit: set[str] | None = None) -> str:
         lines = [
             f"### {dimension.id}  ({dimension.label})",
             f"Measures: {' '.join(dimension.axis.split())}",
+        ]
+        # A dimension may carry a procedure as well as a construct. It is
+        # rendered here rather than folded into `axis` so that the axis line
+        # stays a single-construct statement a reader can check the anchors
+        # against — see ADR-026.
+        if dimension.scoring_rule:
+            lines.append(
+                f"How to score: {' '.join(dimension.scoring_rule.split())}"
+            )
+        lines += [
             f"Direction: {dimension.direction} (weight {dimension.weight})",
             "Levels:",
         ]
@@ -442,6 +452,8 @@ Answers the requester gave on the intake form:
 - Who does this today: {intake.who_does_this_today or "(not stated)"}
 - People affected: {intake.people_affected if intake.people_affected is not None else "(not stated)"}
 - How often it runs: {volume}
+- Minutes one instance takes today: {intake.minutes_per_instance if intake.minutes_per_instance is not None else "(not stated)"}
+- Cost of one instance today: {intake.cost_per_instance if intake.cost_per_instance is not None else "(not stated)"}
 - Last tool built for these same users: {intake.prior_tool_for_these_users.value}
 - Where the data lives: {intake.where_the_data_lives or "(not stated)"}
 - Data classification: {intake.data_sensitivity.value}
@@ -449,7 +461,11 @@ Answers the requester gave on the intake form:
 Use these answers. "Last tool built for these same users" is direct evidence
 for adoption_risk and appears nowhere else. Where an answer is "(not stated)"
 or "unknown", fall back to the request text, and set score to null if neither
-establishes the dimension."""
+establishes the dimension.
+
+The last two answers are NOT yours to multiply together. If the request itself
+states no magnitude, business_value is null and the program computes it from
+those two numbers — see How to score under that dimension."""
 
 
 def assess_request(

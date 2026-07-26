@@ -1497,3 +1497,168 @@ A note on the mechanism, since it is the thing worth doubting: **widgets inside
 a collapsed Streamlit expander still execute and still submit their values.**
 Collapsing changes what is visible, never what is sent. That was checked rather
 than assumed.
+
+---
+
+## ADR-026 — `business_value` was a procedure with a hole in it, not a bad anchor
+
+**Date:** 2026-07-26 · **Status:** accepted · **Scope:** rubric, config, schemas, scoring, prompt
+**Evidence:** `evaluacion/07_agreement_study.md`, `evaluacion/08_currency_hypothesis_test.md`
+
+Phase 4, Commit 1 of 3. Everything repaired here was **measured** by the
+inter-rater agreement study over 30 cases with two independent scorers, not
+suspected.
+
+### Registered predictions
+
+Recorded before the repair, so the result cannot be reinterpreted afterwards.
+The re-run that tests them is a separate protocol and has **not** been run.
+
+| Prediction | Current | Expected after |
+|---|---|---|
+| `business_value` exact agreement | 63% | **rises** |
+| `non_ai_alternative` exact agreement | 70% | **rises** |
+| Verdict agreement | 80% | rises |
+| Cases returning `incomplete` | **0 / 30** | **rises above zero** |
+| Cases returning `go` | 3–5 / 30 | **may fall** |
+
+The last two are uncomfortable on purpose. Making a vague request return
+`incomplete` instead of a guessed score is the point of this commit, and it
+necessarily reduces the number of requests that reach a verdict at all. **If the
+`go` rate falls and `incomplete` rises, that is the change working.** Recording
+it here removes the option of reading a fall in `go` as a regression later.
+
+One honesty note about the registration: these predictions were written into
+this log in the same commit as the implementation, not in a commit before it.
+They are still ex ante with respect to the data — no re-run has been performed —
+but the ordering was not what the phase plan asked for.
+
+### The defect, and why the first hypothesis was wrong
+
+`business_value` had the worst exact agreement in the study (63%) and the
+heaviest weight (0.22) — the worst possible pairing. The leading explanation was
+a currency mismatch: anchors in USD, every corpus figure in pesos, no conversion
+basis, and reading a peso figure against a USD threshold lands exactly one level
+high, which is the shape of the observed one-directional skew.
+
+**Tested against the score files, and refuted.** Currency evidence appears in
+27% of disagreements and 26% of agreements. All five agreements that cite an
+explicit peso figure agree exactly. The hypothesis had no explanatory power.
+
+What the same two queries found instead:
+
+| | n | At least one scorer marked `confidence: low` |
+|---|---|---|
+| Disagreements | 11 | **11 — 100%** |
+| Agreements | 19 | 13 — 68% |
+
+Six of the eleven disagreements sit on the single 1-versus-2 boundary. Where
+both scorers were confident they never once disagreed. The cause was not an
+anchor at all — it was this instruction in the dimension's `description`:
+
+> *If the request names no figure, estimate the order of magnitude from the
+> process described and record `confidence: low`.*
+
+Added in Phase 2.1 to stop the heaviest dimension from degenerating into a
+measure of how well the requester writes a business case. **It fixed that bias
+and introduced a reproducibility problem in its place.** Both scorers obeyed it,
+both flagged low confidence, and then estimated differently — because "estimate
+the order of magnitude" asks for a judgement the rubric supplies no procedure
+for. A hole in a definition closes by stating the definition; a hole in a
+**procedure** stays open however well the anchors are written.
+
+### The repair: a derivation, and a refusal
+
+The two dimensions that reached 100% agreement did so because a lookup table
+replaced a judgement. So `business_value` gets one, as a four-step resolution
+order — in `scoring_rule` for the model, and in `derivation` for the code:
+
+1. **Stated magnitude** — the request names a figure in any denomination: score
+   it, confidence high if already annual, medium if annualized.
+2. **Computed from intake** — no stated figure, but volume and a per-instance
+   duration or cost: compute the annualized magnitude, confidence medium, and
+   put the full arithmetic in the evidence string.
+3. **Volume only** — score the cases-per-year denomination alone, confidence
+   low, and say so out loud in the evidence.
+4. **Refuse** — `null`, with what is missing named. `business_value` is in
+   `never_unknown`, so this returns `incomplete`.
+
+Branch 4 is the one that changes behaviour in the field. A request whose
+magnitude cannot be established is **not a low-value request, it is an
+unassessable one**, and the honest output names the missing number and routes it
+back.
+
+Three design points worth recording:
+
+**The derivation is a FALLBACK, and it is the first one.** The other two
+(`intake_volume`, `intake_sensitivity`) overwrite the model: a volume is a
+volume. A magnitude is not stated by any single field — it is the product of two
+— so computing it only beats reading it where the request named no figure at
+all. Hence `applies: when_unknown`, a `derive_fallback_scores` separate from
+`derive_scores`, and the dimension staying **in** the prompt rather than being
+trimmed out of it like a derived one.
+
+**Priority order, not the larger of two.** Where both a duration and a cost are
+available the denominations are tried in declaration order. Taking the higher was
+considered and rejected: it would reintroduce exactly the upward skew the study
+measured (A above B in 11 of 30, below in none). The bands are mutually
+calibrated at roughly 50 USD per person-hour, so the two rarely disagree.
+
+**The currency basis is stated anyway.** USD, with conversion at the rate in
+effect recorded in the evidence. It was measured **not** to be the cause of the
+disagreement, and it is closed because it is objectively wrong, not because it
+buys agreement. Recorded so nobody later credits an agreement improvement to it.
+
+### The second axis, removed — and an overlap found while removing it
+
+Levels 4 and 5 carried "a cycle-time reduction on a process the business already
+reports on" and "direct influence on revenue or on a regulatory obligation the
+company already reports". Both are categorical facts about **strategic
+salience** on a dimension whose `axis` line declares magnitude only. This is the
+one-axis-per-dimension rule from ADR-014 being violated by anchors rewritten
+*after* that rule was written down — which is the argument for checking it with
+a test rather than with a reader, and there is now one.
+
+Deleting the clauses exposed a second defect in the same two anchors: level 4
+said "5,000-50,000 cases" while level 5 said "tens of thousands of cases", so
+20,000 cases matched both. Mutual exclusivity is one of the three anchor-writing
+rules at the top of `rubric.yaml`. Level 5 is now "more than about 50,000".
+
+Strategic salience may well matter. It is **not** added as a dimension now; it
+is a candidate, recorded here, to be argued on its own evidence rather than
+smuggled in through the anchors of another construct.
+
+### Two mechanisms added, one deliberately not
+
+**`scoring_rule`, a new optional field on a dimension, rendered into the
+prompt.** The phase plan suggested putting prompt-visible rules in the `axis`
+line. `description` is not rendered — it is documentation for whoever tunes the
+rubric — so a rule the model must follow needs somewhere else to live, and
+`axis` is the wrong place: acceptance criterion 3 is "no anchor references more
+than the one axis its axis line declares", and that check only works while the
+axis line is a single-construct statement. A twelve-line procedure inside it
+would blur exactly the thing the criterion measures. So procedure and construct
+are now separate fields, both rendered, and the axis stays checkable.
+
+**Two intake fields:** `minutes_per_instance` and `cost_per_instance`, optional
+like every other structured field, plus the matching inputs on the app form.
+Without a way to supply them the derivation would be unreachable from the only
+UI, and every vague request would take branch 4 by default.
+
+**Not added: a load-time invariant** that a dimension with a fallback derivation
+must be in `never_unknown`. It is true of the shipped config, and it is what
+makes branch 4 surface as `incomplete` rather than renormalize away — but as a
+`Rubric` validator it forbids `never_unknown: []`, which is the configuration
+the completeness tests need in order to exercise the weight rule on its own
+(ADR-022). It was written, it broke two tests that were measuring something
+real, and it was withdrawn. The property is pinned by a test against the shipped
+rubric instead, where it costs no expressiveness. **A guard that only fires on
+configurations nobody ships is not worth the ones it forbids.**
+
+### What this does not fix
+
+Nothing here improves the case where the request DOES state a figure — that path
+already agreed. The gain is confined to vague requests, which the currency test
+noted are also the requests a real Hub receives most often (A-01, A-03, B-07,
+B-12, B-14, B-16 in the corpus). And the study's own limitation stands: both
+scorers are language models, and their agreement may be correlated.

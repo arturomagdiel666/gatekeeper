@@ -75,21 +75,114 @@ dimensions:
     label: Business value
     axis: >-
       MAGNITUDE of the benefit, annualized. Nothing else. The units below
-      (person-hours, currency, cases, tickets) are alternative denominations of
-      the same magnitude — pick whichever the request supports.
+      (person-hours, currency, cases or tickets) are alternative denominations
+      of the same magnitude — score from whichever one the request or the
+      intake form actually supports.
+    scoring_rule: >-
+      Never estimate a magnitude the request does not state. Take these steps in
+      order and stop at the first that applies. (1) The request states a
+      magnitude in some denomination — annualized person-hours, currency, or a
+      count of cases or tickets: score the level whose band contains it, put the
+      figure in evidence, and set confidence to high if the figure is already
+      annual or medium if you had to annualize it. Currency bands are USD; if
+      the request states another currency, convert at the rate in effect and put
+      that rate in evidence. (2) The request states no magnitude in any
+      denomination: set score to null and say in evidence which figure was
+      missing. Do NOT work one out from the process description. A separate
+      program then computes the magnitude from the intake form's volume and
+      per-instance duration or cost, and if it cannot, this dimension stays
+      unknown and the request is returned as incomplete. A null costs the
+      requester one number; a guess costs everyone a verdict nobody can
+      reproduce.
     description: >-
       The size of the benefit if this works as intended: hours reclaimed, cost
-      avoided, cycle time reduced, tickets deflected, or revenue influenced.
-      Judge the size of the prize, not the probability of winning it — the cost
-      side is implementation_effort and the odds are data_readiness.
-      Whether anyone has yet QUANTIFIED the benefit is a question of confidence,
-      not of size. If the request names no figure, estimate the order of
-      magnitude from the process described and record `confidence: low`. A
-      missing number must never pull this score down: that would turn the
-      heaviest-weighted dimension into a partial measure of how well the
-      requester writes a business case.
+      avoided, cycle time reduced, or tickets deflected. Judge the size of the
+      prize, not the probability of winning it — the cost side is
+      implementation_effort and the odds are data_readiness.
+
+      CURRENCY BASIS: every currency threshold below is USD, the currency this
+      Hub's organisation reports in. A request stating another currency is
+      converted at the rate in effect and the rate is recorded in the evidence.
+      This closes a definitional hole that was measured NOT to be the cause of
+      the disagreement between scorers (see 08_currency_hypothesis_test.md and
+      ADR-026) — it is closed because it is objectively wrong, not because it
+      buys agreement.
+
+      WHY THERE IS NO LONGER AN "ESTIMATE THE ORDER OF MAGNITUDE" RULE. Phase
+      2.1 added one, to stop the heaviest-weighted dimension from degenerating
+      into a measure of how well the requester writes a business case. It fixed
+      that bias and introduced a worse problem in its place: two independent
+      scorers, both obeying it and both recording low confidence, estimated
+      differently on 11 of 30 cases, and every single disagreement on this
+      dimension was a case where at least one of them had marked confidence
+      low. Whether the benefit has been QUANTIFIED is still not a question of
+      size — but the answer is a derivation from the intake form or a refusal to
+      score, never a judgement about a process description. See ADR-026.
     weight: 0.22
     direction: higher_is_better
+    # DETERMINISTIC DERIVATION — and unlike the other two, this one is a
+    # FALLBACK. `applies: when_unknown` means it never overrides a magnitude the
+    # request states: it fills this dimension only where the assessment left it
+    # null, which under the scoring_rule above is exactly the case where the old
+    # instruction asked for an estimate. The three denominations are tried in
+    # declaration order, so the priority is auditable here rather than buried in
+    # Python; the bands mirror the anchors below line for line, because the
+    # mapping IS the anchor semantics.
+    #
+    # The bands are mutually calibrated at roughly 50 USD per person-hour (200 h
+    # <-> 10k USD, 20,000 h <-> 1M USD), which is why a fixed priority order is
+    # safe: where two denominations are both available they land on the same
+    # level in almost every case. Taking the HIGHER of two available
+    # denominations was considered and rejected — it would reintroduce exactly
+    # the upward skew the agreement study measured (A scored above B in 11 of 30
+    # cases and below in none).
+    derivation:
+      source: intake_magnitude
+      applies: when_unknown
+      currency_code: USD
+      denominations:
+        - unit: person_hours_per_year
+          from: minutes_per_instance
+          confidence: medium
+          bands:
+            - below: 200
+              score: 1
+            - below: 1000
+              score: 2
+            - below: 5000
+              score: 3
+            - below: 20000
+              score: 4
+          otherwise: 5
+        - unit: currency_per_year
+          from: cost_per_instance
+          confidence: medium
+          bands:
+            - below: 10000
+              score: 1
+            - below: 50000
+              score: 2
+            - below: 250000
+              score: 3
+            - below: 1000000
+              score: 4
+          otherwise: 5
+        # Volume alone is the weakest denomination — it counts instances
+        # affected, not benefit — so it is last and it carries `confidence:
+        # low`, and the evidence string says out loud that it was used.
+        - unit: cases_per_year
+          from: volume_only
+          confidence: low
+          bands:
+            - below: 50
+              score: 1
+            - below: 500
+              score: 2
+            - below: 5000
+              score: 3
+            - below: 50000
+              score: 4
+          otherwise: 5
     # Retune these bands for the organisation's size. What is transformational
     # for a 200-person company is a rounding error for a 50,000-person one.
     anchors:
@@ -104,12 +197,14 @@ dimensions:
         50k-250k USD, or about 500-5,000 cases or tickets a year.
       4: >-
         About 5,000-20,000 person-hours a year (roughly 2.5-10 FTE), about
-        250k-1M USD, about 5,000-50,000 cases or tickets a year, or a
-        cycle-time reduction on a process the business already reports on.
+        250k-1M USD, or about 5,000-50,000 cases or tickets a year.
+      # "tens of thousands of cases a year" used to sit here, overlapping level
+      # 4's "5,000-50,000" — 20,000 cases matched both levels. Mutual exclusivity
+      # is one of the three anchor-writing rules at the top of this file, and it
+      # was being broken by the same two anchors that carried the second axis.
       5: >-
         More than about 20,000 person-hours a year (10+ FTE), more than about
-        1M USD, tens of thousands of cases a year, or direct influence on
-        revenue or on a regulatory obligation the company already reports.
+        1M USD, or more than about 50,000 cases or tickets a year.
 
   # ---------------------------------------------------------------------------
   - id: adoption_risk

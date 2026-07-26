@@ -151,12 +151,27 @@ class TestShippedConfigLoads:
         ):
             assert patterns.anti_pattern_by_id(anti_pattern_id).hard_block is False
 
-    def test_existing_licensed_capability_signals_name_categories_not_products(self):
-        """It must not name vendors, which differ by org and date faster than YAML."""
+    def test_the_matching_signals_name_no_vendor(self):
+        """A signal that DEFINES a match must not name a product.
+
+        The reason is unchanged: products differ by organisation and date faster
+        than this file, and a vendor list as a match criterion is what fired on
+        three of six examples where no licence was mentioned.
+
+        Narrowed in Phase 5 to the signals that define a match. The two-part test
+        also carries an illustration of what does NOT count — "Salesforce as a
+        data source is not Salesforce as a capability" — and a named product
+        there cannot produce a false positive, which is the failure this rule
+        exists to prevent. It can only withhold a match, and Part B is what
+        restores one: if the request says the platform already does the job, that
+        is quotable and it matches. See ADR-029.
+        """
         anti_pattern = load_patterns().anti_pattern_by_id(
             "existing_licensed_capability"
         )
-        joined = " ".join(anti_pattern.signals).lower()
+        matching = [s for s in anti_pattern.signals if not s.startswith("NOT PART B")]
+        assert len(matching) == 2, "Part A and Part B, and nothing else, define a match"
+        joined = " ".join(matching).lower()
         for vendor in ("microsoft", "copilot", "servicenow", "salesforce", "google"):
             assert vendor not in joined
 

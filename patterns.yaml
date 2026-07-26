@@ -213,35 +213,30 @@ anti_patterns:
     label: An already-licensed capability does this
     description: >-
       The company already pays for a platform that does this natively, and
-      nobody has checked. This is the single highest-value check in the model:
-      the remediation costs nothing, the licence is already sunk, and the
-      capability is already supported, secured and updated by its vendor.
-      Signals name categories rather than products, because the specific
-      products differ by organisation and change faster than this file.
-    # SIGNALS DESCRIBE WHAT THE REQUESTER SAID, NOT WHAT THE CAPABILITY IS.
-    # The earlier version listed categories of capability, which matched any
-    # request that merely RESEMBLED the category — it fired on three of six
-    # example requests where no licence was mentioned at all. Because this is
-    # the highest-precedence gate, each false positive decided a verdict. A
-    # signal here must be something a reader can point at in the request text.
+      nobody has checked. The highest-value check in the model and the least
+      reproducible one measured — 0% agreement across two scorer runs, on the
+      highest-precedence gate — so it is now a TWO-PART test and both parts must
+      be quoted (ADR-029).
     signals:
-      - the request names a specific platform, product or vendor the company
-        already runs
-      - the request says a tool the company already has does this, or part of it
-      - the request mentions an existing licence, subscription, tier or module
-      - the request says IT, a platform team, or a vendor has already said this
-        is covered
-      - the request asks whether an existing tool could do it instead
+      - 'PART A, copied into `quote`: the request names a specific platform,
+        product, licence, subscription, tier or module the company already runs.'
+      - 'PART B, copied into `second_quote`: the request itself says, or plainly
+        implies, that this platform already does this job or part of it —
+        somebody has already said it is covered, the tool is described as having
+        the capability, or the requester asks whether the existing tool could do
+        it instead.'
+      - 'NOT PART B, and this is the error being ruled out: naming a platform as
+        the place the data lives. Salesforce as a data source is not Salesforce
+        as a capability. If Part B cannot be copied out, there is NO MATCH.'
     hard_block: true
+    two_part_evidence: true
     notes: >-
-      The capability categories most often already licensed — a productivity
-      suite assistant that drafts and searches documents, service-management
-      platform AI for ticket routing and summarisation, a CRM-embedded
-      assistant, BI natural-language query, enterprise document search. This
-      list is for the reviewer's judgement AFTER a signal has matched. It is
-      deliberately NOT in `signals`: resemblance to a category is not evidence
-      that a licence exists, and treating it as evidence is what caused the
-      false positives.
+      Reviewer guidance for AFTER a match, never a signal. The capability
+      categories most often already licensed: a productivity suite assistant that
+      drafts and searches documents, service-management platform AI for ticket
+      routing and summarisation, a CRM-embedded assistant, BI natural-language
+      query, enterprise document search. Resemblance to one of these is not
+      evidence that a licence exists.
     better_alternative: >-
       Route the requester to the team that owns that licence, with the specific
       capability named. Ask that team to run a configuration pilot first. Only
@@ -254,15 +249,18 @@ anti_patterns:
     description: >-
       The decision follows from data already available, by a rule a person can
       state in one sentence. There is no ambiguity for a model to resolve, only
-      a rule nobody has written down.
-    # Tightened for the same reason as existing_licensed_capability: these must
-    # be things the requester wrote, not inferences about the domain.
+      a rule nobody has written down. 50% agreement across both runs, so it gets
+      the same two-part test (ADR-029).
     signals:
-      - the request states the decision rule itself, in the form "if X then Y"
-      - the request says every input needed is already a field in one system
-      - the request says somebody can write down the complete logic
-      - the request calls it a lookup, a mapping, or a simple rule
+      - 'PART A, copied into `quote`: the request states the decision logic
+        itself — an "if X then Y" rule, a lookup or a mapping, or that somebody
+        can write the complete logic down.'
+      - 'PART B, copied into `second_quote`: the request says the inputs that
+        rule needs are already values in a system today.'
+      - 'NOT PART B: describing a process that happens to involve data. A rule
+        nobody can feed is not a rule that solves it.'
     hard_block: true
+    two_part_evidence: true
     better_alternative: >-
       Write the rule, the query, or the validation. It will be faster, cheaper,
       exactly auditable, and it will not drift or need retraining.

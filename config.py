@@ -789,6 +789,12 @@ class AntiPattern(BaseModel):
     #: as evidence is what caused the false positives measured in ADR-020.
     signals: list[str]
     hard_block: bool
+    #: When true, a match needs TWO verbatim quotes rather than one: ``quote``
+    #: for the first part of the test and ``second_quote`` for the second. Set
+    #: on the anti-patterns whose signals could otherwise be satisfied by half
+    #: the test — naming a platform without any claim that it covers the job.
+    #: Both parts must be quotable or there is no match (ADR-029).
+    two_part_evidence: bool = False
     better_alternative: str
     #: Reviewer guidance that is deliberately NOT a signal — background used to
     #: judge a match after one of the signals has already fired.

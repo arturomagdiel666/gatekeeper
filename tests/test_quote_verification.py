@@ -36,6 +36,10 @@ INTAKE = RequestIntake(
     process_description="Answered by hand from PDFs.",
 )
 
+#: A verbatim Part B span from REQUEST: somebody has already said the licensed
+#: tool covers this job. Part A — naming the licence tier — is the other half.
+PART_B = "already searches this document library"
+
 GOOD_SCORES = {
     "business_value": 4,
     "adoption_risk": 2,
@@ -47,14 +51,24 @@ GOOD_SCORES = {
 }
 
 
-def assessment_with(quote: str, anti_pattern_id="existing_licensed_capability"):
-    """A would-be `go` carrying one anti-pattern match with the given quote."""
+def assessment_with(
+    quote: str,
+    anti_pattern_id="existing_licensed_capability",
+    second_quote: str | None = PART_B,
+):
+    """A would-be `go` carrying one anti-pattern match with the given quote.
+
+    ``second_quote`` defaults to a verbatim Part B span, because
+    existing_licensed_capability is a two-part test and a match quoting
+    only Part A is discarded (ADR-029). Pass ``None`` to exercise that.
+    """
     return Assessment(
         archetype_id="rag_qa",
         anti_pattern_matches=[
             AntiPatternMatch(
                 anti_pattern_id=anti_pattern_id,
                 quote=quote,
+                second_quote=second_quote,
                 quote_confidence=Confidence.HIGH,
             )
         ],
@@ -475,3 +489,81 @@ class TestConfirmationFollowsTheConditionThatFired:
         for gate in RUBRIC.blocking_gates:
             for condition in gate.any_of:
                 assert condition.requires_human_confirmation is not None, gate.id
+
+
+class TestTwoPartEvidence:
+    """ADR-029: half a two-part test is not evidence.
+
+    existing_licensed_capability agreed 0% across BOTH scorer runs, on the
+    highest-precedence gate. In run 1 it decided nothing because the threshold
+    gate shadowed it; in run 2, after that gate stopped firing so often, it
+    decided half of all verdict disagreements. One scorer matched it 10 times
+    under a rule it invented for itself; the other, zero times. Both readings
+    were supported by the old signals.
+    """
+
+    def test_a_platform_named_only_as_a_data_source_does_not_match(self):
+        """The exact error being ruled out, and the cause of the 10-versus-0 split."""
+        intake = RequestIntake(
+            request_text=(
+                "We want an agent to summarise the weekly pipeline. "
+                "The data all lives in Salesforce."
+            ),
+            requesting_area="Sales",
+            business_owner="Ana Ruiz",
+            process_description="A manager builds it by hand each Monday.",
+        )
+        assessment = assessment_with(
+            "The data all lives in Salesforce", second_quote=None
+        )
+        outcome = score(assessment, RUBRIC, PATTERNS, intake)
+        assert outcome.triggered_gate_ids == [], "no gate may fire on Part A alone"
+        discarded = outcome.unsupported_anti_patterns[0]
+        assert discarded.anti_pattern_id == "existing_licensed_capability"
+        assert "second_quote is missing" in discarded.reason
+
+    def test_a_quoted_claim_that_the_tool_covers_it_does_match(self):
+        """Part B present and verbatim: the gate fires, as it should."""
+        outcome = score(
+            assessment_with("our current licence tier", second_quote=PART_B),
+            RUBRIC,
+            PATTERNS,
+            INTAKE,
+        )
+        assert outcome.triggered_gate_ids[0] == "existing_capability_covers_it"
+        assert outcome.verdict is Verdict.NOT_AI
+        assert outcome.unsupported_anti_patterns == []
+
+    def test_a_fabricated_second_quote_is_rejected_like_a_fabricated_first(self):
+        assessment = assessment_with(
+            "already searches this document library",
+            second_quote="the vendor confirmed it is covered",
+        )
+        outcome = score(assessment, RUBRIC, PATTERNS, INTAKE)
+        assert outcome.triggered_gates == []
+        assert "not in the request text" in outcome.unsupported_anti_patterns[0].reason
+
+    def test_a_one_part_anti_pattern_still_needs_only_one_quote(self):
+        """The four anti-patterns at 100% agreement are untouched."""
+        assessment = assessment_with(
+            "already searches this document library",
+            anti_pattern_id="reporting_in_disguise",
+            second_quote=None,
+        )
+        outcome = score(assessment, RUBRIC, PATTERNS, INTAKE)
+        assert outcome.unsupported_anti_patterns == []
+        assert outcome.triggered_gate_ids == ["non_ai_alternative_suffices"]
+
+    def test_the_discarded_match_leaves_the_case_scored_on_its_dimensions(self):
+        """Nothing is lost: the signal moves to a compensable dimension.
+
+        non_ai_alternative already carries "an already-licensed capability solves
+        it" at its top level, so a request whose licence claim cannot be quoted
+        is scored there like any other rather than gated on an unreproducible
+        judgement.
+        """
+        assessment = assessment_with("our current licence tier", second_quote=None)
+        outcome = score(assessment, RUBRIC, PATTERNS, INTAKE)
+        assert outcome.verdict is Verdict.GO, "GOOD_SCORES with no gate firing"
+        assert len(outcome.contributions) == len(RUBRIC.dimension_ids)
+        assert outcome.weighted_total is not None

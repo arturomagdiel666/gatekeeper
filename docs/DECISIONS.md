@@ -2094,3 +2094,101 @@ Phase 4's level-1 evidence fix stays. It was correct, it is not implicated in th
 regression, and it is the only other thing Phase 4 did to this dimension.
 
 Net effect on the file: `rubric.yaml` 791 → 767 lines across Commits 1 and 2.
+
+---
+
+### Commit 3 — `existing_licensed_capability`: a decision procedure, so nobody has to invent one
+
+**0% agreement across both runs**, on the **highest-precedence gate** in the
+system. Nothing about it changed in Phase 4. In run 1 it decided nothing, because
+the `non_ai_alternative` threshold gate fired first on almost every case it
+touched — hard-block matches were verdict-redundant in 16 of 17 instances. In run
+2, after Phase 4 made that threshold fire less readily, this anti-pattern decides
+**half of all verdict disagreements**.
+
+> The repair did not create the unreliable mechanism. It removed the thing that
+> was hiding it.
+
+Scorer A matched it 10 times, under a rule it wrote for itself — "the request
+names a platform the company runs *and* that platform is the natural home of the
+requested capability" — and called that rule *"the least reproducible call in the
+set"*. Scorer B matched it zero times, reading the signals narrowly and citing the
+file's own warning about firing on resemblance. **Both readings were supported by
+the text.** That is the defect: no anti-pattern should require a scorer to invent
+its own decision procedure.
+
+Run 1 supplied the shape of the fix. Anti-patterns whose signals describe what the
+requester **said** agreed 100% — `reporting_in_disguise`, `rpa_relabeled`,
+`chatbot_without_job_to_be_done`, `solution_first_no_measurable_problem`. Those
+requiring a judgement about the **world** agreed 0%. So this one becomes
+behavioural, as a two-part test where **both parts need their own verbatim
+quote**:
+
+- **Part A**, in `quote` — the request names a specific platform, product,
+  licence, subscription, tier or module the company already runs.
+- **Part B**, in `second_quote` — the request itself says, or plainly implies,
+  that this platform already does this job or part of it.
+- **Not Part B** — naming a platform as the place the data lives. *Salesforce as
+  a data source is not Salesforce as a capability.* Stated in the signals because
+  it is the exact error being ruled out, and it is what produced the 10-versus-0
+  split.
+
+If Part B cannot be quoted there is **no match**, and the request is scored on
+`non_ai_alternative` like any other. **Nothing is lost by that.** That dimension
+already carries "an already-licensed capability solves it completely" at level 5,
+so the signal moves from an unreproducible categorical gate to a scored dimension
+where it is compensable and where a wrong reading costs tenths of a point instead
+of a verdict.
+
+`deterministic_rule_suffices` (50% agreement across both runs) gets the same
+discipline: Part A is the stated decision logic, Part B is that the inputs the
+rule needs are already values in a system today. The four anti-patterns at 100%
+are untouched.
+
+The capability categories — productivity suite assistant, service-management AI,
+CRM assistant, BI natural-language query, enterprise document search — moved into
+`notes`, labelled as reviewer guidance for **after** a match. `notes` is not
+rendered into the prompt, which is where that list belongs: useful to a human
+deciding whether a matched claim is plausible, and never a criterion.
+
+### The one place this phase is not config-only
+
+Making "both parts must be quoted" real needed a mechanism, because the engine
+cannot tell Part A from Part B by reading one string. Three small additions:
+
+- `AntiPattern.two_part_evidence: bool = False` in config
+- `AntiPatternMatch.second_quote: str | None = None` in the model's schema
+- one check in `scoring.py`: for a two-part anti-pattern, a missing or
+  unverifiable `second_quote` discards the match into
+  `unsupported_anti_patterns`, exactly as a fabricated first quote already was
+
+The field is **optional**, so the four anti-patterns at 100% agreement are
+unaffected and the schema does not demand more work of the model for them —
+ADR-019's warning that a schema demanding more gets less applies to required
+fields. The phase plan said config only; this is the deviation, it is 30 lines,
+and without it the two-part test would be prose the engine could not enforce and
+the specified test — *a match without a Part B quote lands in
+`unsupported_anti_patterns`* — could not be written at all.
+
+### One test invariant narrowed, deliberately
+
+`test_existing_licensed_capability_signals_name_categories_not_products` asserted
+that no signal names a vendor, because a product list as a match criterion is
+what caused the original false positives. The new "Not Part B" line names
+Salesforce. The rule now applies to the two signals that **define a match**, and
+the illustration of what does *not* count is exempt: a named product there cannot
+produce a false positive, which is the failure the rule exists to prevent. It can
+only withhold a match, and Part B is what restores one.
+
+### Line delta for the phase
+
+| File | Before | After | Δ |
+|---|---|---|---|
+| `rubric.yaml` | 791 | 767 | **−24** |
+| `patterns.yaml` | 404 | 402 | **−2** |
+
+Both shorter, which was the acceptance criterion and the point. `patterns.yaml`
+first came out **+2**, because the study history had been written into a
+`description` — a field that **is** rendered into the assessment prompt. Moving
+it here cost nothing and removed prompt weight: rationale belongs in this log,
+and the config should carry only what the model or the scorer has to act on.

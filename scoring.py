@@ -537,6 +537,30 @@ def _evaluate_gates(
                 )
             )
             continue
+        # Some anti-patterns are a two-part test and half of it is not evidence.
+        # The measured case: naming a platform the company runs satisfied the old
+        # signals on its own, so a data source read as a capability, and the two
+        # scorers matched this 10 times and 0 times — 0% agreement across two
+        # runs on the highest-precedence gate. See ADR-029.
+        if anti_pattern.two_part_evidence and not quote_is_supported(
+            match.second_quote or "", source_text
+        ):
+            unsupported.append(
+                UnsupportedAntiPattern(
+                    anti_pattern_id=match.anti_pattern_id,
+                    quote=match.second_quote or "",
+                    reason=(
+                        f"{match.anti_pattern_id} needs both parts of its test "
+                        "quoted, and second_quote is "
+                        + (
+                            "missing"
+                            if not (match.second_quote or "").strip()
+                            else "not in the request text"
+                        )
+                    ),
+                )
+            )
+            continue
         matched_all.append(match.anti_pattern_id)
         quote_by_id[match.anti_pattern_id] = match.quote
         if anti_pattern.hard_block:

@@ -234,6 +234,11 @@ def _render_anti_patterns(patterns: Patterns) -> str:
         blocking = "BLOCKING" if anti_pattern.hard_block else "advisory"
         description = " ".join(anti_pattern.description.split())
         lines.append(f"- {anti_pattern.id} [{blocking}]: {description}")
+        if anti_pattern.two_part_evidence:
+            lines.append(
+                "    NEEDS TWO QUOTES: fill in both quote and second_quote. "
+                "One part alone is not a match."
+            )
         lines.append(f"    Signals: {'; '.join(anti_pattern.signals)}")
     return "\n".join(lines)
 
@@ -311,7 +316,8 @@ Plus, at the top level:
 - archetype_id: the best-matching archetype id, or null if none fits.
 - anti_pattern_matches: every anti-pattern the request matches. Each entry is
   an object with anti_pattern_id, quote, and quote_confidence. Empty list if
-  none match — which is the common case.
+  none match — which is the common case. A few anti-patterns are marked below as
+  needing two quotes; for those, also fill in second_quote.
 - proposed_metric_id: the candidate metric id that best fits this request, from
   the list for the matching archetype, or null to accept the default.
 - stated_baseline_value: the current value of that metric as a number, ONLY if
@@ -336,9 +342,10 @@ Plus, at the top level:
    appear in the request is discarded and the match is thrown away, so an
    invented quote gains you nothing.
 7. Do not match an anti-pattern because the request RESEMBLES its category.
-   Match it only on what the request says. In particular, do not match
-   existing_licensed_capability unless the request itself mentions a product,
-   a licence, or a tool the company already has.
+   Match it only on what the request says. Where an anti-pattern below is
+   marked as needing two quotes, both parts must be copied out of the request;
+   naming a platform as the place the data lives is not the second part, and
+   without the second part there is no match.
 
 ## Dimensions
 

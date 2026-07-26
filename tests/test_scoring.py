@@ -104,6 +104,17 @@ def make_assessment(
             AntiPatternMatch(
                 anti_pattern_id=i,
                 quote=QUOTABLE_PHRASE,
+                # The two-part anti-patterns discard a match that quotes only
+                # half the test (ADR-029). QUOTABLE_PHRASE carries both halves —
+                # it names a licence AND says it already covers the job — so it
+                # verifies as either part. Evidence semantics are tested in
+                # tests/test_quote_verification.py; these tests are about gates.
+                second_quote=(
+                    QUOTABLE_PHRASE
+                    if (PATTERNS.anti_pattern_by_id(i) or None)
+                    and PATTERNS.anti_pattern_by_id(i).two_part_evidence
+                    else None
+                ),
                 quote_confidence=Confidence.HIGH,
             )
             for i in (anti_pattern_ids or [])

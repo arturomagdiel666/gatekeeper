@@ -235,6 +235,12 @@ class AntiPatternMatch(BaseModel):
         anti_pattern_id: Id from ``patterns.yaml``.
         quote: Text copied word for word from the request. Not a paraphrase,
             not a summary, not an inference.
+        second_quote: A second span copied word for word, for the anti-patterns
+            whose signals name two parts that must BOTH hold. Where
+            ``patterns.yaml`` marks an anti-pattern ``two_part_evidence``, a
+            match without this is discarded exactly as a fabricated quote is:
+            half the test is not the test. ``None`` for every other
+            anti-pattern, where it is neither wanted nor read.
         quote_confidence: How well that quote establishes the anti-pattern.
     """
 
@@ -242,6 +248,7 @@ class AntiPatternMatch(BaseModel):
 
     anti_pattern_id: str
     quote: str
+    second_quote: str | None = None
     quote_confidence: Confidence
 
 

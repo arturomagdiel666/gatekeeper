@@ -38,6 +38,8 @@ reference_assessment:
   anti_pattern_matches:
     - anti_pattern_id: existing_licensed_capability
       quote: >-
+        part of the productivity suite we already license company-wide
+      second_quote: >-
         IT mentioned that the assistant bundled with our current licence tier can already search and answer over that same document library
       quote_confidence: high
   proposed_metric_id: search_success_rate_pct

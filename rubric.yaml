@@ -249,9 +249,19 @@ dimensions:
   - id: data_readiness
     label: Data readiness
     axis: >-
-      Whether the data EXISTS, is OBTAINABLE by this team, and whether you can
-      TELL A GOOD OUTPUT FROM A BAD ONE. Permission to use the data is a
-      different dimension (data_governance).
+      TWO sub-assessments, and the score is the LOWER of the two.
+      AVAILABILITY: whether the data exists, is obtainable by this team, and
+      whether its quality has been established.
+      EVALUABILITY: whether you can tell a good output from a bad one.
+      Permission to use the data is a different dimension (data_governance);
+      whether an access request needs paperwork is a delivery risk, not a
+      readiness level.
+    scoring_rule: >-
+      Read each level below as a description of ONE half. Score availability
+      against it, score evaluability against it, and record the LOWER of the two
+      — perfect data with no way to judge an output is not a 4. The evidence
+      string must say something about both halves, so a reader can see which one
+      set the level.
     description: >-
       The construct is "can you evaluate it", not "do you have labels". What
       counts as evidence depends on the archetype in patterns.yaml. Predictive
@@ -264,41 +274,77 @@ dimensions:
       requests below the top of this scale by construction.
       This is the dimension requesters most consistently overestimate. Score
       what has been seen, not what is believed to exist.
+
+      WHY THE TWO HALVES ARE NOW SEPARATE AND COMBINED BY `min`. The agreement
+      study found this dimension answering two different questions with one
+      number, and the ambiguity was verdict-changing because LEVEL 1 FIRES THE
+      no_usable_data GATE. The clearest case in the corpus: a request to triage
+      NDAs, where the documents are fully retrievable but nobody ever recorded
+      which of them required negotiation. Availability reads 3; evaluability
+      reads 1, because the outcome variable would have to be created from
+      scratch. The old anchors gave no rule for that, so one scorer read 2 and
+      the other 3 — and neither fired the gate. Under `min` it resolves to 1 and
+      the gate does fire, which is the right answer: for a predictive archetype
+      with no recorded outcome the verdict is the sequencing one, "instrument
+      the process and resubmit", not a judgement on the idea.
+      Expect the gate to fire MORE often than before. That is the repair
+      working, not a regression.
+
+      ACCESS PAPERWORK IS NOT A READINESS LEVEL. Level 4 used to require a named
+      owner who can grant access, and level 5 an owner who can grant it this
+      quarter without an exception. Both are gone. They capped a request with
+      verified quality and unambiguous labels at 4 on a point of procedure, and
+      because level 4 carried the same clause, a request mentioning no owner at
+      all — which is most of them — was blocked from 4 and 5 alike. Whether
+      access needs an exception is a real risk and it is already carried by
+      data_governance and by implementation_effort.
     weight: 0.15
     direction: higher_is_better
     anchors:
       1: >-
-        The data does not exist in retrievable form. It is in people's heads,
-        in undigitized paper, or it would have to be collected from scratch
-        before any work could begin.
+        AVAILABILITY — the data does not exist in retrievable form: it is in
+        people's heads, in undigitized paper, or it would have to be collected
+        from scratch before any work could begin. EVALUABILITY — there is no
+        outcome variable and no reference set, and neither could be assembled
+        without first collecting what nobody recorded.
       2: >-
-        Data exists but is spread across systems nobody has joined, or is
-        locked inside attachments and free text with no access path. Obtaining
-        it is a project with its own budget.
+        AVAILABILITY — data exists but is spread across systems nobody has
+        joined, or is locked inside attachments and free text with no access
+        path; obtaining it is a project with its own budget. EVALUABILITY — the
+        material a judgement could be built from exists, but assembling it into
+        labels or a reference set is a project of that same size.
       3: >-
-        Data exists in one or two systems and a plausible access path exists,
-        but its quality has not been checked on real records, or there is no
-        agreed way yet to tell whether an output is good.
+        AVAILABILITY — data exists in one or two systems and a plausible access
+        path exists, but its quality has not been checked on real records.
+        EVALUABILITY — there is no agreed way yet to tell whether an output is
+        good, though nothing stands in the way of agreeing one.
       4: >-
-        Data is centralized, its quality has been checked on a real sample, and
-        a named owner can grant access. A partial way to judge output quality
-        exists: for a predictive archetype, some labelled examples or a usable
-        proxy for the outcome; for a generative archetype, a handful of
-        reference outputs or draft quality criteria.
+        AVAILABILITY — data is centralized, and its quality has either been
+        checked on a real sample or has a stated, plausible path to being
+        checked. EVALUABILITY — a partial way to judge output quality exists:
+        for a predictive archetype, some labelled examples or a usable proxy for
+        the outcome; for a generative archetype, a handful of reference outputs
+        or draft quality criteria.
       5: >-
-        Sufficient clean, accessible history with verified quality and an owner
-        who can grant access this quarter without an exception, plus a settled
-        way to judge an output: for a predictive archetype, labels or an
-        unambiguous outcome variable; for a generative archetype, a curated
-        reference set with agreed quality criteria (for example, what a good
-        ticket handover summary must contain) and someone qualified to apply
-        them.
+        AVAILABILITY — sufficient clean history, with quality verified on real
+        records. EVALUABILITY — a settled way to judge an output: for a
+        predictive archetype, labels or an unambiguous outcome variable; for a
+        generative archetype, a curated reference set with agreed quality
+        criteria (for example, what a good ticket handover summary must contain)
+        and someone qualified to apply them.
 
   # ---------------------------------------------------------------------------
   - id: process_frequency
     label: Process frequency
     axis: >-
-      VOLUME of the target process, in instances per year. Nothing else.
+      VOLUME of the target process, in instances per year. Nothing else. An
+      INSTANCE is one unit of work the agent would handle end to end, once — and
+      that is not always the noun the request uses. A tender containing 200
+      requirements, where the agent drafts a response to each requirement, is
+      200 instances and not one. A monthly close where the agent writes a
+      commentary for each of 60 P&L lines is 720 instances a year and not 12.
+      Count what the agent does, once, and fill the intake volume field in that
+      same unit.
     description: >-
       Frequency is what lets a fixed build cost compound into a return. A rare
       process can be valuable per instance and still be a poor agent target,
@@ -306,6 +352,16 @@ dimensions:
       How much each instance DIFFERS from the last is a separate construct that
       drives feasibility rather than return, and is deliberately not measured
       here. See the proposed eighth dimension in docs/DECISIONS.md.
+
+      WHY THE INSTANCE IS NOW DEFINED IN THE AXIS. This dimension scored 100%
+      agreement in the study — but only because the derivation table below
+      shadowed the anchors on 25 of 30 cases. Where a scorer had to reason, the
+      unit was undefined: one corpus case is 45 tenders a year or about 4,500
+      requirement responses, which is the difference between level 2 and level 4.
+      The defect was latent rather than active, and it would have surfaced the
+      moment a request arrived with the volume field blank. Defining the unit
+      also settles what the intake field means, since the derivation reads it
+      literally.
     weight: 0.13
     direction: higher_is_better
     # DETERMINISTIC DERIVATION. When the requester states the volume on the
@@ -424,35 +480,77 @@ dimensions:
   - id: non_ai_alternative
     label: Strength of the non-AI alternative
     axis: >-
-      How COMPLETELY a non-AI solution would solve the same problem — a rule, a
-      query, a report, a process fix, or a capability the company already
-      licenses.
+      The SHARE OF INSTANCES that a non-AI solution — a rule, a query, a report,
+      a process fix, a form field, or a capability the company already licenses
+      — would handle END TO END, with no human judgement added. Counted in
+      instances FINISHED, not in help given: an alternative that improves every
+      instance but finishes none of them belongs at level 1, because the work
+      still has to be done by somebody.
+    scoring_rule: >-
+      Put a percentage on it. Estimate what share of instances the deterministic
+      alternative would finish without anyone having to judge anything, and
+      score the level whose band contains that share. If the request states a
+      share — "about 60% are variations of the same twenty situations" — use the
+      stated number. Partial help on every instance is not coverage: a template
+      that fixes tone but leaves the writing, or a process change that fixes
+      lateness but leaves the effort, finishes nothing and belongs at level 1 or
+      2, not in the middle.
     description: >-
       This is the dimension that makes the Hub worth running. A strong non-AI
       alternative is a reason not to build an agent, however attractive the
-      rest of the score. A high raw score here fires the
+      rest of the score. A raw score of 4 or more fires the
       non_ai_alternative_suffices gate.
+
+      WHY THE LEVELS ARE NUMERIC NOW. In the agreement study this dimension had
+      the second-worst exact agreement (70%) and produced ALL SIX verdict
+      disagreements — four directly, as gate flips across the 3/4 boundary, and
+      two as band flips on totals it weights. One case in six crossed the gated
+      line between two careful scorers. The old wording, "roughly half the
+      cases" against "most of it", supplied no test for telling those apart, and
+      one scorer flagged that single boundary on 14 of 30 cases.
+
+      The other half of the defect was the UNIT. Both old anchors were phrased
+      as coverage of cases, but the alternatives requesters actually have
+      usually cover part of the problem across ALL cases: a job-description
+      template fixes structure and leaves the prose, an upstream form field
+      moves a judgement rather than removing it. Scored as "does it help?" those
+      look like level 4; scored as "how many instances does it finish?" they are
+      level 2. The second question is the one this dimension exists to ask,
+      because it is the one that decides whether the agent is redundant.
+
+      Level 1 also used to demand that "rule-based attempts have been tried and
+      are known to fail" — proof that only exists once somebody has wasted the
+      effort, and which a maximally rule-immune request such as translation can
+      never satisfy. Prior failed attempts are now supporting evidence for level
+      1 rather than a precondition of it; the level rests on the nature of the
+      input.
     weight: 0.10
     direction: lower_is_better
     anchors:
       1: >-
-        No deterministic alternative exists. The input is unstructured or
-        genuinely ambiguous, and rule-based attempts have been tried and are
-        known to fail.
+        No instances. The input is unstructured or genuinely ambiguous, so no
+        deterministic rule can be written for it — or the only available
+        alternative helps with every instance while finishing none. Rule-based
+        attempts already tried and known to fail are supporting evidence here,
+        not a requirement.
       2: >-
-        A rules-based approach handles a minority of cases; the remaining
-        volume is judgement-heavy in a way rules have not captured.
+        Up to about a quarter of instances, under roughly 25%. A rules-based
+        approach finishes a minority outright; the rest turn on judgement rules
+        have not captured.
       3: >-
-        Rules, a query, or a report would cover roughly half the cases. An
-        agent would extend coverage rather than create the capability.
+        About a quarter to three-quarters of instances, roughly 25-75%. Rules, a
+        query or a report would finish about half of them end to end. An agent
+        would extend that coverage rather than create the capability.
       4: >-
-        A well-written query, a report, a process change, or configuration of a
-        tool the company already owns would solve most of it. An agent would
-        mostly add convenience.
+        About three-quarters to nearly all instances, roughly 75-99%. A
+        well-written query, a report, a process change, or configuration of a
+        tool the company already owns finishes almost every instance on its own;
+        an agent would add convenience and pick up the tail.
       5: >-
-        A deterministic rule, a lookup, a form field, an upstream process fix,
-        or an already-licensed capability solves it completely — more cheaply,
-        more predictably, and with less to maintain.
+        Effectively every instance, about 99-100%. A deterministic rule, a
+        lookup, a form field, an upstream process fix, or an already-licensed
+        capability solves it completely — more cheaply, more predictably, and
+        with less to maintain.
 
 # =============================================================================
 # VERDICT BANDS

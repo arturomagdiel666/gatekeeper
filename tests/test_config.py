@@ -21,6 +21,11 @@ from config import (
     validate_cross_references,
 )
 
+#: The shipped rubric, loaded once. The validation tests below deliberately
+#: corrupt copies of it; the anchor-wording tests added in Phase 4 read it as
+#: shipped, because the wording IS the thing under test.
+RUBRIC = load_rubric()
+
 EXPECTED_DIMENSIONS = {
     "business_value",
     "adoption_risk",
@@ -374,3 +379,177 @@ class TestPatternsValidationFailures:
         del patterns_data["anti_patterns"][0]["hard_block"]
         with pytest.raises(ConfigError, match="hard_block"):
             write_patterns(tmp_path, patterns_data)
+
+
+class TestNonAiAlternativeHasAnOperationalBoundary:
+    """ADR-027 / 2A: the repair with the most verdict leverage in the rubric.
+
+    All six verdict disagreements in the agreement study trace to this
+    dimension: four as gate flips across the 3/4 line, two as band flips on
+    totals it weights. The old boundary was "roughly half the cases" against
+    "most of it", which supplied no test at all.
+    """
+
+    DIMENSION = RUBRIC.dimension_by_id("non_ai_alternative")
+
+    #: The bands as the anchors now state them, lower bound inclusive. Written
+    #: out here so that rewording an anchor without rewording this table fails.
+    BANDS = ((1, 0), (2, 0), (3, 25), (4, 75), (5, 99))
+
+    def level_for(self, percentage: float) -> int:
+        """The level whose band contains a share of instances finished."""
+        return max(level for level, lower in self.BANDS if percentage >= lower)
+
+    def test_the_anchors_state_their_numeric_bounds(self):
+        anchors = self.DIMENSION.anchors
+        assert "25%" in anchors[2]
+        assert "25-75%" in anchors[3]
+        assert "75-99%" in anchors[4]
+        assert "99-100%" in anchors[5]
+
+    def test_a_stated_sixty_percent_lands_in_level_three(self):
+        """B-09 states exactly 60% and used to sit in the gap between two words."""
+        assert self.level_for(60) == 3
+
+    def test_the_gated_boundary_is_seventy_five_percent(self):
+        """The gate fires at raw >= 4, so this number decides not_ai verdicts."""
+        gate = next(
+            g for g in RUBRIC.blocking_gates if g.id == "non_ai_alternative_suffices"
+        )
+        threshold = next(
+            c.threshold
+            for c in gate.any_of
+            if getattr(c, "dimension", None) == "non_ai_alternative"
+        )
+        assert threshold == 4
+        assert self.level_for(74) == 3, "just under the line does not gate"
+        assert self.level_for(75) == threshold, "the line itself gates"
+
+    def test_the_bands_tile_zero_to_one_hundred_without_a_gap(self):
+        for percentage in range(0, 101):
+            assert 1 <= self.level_for(percentage) <= 5
+
+    def test_level_one_no_longer_demands_a_failed_attempt_as_proof(self):
+        """A rule-immune request — translation — can never satisfy that test.
+
+        Nobody attempts rules for machine translation, so requiring evidence of
+        a failed attempt made the most rule-immune requests in the corpus
+        unable to reach the level that describes them.
+        """
+        level_one = " ".join(self.DIMENSION.anchors[1].split())
+        assert "supporting evidence here, not a requirement" in level_one
+        assert "attempts have been tried and are known to fail" not in level_one
+
+    def test_the_axis_counts_instances_finished_rather_than_help_given(self):
+        axis = " ".join(self.DIMENSION.axis.split())
+        assert "SHARE OF INSTANCES" in axis
+        assert "END TO END" in axis
+        assert "improves every instance but finishes none" in axis
+
+    def test_partial_help_across_all_instances_is_pushed_to_the_bottom(self):
+        """The unit defect: a template that fixes tone finishes nothing."""
+        assert "helps with every instance while finishing none" in " ".join(
+            self.DIMENSION.anchors[1].split()
+        )
+        assert self.DIMENSION.scoring_rule is not None
+        rule = " ".join(self.DIMENSION.scoring_rule.split())
+        assert "Partial help on every instance is not coverage" in rule
+
+
+class TestDataReadinessCombinesTwoSubAssessments:
+    """2B: one dimension answering two questions, now combined by `min`.
+
+    NOT tested here: that the engine computes the minimum. It cannot — a
+    DimensionAssessment carries one score per dimension, so the two halves are
+    combined by whoever scores, and code never sees them separately. Making the
+    min mechanical would mean adding two sub-scores to the model's schema, which
+    is a change to the frozen live path and belongs to its own phase. See
+    ADR-027 for the cost of that option and why it was not taken now.
+    """
+
+    DIMENSION = RUBRIC.dimension_by_id("data_readiness")
+
+    def test_the_axis_declares_both_halves_and_the_combining_rule(self):
+        axis = " ".join(self.DIMENSION.axis.split())
+        assert "LOWER of the two" in axis
+        assert "AVAILABILITY:" in axis
+        assert "EVALUABILITY:" in axis
+
+    def test_the_scoring_rule_requires_the_evidence_to_name_both_halves(self):
+        rule = " ".join(self.DIMENSION.scoring_rule.split())
+        assert "record the LOWER of the two" in rule
+        assert "must say something about both halves" in rule
+
+    def test_every_anchor_describes_both_halves(self):
+        for level, text in self.DIMENSION.anchors.items():
+            normalized = " ".join(text.split())
+            assert "AVAILABILITY —" in normalized, level
+            assert "EVALUABILITY —" in normalized, level
+
+    def test_the_two_halves_can_differ_by_two_levels_in_the_same_case(self):
+        """The NDA case: retrievable documents, an outcome nobody recorded.
+
+        Availability matches the level 3 descriptor, evaluability matches the
+        level 1 one — and level 1 is the value that fires the no_usable_data
+        gate, which is why the ambiguity was verdict-changing rather than
+        merely untidy.
+        """
+        availability_three = " ".join(self.DIMENSION.anchors[3].split())
+        evaluability_one = " ".join(self.DIMENSION.anchors[1].split())
+        assert "exists in one or two systems" in availability_three
+        assert "collecting what nobody recorded" in evaluability_one
+        gate = next(g for g in RUBRIC.blocking_gates if g.id == "no_usable_data")
+        condition = next(
+            c for c in gate.any_of if getattr(c, "dimension", None) == "data_readiness"
+        )
+        assert (condition.comparison, condition.threshold) == ("at_most", 1)
+
+    def test_access_paperwork_is_no_longer_a_readiness_level(self):
+        """It capped perfect-label cases at 4, and blocked 4 as often as 5."""
+        for level in (4, 5):
+            text = " ".join(self.DIMENSION.anchors[level].split()).lower()
+            assert "grant access" not in text, level
+            assert "without an exception" not in text, level
+            assert "owner" not in text, level
+
+    def test_level_four_accepts_a_plausible_path_to_checking_quality(self):
+        """"Checked on a real sample" is almost never stated in a request."""
+        assert "plausible path to being checked" in " ".join(
+            self.DIMENSION.anchors[4].split()
+        )
+
+
+class TestProcessFrequencyDefinesTheInstance:
+    """2C: a latent defect — 100% agreement, but only because of the derivation."""
+
+    DIMENSION = RUBRIC.dimension_by_id("process_frequency")
+
+    def test_the_axis_defines_what_an_instance_is(self):
+        axis = " ".join(self.DIMENSION.axis.split())
+        assert "one unit of work the agent would handle end to end, once" in axis
+        assert axis.strip() != ""
+
+    def test_the_axis_works_an_example_where_the_unit_is_not_the_obvious_noun(self):
+        axis = " ".join(self.DIMENSION.axis.split())
+        assert "200 instances and not one" in axis
+        assert "720 instances a year and not 12" in axis
+
+    def test_the_intake_field_is_tied_to_the_same_unit(self):
+        """The derivation reads the form literally, so the form must mean this."""
+        assert "fill the intake volume field in that same unit" in " ".join(
+            self.DIMENSION.axis.split()
+        )
+
+
+class TestTheRewrittenRulesReachTheModel:
+    """An anchor nobody sends is a note to self. Only `axis`, `scoring_rule` and
+    the anchors are rendered — `description` is documentation."""
+
+    def test_the_prompt_carries_all_three_repairs(self):
+        from assess import build_system_prompt
+
+        prompt = " ".join(build_system_prompt().split())
+        assert "SHARE OF INSTANCES" in prompt
+        assert "LOWER of the two" in prompt
+        assert "one unit of work the agent would handle end to end, once" in prompt
+        assert "Never estimate a magnitude the request does not state" in prompt

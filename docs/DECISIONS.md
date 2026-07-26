@@ -1662,3 +1662,137 @@ already agreed. The gain is confined to vague requests, which the currency test
 noted are also the requests a real Hub receives most often (A-01, A-03, B-07,
 B-12, B-14, B-16 in the corpus). And the study's own limitation stands: both
 scorers are language models, and their agreement may be correlated.
+
+---
+
+## ADR-027 — Three anchor sets, and the one repair code cannot enforce
+
+**Date:** 2026-07-26 · **Status:** accepted · **Scope:** rubric anchors and axes only
+**Evidence:** `evaluacion/07_agreement_study.md` §4 and §6
+
+Phase 4, Commit 2 of 3. No Python changed. Three dimensions, in descending
+order of measured verdict leverage.
+
+### 2A · `non_ai_alternative` — the highest-leverage repair in the rubric
+
+**All six verdict disagreements in the study trace to this one dimension.** Four
+are gate flips across the 3/4 boundary; two are band flips on totals it weights.
+Five of thirty cases cross the gated line between two careful scorers — one case
+in six — and one scorer flagged that single boundary on 14 of 30 cases. It has
+the second-worst exact agreement in the rubric (70%) and a gate at raw >= 4.
+
+Two distinct defects, and the second is the more interesting.
+
+**The boundary had no operational test.** "Roughly half the cases" against "most
+of it". Levels now carry numeric bands — under 25%, 25-75%, 75-99%, 99-100% —
+and `scoring_rule` says out loud to put a percentage on it and to use the
+requester's own number when they state one. B-09 states exactly 60% and used to
+sit in the gap between two adjectives; it now lands in level 3 deterministically,
+and 75% is where the gate starts.
+
+**The UNIT was wrong, and this is the part that changes scores.** Both old
+anchors were phrased as coverage *of cases*, but the alternatives requesters
+actually have usually cover *part of the problem across all cases*: a
+job-description template fixes structure and leaves the prose; an upstream form
+field relocates a judgement instead of removing it; a process fix cures lateness
+and leaves the effort untouched. Read as "does it help?" those look like level 4
+and fire the gate. Read as "how many instances does it finish end to end, with
+no human judgement added?" they are level 1 or 2. The second question is the one
+this dimension exists to ask, because it is the one that decides whether the
+agent is redundant — so the axis now names the unit and the anchors count in it.
+
+Note the direction of that fix: it makes the gate fire **less** readily on
+requests where a partial aid exists, and the numeric boundary makes it fire
+**more** predictably. Those pull opposite ways on the `go` rate and no
+prediction is registered about which dominates.
+
+**Level 1 demanded impossible evidence.** It required that "rule-based attempts
+have been tried and are known to fail" — proof that exists only once somebody has
+wasted the effort, and that a maximally rule-immune request such as machine
+translation can never produce, because nobody would attempt rules for it. Prior
+failed attempts are now supporting evidence for level 1 rather than a
+precondition of it. The level rests on the nature of the input, which is what it
+was always trying to describe.
+
+### 2B · `data_readiness` — two constructs, combined by `min`
+
+The dimension bundled *does the data exist and can we get it* with *can we tell a
+good output from a bad one*, and the same case answers them differently. The
+corpus case that exposed it: NDA triage, where the documents are fully
+retrievable but nobody ever recorded which ones required negotiation.
+Availability reads 3, evaluability reads 1. One scorer read 2, the other 3, and
+**neither fired the gate — level 1 is what fires `no_usable_data`.**
+
+The dimension is **not** split: that would change the weight structure, and
+weights are settled. Instead the axis declares both sub-assessments, each anchor
+describes both halves, and the score is the LOWER of the two. Under that rule the
+NDA case resolves to 1 and the gate fires — which is the right verdict for a
+predictive archetype with no recorded outcome: "instrument the process and
+resubmit" rather than a judgement on the idea. **Expect `no_usable_data` to fire
+more often than before.** That is the repair working.
+
+Two further fixes to the same anchors:
+
+- Level 4's "quality has been checked on a real sample" is almost never stated in
+  a request, so taken strictly it capped well-instrumented cases at 3 by
+  construction. It now also accepts a stated, plausible path to checking.
+- The access-owner clauses are gone from levels 4 **and** 5. The plan named only
+  level 5, but level 4 carried the same requirement, so removing one alone would
+  have left level 4 harder to satisfy than level 5 for any request that mentions
+  no owner — which is most of them. Access paperwork is a real risk and it is
+  already carried by `data_governance` and `implementation_effort`.
+
+### The repair code cannot enforce, stated plainly
+
+`min(availability, evaluability)` is computed by whoever scores, in their head.
+A `DimensionAssessment` carries **one** score per dimension, so the engine never
+sees the two halves and no test can assert it took the lower. The phase plan
+asked for a test where the halves differ by two levels; what exists instead is a
+test that the instrument *states* the rule, that every anchor describes both
+halves, and that the NDA case's two halves are three levels apart in the anchor
+text.
+
+Making it mechanical means adding two sub-scores to the model's response schema,
+computing the minimum in `scoring.py`, and re-measuring the gate that keys on the
+result. That is a change to the frozen live path with its own failure modes — a
+schema with more required fields is a schema more assessments fail to satisfy
+(ADR-019) — and it deserves its own phase and its own measurement rather than a
+ride along an anchor rewrite. Recorded here so the gap is a known one.
+
+### 2C · `process_frequency` — a latent defect, fixed before it activates
+
+100% agreement, and the reason is not the anchors: the derivation table shadowed
+them on 25 of 30 cases. Where a scorer had to reason, the unit was undefined —
+B-06 is 45 tenders a year or about 4,500 requirement responses, which is level 2
+against level 4. The axis now defines an instance as one unit of work the agent
+would handle end to end, once, with two worked examples where that is *not* the
+noun the request uses, and ties the intake volume field to the same unit. The
+derivation reads that field literally, so its meaning had to be settled too.
+
+### Consequence: the exemplars pass, and two of their reference scores are stale
+
+All six exemplar verdicts are unchanged, and that is the weaker result it looks
+like. The exemplar suite scores **hand-authored fixtures**, so an anchor rewrite
+cannot move it: the numbers are frozen data, not readings of the current text.
+Under the sharpened unit in 2A, two reference scores are now wrong:
+
+| Exemplar | Dimension | Reference | Correct now | Total | Verdict |
+|---|---|---|---|---|---|
+| `ticket_handover_summaries` | `non_ai_alternative` | 2 | 1 | 4.13 -> 4.23 | `go` (same) |
+| `contract_renewal_drafting` | `non_ai_alternative` | 2 | 1 | 3.08 -> 3.18 | `no_go` (same) |
+
+Both cite "covers a minority of the work" for a template that structures output
+without finishing any instance — level 2 under the old unit, level 1 under the
+new one. Neither crosses a band or a gate, so nothing was detected.
+
+**They have deliberately not been re-authored.** The acceptance rule for this
+phase is that a changed exemplar is a finding to report before anything is
+adjusted, and re-scoring reference data to match a rubric edited in the same
+commit is how a reference set stops being independent evidence. The follow-up is
+to re-author both against the new anchors as its own reviewable change.
+
+The general finding is worth more than the two rows: **the exemplar suite
+provides no coverage of anchor text at all.** It tests the engine. Anchor
+quality is now tested by the wording assertions added to `tests/test_config.py`,
+which is a weaker instrument than a scored case but is the only one that fails
+when an anchor changes meaning.

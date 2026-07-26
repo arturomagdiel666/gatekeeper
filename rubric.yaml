@@ -473,57 +473,42 @@ dimensions:
     axis: >-
       The SHARE OF INSTANCES that a non-AI solution — a rule, a query, a report,
       a process fix, a form field, or a capability the company already licenses
-      — would handle END TO END, with no human judgement added. Counted in
-      instances FINISHED, not in help given: an alternative that improves every
-      instance but finishes none of them belongs at level 1, because the work
-      still has to be done by somebody.
+      — would handle END TO END, with no human judgement added. A deterministic
+      output that still needs a human judgement after it — a scorecard, a risk
+      questionnaire, a redline — has not finished the instance.
     scoring_rule: >-
       Put a percentage on it. Estimate what share of instances the deterministic
       alternative would finish without anyone having to judge anything, and
       score the level whose band contains that share. If the request states a
       share — "about 60% are variations of the same twenty situations" — use the
-      stated number. Partial help on every instance is not coverage: a template
-      that fixes tone but leaves the writing, or a process change that fixes
-      lateness but leaves the effort, finishes nothing and belongs at level 1 or
-      2, not in the middle.
+      stated number.
     description: >-
       This is the dimension that makes the Hub worth running. A strong non-AI
       alternative is a reason not to build an agent, however attractive the
       rest of the score. A raw score of 4 or more fires the
       non_ai_alternative_suffices gate.
 
-      WHY THE LEVELS ARE NUMERIC NOW. In the agreement study this dimension had
-      the second-worst exact agreement (70%) and produced ALL SIX verdict
-      disagreements — four directly, as gate flips across the 3/4 boundary, and
-      two as band flips on totals it weights. One case in six crossed the gated
-      line between two careful scorers. The old wording, "roughly half the
-      cases" against "most of it", supplied no test for telling those apart, and
-      one scorer flagged that single boundary on 14 of 30 cases.
-
-      The other half of the defect was the UNIT. Both old anchors were phrased
-      as coverage of cases, but the alternatives requesters actually have
-      usually cover part of the problem across ALL cases: a job-description
-      template fixes structure and leaves the prose, an upstream form field
-      moves a judgement rather than removing it. Scored as "does it help?" those
-      look like level 4; scored as "how many instances does it finish?" they are
-      level 2. The second question is the one this dimension exists to ask,
-      because it is the one that decides whether the agent is redundant.
+      ONE RULE, NOT TWO. The levels are numeric bands on instances finished, and
+      that is the only test. Phase 4 added those bands and left a second rule
+      beside them — that an alternative relocating a judgement rather than
+      removing it does not count — and agreement fell 70% to 61%, with one
+      scorer flagging the 3/4 boundary 25 times and reporting that the two rules
+      "pull opposite ways". The relocation rule is deleted. What it was reaching
+      for is now a clause in the axis, stated as a property of the output rather
+      than of where the judgement moved to. See ADR-029.
 
       Level 1 also used to demand that "rule-based attempts have been tried and
       are known to fail" — proof that only exists once somebody has wasted the
       effort, and which a maximally rule-immune request such as translation can
-      never satisfy. Prior failed attempts are now supporting evidence for level
-      1 rather than a precondition of it; the level rests on the nature of the
-      input.
+      never satisfy. Prior failed attempts are supporting evidence for level 1
+      rather than a precondition of it. That fix is Phase 4's and it stands.
     weight: 0.10
     direction: lower_is_better
     anchors:
       1: >-
         No instances. The input is unstructured or genuinely ambiguous, so no
-        deterministic rule can be written for it — or the only available
-        alternative helps with every instance while finishing none. Rule-based
-        attempts already tried and known to fail are supporting evidence here,
-        not a requirement.
+        deterministic rule can be written for it. Rule-based attempts already
+        tried and known to fail are supporting evidence here, not a requirement.
       2: >-
         Up to about a quarter of instances, under roughly 25%. A rules-based
         approach finishes a minority outright; the rest turn on judgement rules

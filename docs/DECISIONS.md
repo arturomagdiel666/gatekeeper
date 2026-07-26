@@ -2047,3 +2047,50 @@ clearest possible demonstration that those reference scores were dead weight.
 with a derivation, the exemplar suite has been asserting engine behaviour while
 carrying reference scores that disagree with the config, and nothing failed.
 A fixture that cannot contradict the thing it documents is not evidence.
+
+---
+
+### Commit 2 — `non_ai_alternative`: delete the softer of the two rules
+
+The highest-agreement-cost dimension in the study, and the one that gates at
+raw >= 4. Phase 4 gave it numeric bands on instances finished end to end — and
+left in place the rule it was meant to replace, that an alternative relocating a
+judgement rather than removing it does not count as coverage. Agreement fell 70%
+to 61%. Scorer A flagged the 3/4 boundary **25 times**, up from 14 before the
+"repair", and said the two rules *"pull opposite ways"*.
+
+The bands stay. The relocation rule is deleted from all three surfaces:
+
+- `axis` — "Counted in instances FINISHED, not in help given: an alternative that
+  improves every instance but finishes none of them belongs at level 1, because
+  the work still has to be done by somebody."
+- `scoring_rule` — "Partial help on every instance is not coverage: a template
+  that fixes tone but leaves the writing, or a process change that fixes lateness
+  but leaves the effort, finishes nothing and belongs at level 1 or 2, not in the
+  middle."
+- `anchors[1]` — "or the only available alternative helps with every instance
+  while finishing none."
+- `description` — the paragraph carrying "an upstream form field moves a
+  judgement rather than removing it".
+
+Deleted, not softened. The relocation rule had no operational test: whether a
+form field a human fills in counts as coverage turns on whether the category is
+contested, which is a judgement about the world dressed as a rule about the
+alternative. Scorer B invented a test for it ("could two competent people fill it
+differently?") and said so, which is the same failure the anti-pattern in Commit 3
+has.
+
+**One sentence added, in the axis, to settle the case Scorer A could not:**
+
+> A deterministic output that still needs a human judgement after it — a
+> scorecard, a risk questionnaire, a redline — has not finished the instance.
+
+That is the coarse-output case, resolved as a property of the output rather than
+of where a judgement moved to. It is testable from the request text: does a person
+have to decide something after the deterministic thing runs. It replaces four
+sentences across three surfaces with one.
+
+Phase 4's level-1 evidence fix stays. It was correct, it is not implicated in the
+regression, and it is the only other thing Phase 4 did to this dimension.
+
+Net effect on the file: `rubric.yaml` 791 → 767 lines across Commits 1 and 2.

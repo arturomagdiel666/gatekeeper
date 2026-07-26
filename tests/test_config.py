@@ -444,16 +444,40 @@ class TestNonAiAlternativeHasAnOperationalBoundary:
         axis = " ".join(self.DIMENSION.axis.split())
         assert "SHARE OF INSTANCES" in axis
         assert "END TO END" in axis
-        assert "improves every instance but finishes none" in axis
 
-    def test_partial_help_across_all_instances_is_pushed_to_the_bottom(self):
-        """The unit defect: a template that fixes tone finishes nothing."""
-        assert "helps with every instance while finishing none" in " ".join(
-            self.DIMENSION.anchors[1].split()
-        )
-        assert self.DIMENSION.scoring_rule is not None
-        rule = " ".join(self.DIMENSION.scoring_rule.split())
-        assert "Partial help on every instance is not coverage" in rule
+    def test_the_relocation_rule_is_gone_from_all_three_places(self):
+        """ADR-029, acceptance criterion 2.
+
+        Phase 4 added numeric bands and left the "moves a judgement upstream"
+        rule beside them. Two rules, no precedence, 70% -> 61%. These are the
+        assertions that used to require the deleted rule to be present, inverted.
+        """
+        surfaces = {
+            "axis": self.DIMENSION.axis,
+            "scoring_rule": self.DIMENSION.scoring_rule,
+            "description": self.DIMENSION.description,
+            **{f"anchor {k}": v for k, v in self.DIMENSION.anchors.items()},
+        }
+        for where, text in surfaces.items():
+            normalized = " ".join((text or "").split()).lower()
+            for deleted in (
+                "improves every instance but finishes none",
+                "helps with every instance while finishing none",
+                "partial help on every instance is not coverage",
+                "moves a judgement rather than removing it",
+            ):
+                # The description may NAME the deleted rule while recording that
+                # it was deleted; it may not state it as a rule to apply.
+                if where == "description" and "deleted" in normalized:
+                    continue
+                assert deleted not in normalized, (where, deleted)
+
+    def test_a_coarse_deterministic_output_resolves_in_the_axis(self):
+        """The case Scorer A could not settle, now settled in one sentence."""
+        axis = " ".join(self.DIMENSION.axis.split())
+        assert "has not finished the instance" in axis
+        for example in ("scorecard", "risk questionnaire", "redline"):
+            assert example in axis, example
 
 
 class TestDataReadinessCombinesTwoSubAssessments:

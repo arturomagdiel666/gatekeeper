@@ -9,8 +9,9 @@ the model cannot show you in the request text (ADR-020).
 from __future__ import annotations
 
 import pytest
+import yaml
 
-from config import PATTERNS, RUBRIC
+from config import PATTERNS, RUBRIC, RUBRIC_PATH, load_rubric
 from schemas import (
     DataSensitivity,
     Period,
@@ -218,7 +219,15 @@ class TestRequiresHumanConfirmation:
         assert "already searches this document library" in outcome.confirmation_reason
         assert "existing_licensed_capability" in outcome.confirmation_reason
 
-    def test_a_dimension_threshold_gate_does_not_require_confirmation(self):
+    def test_a_dimension_threshold_on_a_judged_dimension_now_requires_it(self):
+        """INVERTED by ADR-028, and this is the test that used to say otherwise.
+
+        It asserted that a threshold gate never needs confirmation, because a
+        threshold is deterministic given the assessment. It is — and the
+        agreement study showed that deterministic is not the same as reliable.
+        `data_readiness` agreed at 80%, and level 1, the gated value, is exactly
+        where the dimension was found answering two questions with one number.
+        """
         assessment = assessment_with("already searches this document library")
         assessment.anti_pattern_matches = []
         for entry in assessment.dimension_assessments:
@@ -226,8 +235,25 @@ class TestRequiresHumanConfirmation:
                 entry.score = 1
         outcome = score(assessment, RUBRIC, PATTERNS, INTAKE)
         assert outcome.triggered_gate_ids == ["no_usable_data"]
+        assert outcome.requires_human_confirmation is True
+        assert "data_readiness scored 1" in outcome.confirmation_reason
+        assert "dimension_threshold" in outcome.confirmation_reason
+
+    def test_the_flag_is_reported_per_condition_not_per_gate(self):
+        assessment = assessment_with("already searches this document library")
+        assessment.anti_pattern_matches = []
+        for entry in assessment.dimension_assessments:
+            if entry.dimension_id == "data_governance":
+                entry.score = 5
+        outcome = score(assessment, RUBRIC, PATTERNS, INTAKE)
+        gate = outcome.triggered_gates[0]
+        assert gate.gate_id == "unacceptable_data_governance"
+        assert [c.kind for c in gate.fired_conditions] == ["dimension_threshold"]
+        # Set false in the config, against the type default of true, because the
+        # dimension agreed at 100% — with the objection recorded in rubric.yaml
+        # that the derivation cannot produce the gated value of 5 at all.
+        assert gate.fired_conditions[0].requires_human_confirmation is False
         assert outcome.requires_human_confirmation is False
-        assert outcome.confirmation_reason is None
 
     def test_an_intake_field_gate_does_not_require_confirmation(self):
         assessment = assessment_with("already searches this document library")
@@ -244,9 +270,16 @@ class TestRequiresHumanConfirmation:
         assert outcome.verdict is Verdict.GO
         assert outcome.requires_human_confirmation is False
 
-    def test_a_gate_with_both_bases_does_not_require_confirmation(self):
-        """non_ai_alternative >= 4 is deterministic even when an anti-pattern
-        also contributed, so the verdict stands on its own."""
+    def test_a_gate_whose_two_fired_conditions_both_need_review_needs_review(self):
+        """Also INVERTED by ADR-028.
+
+        This case — `non_ai_alternative` at 5 with a hard-block anti-pattern
+        alongside it — used to be waved through because the threshold was
+        "deterministic". Both conditions are now judgements: the threshold fired
+        every `not_ai` in the study on a dimension that agreed 70% of the time,
+        and the anti-pattern is a reading of the world. `deterministic_basis` is
+        still true and is now purely informational.
+        """
         assessment = assessment_with(
             "already searches this document library",
             anti_pattern_id="reporting_in_disguise",
@@ -257,8 +290,15 @@ class TestRequiresHumanConfirmation:
         outcome = score(assessment, RUBRIC, PATTERNS, INTAKE)
         deciding = outcome.triggered_gates[0]
         assert deciding.gate_id == "non_ai_alternative_suffices"
-        assert deciding.deterministic_basis is True
-        assert outcome.requires_human_confirmation is False
+        assert deciding.deterministic_basis is True, "still reported, no longer decisive"
+        assert [c.kind for c in deciding.fired_conditions] == [
+            "dimension_threshold",
+            "anti_pattern",
+        ]
+        assert all(c.requires_human_confirmation for c in deciding.fired_conditions)
+        assert outcome.requires_human_confirmation is True
+        assert "non_ai_alternative scored 5" in outcome.confirmation_reason
+        assert "reporting_in_disguise" in outcome.confirmation_reason
 
 
 class TestDeterministicDerivation:
@@ -332,3 +372,106 @@ class TestDeterministicDerivation:
     def test_derivations_are_skipped_entirely_without_an_intake(self):
         outcome = score(self._assessment(), RUBRIC, PATTERNS, intake=None)
         assert outcome.derived_dimensions == []
+
+
+class TestConfirmationFollowsTheConditionThatFired:
+    """ADR-028: the flag moved from the gate to the condition.
+
+    These build temp rubrics, so they also demonstrate the point of moving it:
+    the reliability of a gate is now retunable in YAML, with no Python edit.
+    """
+
+    def rubric_with(self, tmp_path, mutate) -> object:
+        """The shipped rubric with one gate condition altered."""
+        data = yaml.safe_load(RUBRIC_PATH.read_text())
+        mutate({gate["id"]: gate for gate in data["blocking_gates"]})
+        path = tmp_path / "rubric.yaml"
+        path.write_text(yaml.safe_dump(data, sort_keys=False, allow_unicode=True))
+        return load_rubric(path)
+
+    def gated_assessment(self):
+        """A would-be `go` spoiled only by non_ai_alternative, which gates."""
+        assessment = assessment_with("already searches this document library")
+        assessment.anti_pattern_matches = []
+        for entry in assessment.dimension_assessments:
+            if entry.dimension_id == "non_ai_alternative":
+                entry.score = 4
+        return assessment
+
+    def test_as_shipped_the_non_ai_threshold_needs_confirmation(self):
+        outcome = score(self.gated_assessment(), RUBRIC, PATTERNS, INTAKE)
+        assert outcome.verdict is Verdict.NOT_AI
+        assert outcome.triggered_gate_ids == ["non_ai_alternative_suffices"]
+        assert outcome.requires_human_confirmation is True
+
+    def test_flipping_one_line_of_yaml_changes_the_outcome(self, tmp_path):
+        """No Python edit. The whole reason the flag lives in config."""
+
+        def mutate(gates):
+            for condition in gates["non_ai_alternative_suffices"]["any_of"]:
+                if condition["type"] == "dimension_threshold":
+                    condition["requires_human_confirmation"] = False
+
+        relaxed = self.rubric_with(tmp_path, mutate)
+        outcome = score(self.gated_assessment(), relaxed, PATTERNS, INTAKE)
+        assert outcome.verdict is Verdict.NOT_AI, "the verdict is unaffected"
+        assert outcome.requires_human_confirmation is False
+        assert outcome.confirmation_reason is None
+
+    def test_one_self_standing_condition_carries_a_mixed_gate(self, tmp_path):
+        """Two conditions fire; only one needs review, so the verdict stands.
+
+        This is the case a per-GATE flag could not express, and the reason the
+        move was structurally blocked before it was made.
+        """
+
+        def mutate(gates):
+            gates["no_usable_data"]["any_of"].append(
+                {
+                    "type": "intake_field",
+                    "requires_human_confirmation": False,
+                    "field": "business_owner",
+                    "predicate": "is_present",
+                }
+            )
+
+        mixed = self.rubric_with(tmp_path, mutate)
+        assessment = assessment_with("already searches this document library")
+        assessment.anti_pattern_matches = []
+        for entry in assessment.dimension_assessments:
+            if entry.dimension_id == "data_readiness":
+                entry.score = 1
+        # INTAKE names an owner, so both conditions of the mutated gate fire.
+        outcome = score(assessment, mixed, PATTERNS, INTAKE)
+        gate = outcome.triggered_gates[0]
+        assert [c.requires_human_confirmation for c in gate.fired_conditions] == [
+            True,
+            False,
+        ]
+        assert outcome.requires_human_confirmation is False
+
+    def test_an_unset_flag_takes_the_type_default(self, tmp_path):
+        """Cautious by type: a threshold on a judged dimension defaults to true."""
+
+        def mutate(gates):
+            for condition in gates["non_ai_alternative_suffices"]["any_of"]:
+                condition.pop("requires_human_confirmation", None)
+
+        defaulted = self.rubric_with(tmp_path, mutate)
+        condition = next(
+            c
+            for g in defaulted.blocking_gates
+            if g.id == "non_ai_alternative_suffices"
+            for c in g.any_of
+            if c.type == "dimension_threshold"
+        )
+        assert condition.requires_human_confirmation is None
+        assert condition.confirmation_required is True
+        outcome = score(self.gated_assessment(), defaulted, PATTERNS, INTAKE)
+        assert outcome.requires_human_confirmation is True
+
+    def test_the_shipped_config_sets_every_gate_condition_explicitly(self):
+        """Each entry is a measured decision, so none of them should be implicit."""
+        for gate in RUBRIC.blocking_gates:
+            for condition in gate.any_of:
+                assert condition.requires_human_confirmation is not None, gate.id

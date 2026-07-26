@@ -1796,3 +1796,134 @@ provides no coverage of anchor text at all.** It tests the engine. Anchor
 quality is now tested by the wording assertions added to `tests/test_config.py`,
 which is a weaker instrument than a scored case but is the only one that fails
 when an anchor changes meaning.
+
+---
+
+## ADR-028 — Deterministic is not the same as reliable
+
+**Date:** 2026-07-26 · **Status:** accepted · **Scope:** config, scoring, rubric gates, UI rendering
+**Supersedes:** the confirmation half of ADR-020
+**Evidence:** `evaluacion/07_agreement_study.md` §4 and §9
+
+Phase 4, Commit 3 of 3. `requires_human_confirmation` moves from the gate to the
+condition, and the values change.
+
+### What ADR-020 decided, and what the study did to it
+
+Phase 3.1 marked anti-pattern gates as needing human confirmation and left
+dimension-threshold gates final, reasoning that a threshold gate is
+"deterministic given the assessment". The agreement study inverted every part of
+that:
+
+- The anti-pattern reading disagreement — `existing_licensed_capability` matched
+  4 times by one scorer and 0 by the other — **changed no verdict at all.**
+  Hard-block matches were verdict-redundant in 16 of 17 instances across both
+  scorers: they landed on cases the threshold had already gated.
+- The `non_ai_alternative` threshold, left final, **fired every `not_ai` in the
+  run**, on a dimension where two careful scorers disagree 30% of the time, at
+  exactly the boundary the gate uses. Five of thirty cases cross that line
+  between scorers.
+
+> **Deterministic is not the same as reliable.** A dimension-threshold gate is
+> perfectly deterministic in code and can still be the least reproducible
+> decision in the system, because its input is a judgement at a boundary the
+> anchors do not operationally define.
+
+The flag was attached to the condition class that decided nothing and withheld
+from the one that decided everything. The reasoning was not careless — it was
+answering the wrong question. "Can this be recomputed from the assessment?" is
+not "will two people produce the same assessment?", and only the second predicts
+whether a verdict survives review.
+
+### Why it had to move to the condition
+
+`non_ai_alternative_suffices` holds both condition types in a single `any_of`:
+the threshold at 4, and `hard_block_any` over the remaining anti-patterns. A
+per-gate flag cannot express a per-condition-class split — either the threshold
+inherits a confirmation it may not need, or the anti-pattern escapes one it does.
+The fix was blocked on nothing except noticing that.
+
+`requires_human_confirmation` is now a property of every gate condition, with a
+per-type default and a per-condition override in YAML. `Outcome` reports which
+condition fired (`TriggeredGate.fired_conditions`, each carrying its own flag),
+and the confirmation decision reads **only** the conditions that actually fired.
+
+**Combining rule: confirmation is required when EVERY fired condition requires
+it.** One condition that stands on its own is sufficient basis for a verdict,
+even where another that also fired would need review. That preserves the shape of
+the old rule — a self-standing basis wins — while making the basis per-condition
+rather than per-gate.
+
+`deterministic_basis` survives as an informational field. It is still true of
+this system and still worth reporting; it is simply not what decides.
+
+### The values, and the reasoning for each
+
+| Condition | Confirm | Measured basis |
+|---|---|---|
+| `anti_pattern` (both gates) | **yes** | The study's cleanest division: anti-patterns whose signals describe what the requester SAID agreed 100%; those needing a judgement about the world diverged 0-50%. Redundant in this corpus is not reliable in the next one. |
+| `dimension_threshold` on `non_ai_alternative` | **yes** | 70% agreement; fired every `not_ai`; one case in six crosses the gated boundary. The entry the study most directly demands. |
+| `dimension_threshold` on `data_readiness` | **yes** | 80% agreement, and level 1 — the gated value — is exactly where ADR-027 found two constructs sharing one number. The `min` rule will make it fire more often while that change is unmeasured. |
+| `dimension_threshold` on `data_governance` | no | 100% agreement, and derived from an intake field. |
+| `intake_field` on `business_owner` | no | A fact about the form. Nobody reads "was an owner named?" two ways. |
+
+Type defaults are cautious where the input is a judgement: `anti_pattern` and
+`dimension_threshold` default to true, `intake_field` to false. A threshold gate
+added in future therefore asks for review until someone measures that it need
+not. All five shipped conditions set the value explicitly anyway, because each is
+a measured decision and an implicit one cannot be audited — a test enforces that.
+
+### One objection, recorded rather than acted on
+
+The `data_governance` entry is set to `false` on two grounds, and **the second
+does not survive inspection**. The gate fires at raw >= 5, and the derivation
+table cannot produce a 5: `regulated` maps to 4, because "may not be processed at
+all" is a contractual finding rather than a classification. So every firing of
+that gate rests on a model judgement, not on the intake field. The 100%
+agreement figure covers levels 1-4, where the derivation did the work, and **no
+case in the 30-case corpus scored 5 at all** — the reproducibility of the gated
+value is unmeasured, not high.
+
+It is set to `false` because that is the decision registered for this phase, and
+changing it mid-implementation on an argument rather than on evidence is how a
+registered prediction stops meaning anything. The objection is written next to
+the condition in `rubric.yaml`, the first live 5 is the case to inspect, and
+flipping it is a one-line config change with no code edit — which is now the
+point of the design.
+
+### Consequences
+
+Two exemplar outcomes changed, **verdicts unchanged**:
+
+| Exemplar | Verdict | `requires_human_confirmation` |
+|---|---|---|
+| `ticket_volume_by_team` | `not_ai` (same) | False → **True** |
+| `predict_laptop_failures` | `no_go` (same) | False → **True** |
+
+Both are the intended effect: one gated by the `non_ai_alternative` threshold,
+one by `data_readiness` at level 1. Three of the six exemplars now come back
+pending review rather than decided, which is the honest reading of what this
+instrument can currently support on its own.
+
+Two tests asserted the old behaviour and were rewritten rather than deleted, with
+the inversion named in the docstring, because the reasoning they encoded is the
+thing this ADR corrects:
+`test_a_dimension_threshold_gate_does_not_require_confirmation` and
+`test_a_gate_with_both_bases_does_not_require_confirmation`.
+
+The UI shows each fired condition separately with the agreement figure behind it,
+so a reviewer sees *why this particular condition* is being questioned rather
+than a generic caution. Those figures are presentation only; nothing computes
+from them.
+
+### The finding underneath the finding
+
+This ADR exists because the first version of the study's §4 reached the opposite
+conclusion — that the study *validated* ADR-020 — by naming the two threshold
+gates whose dimensions agreed at 80% and 100% and omitting the one that fired
+every `not_ai`. The omission was not deliberate: the conclusion came first and
+the supporting set assembled around it. That is the exact failure mode this
+project designs against elsewhere by pre-registering thresholds and by keeping
+the verdict field out of the model's schema, and it appeared in the analysis of
+the study built to detect bias. What caught it was not care. It was a second
+party with access to the raw files.

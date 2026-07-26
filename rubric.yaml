@@ -611,6 +611,27 @@ verdict_bands:
 # verdict, and every gate that fired is still reported. `verdict` may only be
 # `no_go` or `not_ai` — a gate can never force a Go. Deleting a gate restores
 # ordinary band behaviour for that condition, with no code change.
+#
+# HUMAN CONFIRMATION IS A PROPERTY OF THE CONDITION, NOT OF THE GATE (ADR-028).
+# Every condition below carries `requires_human_confirmation`. When every
+# condition that actually fired requires it, the verdict is a RECOMMENDATION
+# pending a human rather than a rejection; one self-standing condition is enough
+# to let the verdict stand on its own.
+#
+# The flag used to sit on the gate and was set by asking whether the gate was
+# "deterministic given the assessment". The agreement study inverted that:
+#
+#   DETERMINISTIC IS NOT THE SAME AS RELIABLE. A dimension-threshold gate is
+#   perfectly deterministic in code and was still the least reproducible
+#   decision in the system — its input is a judgement at a boundary the anchors
+#   did not operationally define. The anti-pattern reading that was flagged
+#   changed NO verdict in the run; the threshold that was left final decided
+#   every `not_ai`.
+#
+# It also could not have been fixed on the gate: `non_ai_alternative_suffices`
+# holds both condition types in one `any_of`, so a per-gate flag would either
+# give the threshold a confirmation it may not need or let the anti-pattern
+# escape one it does.
 blocking_gates:
 
   # The highest-value check in the whole model, and first for that reason: its
@@ -623,7 +644,11 @@ blocking_gates:
       A capability the company already licenses covers this. Route the
       requester to whoever owns that licence rather than building an agent.
     any_of:
+      # Confirmation: YES. Matched 4 times by one scorer and 0 by the other,
+      # with both readings defensible from patterns.yaml — the least
+      # reproducible judgement measured anywhere in the study.
       - type: anti_pattern
+        requires_human_confirmation: true
         anti_pattern_ids:
           - existing_licensed_capability
 
@@ -639,11 +664,23 @@ blocking_gates:
       A non-AI solution would do this job. Build that instead — it will be
       cheaper, exactly auditable, and it will not drift or need retraining.
     any_of:
+      # Confirmation: YES, and this is the entry the study most directly
+      # demands. This condition fired every `not_ai` in the run, on a dimension
+      # with 70% exact agreement, at the exact boundary where five of thirty
+      # cases crossed between scorers — one in six. Commit 2 gave the boundary a
+      # numeric test; until a re-run shows that worked, the verdict is a
+      # recommendation.
       - type: dimension_threshold
+        requires_human_confirmation: true
         dimension: non_ai_alternative
         comparison: at_least
         threshold: 4
+      # Confirmation: YES. Hard-block matches were verdict-redundant in 16 of 17
+      # instances in this corpus — they landed on cases the threshold had already
+      # gated — but redundant is not the same as reliable, and in a corpus where
+      # the threshold does not shadow them they decide alone.
       - type: anti_pattern
+        requires_human_confirmation: true
         hard_block_any: true
         exclude_ids:
           - existing_licensed_capability
@@ -660,7 +697,10 @@ blocking_gates:
       accountable for its adoption and for its measurement contract. Resubmit
       with a named owner who has agreed to the role.
     any_of:
+      # Confirmation: NO. A fact about the form, not a judgement about the
+      # request. Nobody reads "was an owner named?" two ways.
       - type: intake_field
+        requires_human_confirmation: false
         field: business_owner
         predicate: is_empty
 
@@ -674,7 +714,12 @@ blocking_gates:
       The data this depends on does not exist in usable form yet. Instrument
       the process and capture the outcome from today onward, then resubmit.
     any_of:
+      # Confirmation: YES. 80% exact agreement, and level 1 — the gated value —
+      # is precisely where Commit 2 found the dimension answering two questions
+      # with one number. The `min` rule will make this fire MORE often, so the
+      # verdict it forces should be reviewed while that change is unmeasured.
       - type: dimension_threshold
+        requires_human_confirmation: true
         dimension: data_readiness
         comparison: at_most
         threshold: 1
@@ -690,7 +735,21 @@ blocking_gates:
       current classification, contract, or residency constraints. Narrow the
       scope to permitted data, or obtain the contractual path first.
     any_of:
+      # Confirmation: NO — 100% exact agreement, and the dimension derives from
+      # an intake field.
+      #
+      # OBJECTION, RECORDED RATHER THAN ACTED ON: the second half of that
+      # justification does not hold for the value this gate uses. The derivation
+      # maps `regulated` to 4 and CANNOT produce a 5 — "may not be processed at
+      # all" is a contractual finding, not a classification — so every firing of
+      # this gate rests on a model judgement, not on the field. The 100%
+      # agreement figure covers levels 1-4, where the derivation did the work; no
+      # case in the corpus scored 5, so the reproducibility of the gated value is
+      # unmeasured. Set to `false` because that is the registered decision for
+      # this phase; the first live 5 is the case to look at, and flipping this is
+      # a one-line config change.
       - type: dimension_threshold
+        requires_human_confirmation: false
         dimension: data_governance
         comparison: at_least
         threshold: 5

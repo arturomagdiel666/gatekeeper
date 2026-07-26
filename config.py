@@ -384,15 +384,68 @@ class VerdictBand(BaseModel):
         return self
 
 
-class DimensionThresholdCondition(BaseModel):
-    """A gate condition on one dimension's raw score."""
+class GateConditionBase(BaseModel):
+    """Shared by every gate condition: whether its verdict needs confirming.
+
+    **The flag belongs here rather than on the gate, and that is a measured
+    correction (ADR-028).** Phase 3.1 attached it to the gate and set it by
+    asking whether the gate was "deterministic given the assessment". The
+    agreement study showed that question to be the wrong one: the anti-pattern
+    reading it flagged decided no verdict at all, while the
+    `non_ai_alternative` threshold it left final decided every `not_ai` in the
+    run and rests on a dimension where two careful scorers disagree 30% of the
+    time, at exactly the boundary the gate uses.
+
+    > Deterministic is not the same as reliable. A threshold gate is perfectly
+    > deterministic in code and can still be the least reproducible decision in
+    > the system, because its input is a judgement at a boundary the anchors do
+    > not operationally define.
+
+    A gate can hold conditions of several kinds — `rubric.yaml`'s
+    `non_ai_alternative_suffices` holds both — so a per-gate flag cannot express
+    this: either the threshold inherits a confirmation it may not need, or the
+    anti-pattern escapes one it does.
+
+    ``requires_human_confirmation`` left unset takes the condition type's
+    default, which is what :meth:`default_requires_confirmation` supplies.
+    """
 
     model_config = ConfigDict(extra="forbid")
+
+    #: ``None`` means "use the type default". Set it in the config to overrule.
+    requires_human_confirmation: bool | None = None
+
+    @classmethod
+    def default_requires_confirmation(cls) -> bool:  # pragma: no cover - overridden
+        raise NotImplementedError
+
+    @property
+    def confirmation_required(self) -> bool:
+        """Whether a verdict resting on this condition awaits a human."""
+        if self.requires_human_confirmation is None:
+            return self.default_requires_confirmation()
+        return self.requires_human_confirmation
+
+
+class DimensionThresholdCondition(GateConditionBase):
+    """A gate condition on one dimension's raw score."""
 
     type: Literal["dimension_threshold"]
     dimension: str
     comparison: Comparison
     threshold: int
+
+    @classmethod
+    def default_requires_confirmation(cls) -> bool:
+        """True: the input is a 1-5 judgement, whatever the comparison is.
+
+        The default is deliberately the cautious one. A threshold gate added in
+        future keys on some dimension's score, and unless that dimension is both
+        derived from an intake field and measured to be reproducible, its gated
+        boundary is a judgement call. Overrule it per condition, with the
+        measurement that justifies the overrule written next to it.
+        """
+        return True
 
     def is_met(self, raw_score: int) -> bool:
         """Return whether a raw score satisfies this condition."""
@@ -406,7 +459,7 @@ class DimensionThresholdCondition(BaseModel):
         return f"{self.dimension} scored {raw_score}, {comparison} {self.threshold}"
 
 
-class AntiPatternCondition(BaseModel):
+class AntiPatternCondition(GateConditionBase):
     """A gate condition met when particular anti-patterns were matched.
 
     Either ``hard_block_any`` (any anti-pattern flagged ``hard_block`` in
@@ -414,12 +467,22 @@ class AntiPatternCondition(BaseModel):
     ``anti_pattern_ids`` list — exactly one of the two.
     """
 
-    model_config = ConfigDict(extra="forbid")
-
     type: Literal["anti_pattern"]
     hard_block_any: bool = False
     anti_pattern_ids: list[str] = Field(default_factory=list)
     exclude_ids: list[str] = Field(default_factory=list)
+
+    @classmethod
+    def default_requires_confirmation(cls) -> bool:
+        """True: a match is a judgement about the world, not about the text.
+
+        The study's cleanest division. Anti-patterns whose signals describe what
+        the requester SAID agreed perfectly between scorers (100% on four of
+        them); those needing a judgement about the world diverged completely —
+        `existing_licensed_capability` was matched 4 times by one scorer and 0
+        by the other, with both readings defensible from the text.
+        """
+        return True
 
     @model_validator(mode="after")
     def _check_exactly_one_form(self) -> "AntiPatternCondition":
@@ -449,7 +512,7 @@ class AntiPatternCondition(BaseModel):
         return [i for i in matched_all if i in wanted]
 
 
-class IntakeFieldCondition(BaseModel):
+class IntakeFieldCondition(GateConditionBase):
     """A gate condition on request metadata rather than on a scored dimension.
 
     Needed for facts about the request form itself — most importantly whether a
@@ -457,11 +520,18 @@ class IntakeFieldCondition(BaseModel):
     a 1-5 scale.
     """
 
-    model_config = ConfigDict(extra="forbid")
-
     type: Literal["intake_field"]
     field: str
     predicate: IntakePredicate
+
+    @classmethod
+    def default_requires_confirmation(cls) -> bool:
+        """False: a form field is either filled in or it is not.
+
+        The only condition type with nothing to disagree about. Nobody reads
+        "was a business owner named?" two ways.
+        """
+        return False
 
     def is_met(self, value: object) -> bool:
         """Evaluate the predicate against an intake field's value."""

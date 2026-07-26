@@ -49,6 +49,32 @@ VERDICT_STYLE: dict[str, tuple[str, str]] = {
     "incomplete": ("#9a6700", "INCOMPLETE"),
 }
 
+#: The measured reproducibility behind each gate condition that needs
+#: confirming, keyed by the first token of the condition's detail string — the
+#: dimension id for a threshold, "anti-pattern(s)" for a match. Shown next to the
+#: warning so a reviewer sees WHY this particular condition is being questioned
+#: rather than a generic caution. Figures from
+#: `evaluacion/07_agreement_study.md`; presentation only, nothing computes from
+#: them (ADR-028).
+AGREEMENT_NOTES: dict[str, str] = {
+    "non_ai_alternative": (
+        "70% agreement between two independent scorers, and one case in six "
+        "crossed this exact boundary — review before refusing"
+    ),
+    "data_readiness": (
+        "80% agreement, and level 1 is where the dimension was found answering "
+        "two questions with one number — review before refusing"
+    ),
+    "data_governance": (
+        "100% agreement on levels 1-4, but no corpus case reached the gated "
+        "level 5 — review before refusing"
+    ),
+    "anti-pattern(s)": (
+        "an anti-pattern match is a judgement about the world; the two scorers "
+        "read the divergent ones 0-50% alike — check the quote supports it"
+    ),
+}
+
 RECOMMENDATION_STYLE: dict[str, tuple[str, str]] = {
     "continue": ("#1a7f37", "CONTINUE"),
     "adjust": ("#9a6700", "ADJUST"),
@@ -114,8 +140,8 @@ def render_outcome(outcome, contract: MeasurementContract | None) -> None:
     """Render a scored outcome: verdict, gates, arithmetic, contract."""
     colour, label = VERDICT_STYLE[outcome.verdict.value]
     if outcome.requires_human_confirmation:
-        # A verdict resting only on a model judgement about the world is a
-        # RECOMMENDATION, and must not look like a decision (ADR-020).
+        # A verdict every one of whose firing conditions is a judgement is a
+        # RECOMMENDATION, and must not look like a decision (ADR-020, ADR-028).
         colour, label = "#57606a", f"{label} — PENDING REVIEW"
     if outcome.weighted_total is not None:
         subtitle = (
@@ -128,9 +154,10 @@ def render_outcome(outcome, contract: MeasurementContract | None) -> None:
 
     if outcome.requires_human_confirmation:
         st.warning(
-            "**This is a recommendation, not a rejection.** It rests on a "
-            "judgement the model made about this request rather than on a "
-            "deterministic check, so a human must confirm it before the "
+            "**This is a recommendation, not a rejection.** Every condition "
+            "that fired is a judgement at a boundary two independent scorers "
+            "did not always read alike — being deterministic in code is not the "
+            "same as being reproducible — so a human must confirm it before the "
             "request is refused.\n\n" + (outcome.confirmation_reason or "")
         )
         for gate in outcome.triggered_gates:
@@ -155,16 +182,29 @@ def render_outcome(outcome, contract: MeasurementContract | None) -> None:
         )
         for gate in outcome.triggered_gates:
             with st.container(border=True):
-                basis = (
-                    "deterministic"
-                    if gate.deterministic_basis
-                    else "model judgement — needs confirmation"
-                )
                 st.markdown(
                     f"**{gate.gate_id}** → `{gate.verdict.value}` "
-                    f"(precedence {gate.precedence}, {basis})"
+                    f"(precedence {gate.precedence})"
                 )
-                st.markdown(f"*What fired it:* {gate.detail}")
+                # Per CONDITION, not per gate: a gate can hold a reproducible
+                # condition and an unreliable one, and which fired is what
+                # decides whether the verdict stands on its own (ADR-028).
+                st.markdown("*What fired it:*")
+                for condition in gate.fired_conditions:
+                    if condition.requires_human_confirmation:
+                        note = AGREEMENT_NOTES.get(
+                            condition.detail.split()[0],
+                            "a judgement — needs confirmation",
+                        )
+                        st.markdown(
+                            f"- `{condition.kind}` — {condition.detail}  \n"
+                            f"  ⚠︎ {note}"
+                        )
+                    else:
+                        st.markdown(
+                            f"- `{condition.kind}` — {condition.detail}  \n"
+                            f"  ✓ stands on its own"
+                        )
                 st.markdown(gate.reason)
                 for anti_pattern_id in gate.matched_anti_pattern_ids:
                     anti_pattern = PATTERNS.anti_pattern_by_id(anti_pattern_id)

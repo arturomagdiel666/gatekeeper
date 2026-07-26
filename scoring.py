@@ -50,6 +50,7 @@ from schemas import Assessment, Confidence, DimensionAssessment, RequestIntake
 __all__ = [
     "Verdict",
     "TriggeredGate",
+    "FiredCondition",
     "UnsupportedAntiPattern",
     "normalize_for_quote_check",
     "quote_is_supported",
@@ -115,6 +116,28 @@ class UnsupportedAntiPattern(BaseModel):
     reason: str
 
 
+class FiredCondition(BaseModel):
+    """One condition inside a gate that was actually met.
+
+    Recorded individually because confirmation is a property of the CONDITION,
+    not of the gate (ADR-028): a gate can hold a reproducible condition and an
+    unreliable one in the same ``any_of``, and which of them fired is what
+    decides whether the verdict stands on its own.
+
+    Attributes:
+        kind: The condition's ``type`` from the config.
+        detail: What in this assessment met it.
+        requires_human_confirmation: Resolved from the condition's own flag, or
+            from its type's default when the config leaves it unset.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    kind: str
+    detail: str
+    requires_human_confirmation: bool
+
+
 class TriggeredGate(BaseModel):
     """A blocking gate that fired, and what specifically fired it.
 
@@ -137,11 +160,18 @@ class TriggeredGate(BaseModel):
     reason: str
     detail: str
     matched_anti_pattern_ids: list[str] = Field(default_factory=list)
+    #: Every condition in this gate that was met, in declaration order.
+    fired_conditions: list[FiredCondition] = Field(default_factory=list)
     #: True when at least one condition that fired was a dimension threshold or
-    #: an intake-field predicate — both deterministic given the assessment. A
-    #: gate that fired ONLY on an anti-pattern match rests on a model judgement
-    #: about the world, and its verdict is a recommendation pending human
-    #: confirmation rather than a rejection (ADR-020).
+    #: an intake-field predicate — both deterministic given the assessment.
+    #:
+    #: INFORMATIONAL ONLY since ADR-028. This used to decide whether the verdict
+    #: needed human confirmation, on the reasoning that a threshold is
+    #: deterministic given the assessment. It is — and the agreement study showed
+    #: that deterministic is not the same as reliable: the threshold gate this
+    #: flag waved through was the least reproducible decision in the system.
+    #: Confirmation now follows :attr:`FiredCondition.requires_human_confirmation`
+    #: on the conditions that actually fired.
     deterministic_basis: bool = False
     #: The verbatim quotes the anti-pattern conditions relied on, so a human
     #: confirming the verdict can see the evidence without opening the payload.
@@ -514,37 +544,47 @@ def _evaluate_gates(
 
     triggered: list[TriggeredGate] = []
     for gate in rubric.gates_by_precedence:
-        details: list[str] = []
+        fired: list[FiredCondition] = []
         contributing_anti_patterns: list[str] = []
         deterministic_basis = False
         for condition in gate.any_of:
+            detail: str | None = None
             if isinstance(condition, DimensionThresholdCondition):
                 entry = indexed.get(condition.dimension)
                 if entry is None or entry.score is None:
                     continue
                 if condition.is_met(entry.score):
-                    details.append(condition.describe(entry.score))
+                    detail = condition.describe(entry.score)
                     deterministic_basis = True
             elif isinstance(condition, AntiPatternCondition):
                 hits = condition.matches(matched_hard_blocks, matched_all)
                 if hits:
                     contributing_anti_patterns.extend(hits)
-                    details.append("anti-pattern(s) matched: " + ", ".join(hits))
+                    detail = "anti-pattern(s) matched: " + ", ".join(hits)
             elif isinstance(condition, IntakeFieldCondition):
                 if intake is None:
                     continue
                 if condition.is_met(getattr(intake, condition.field, None)):
-                    details.append(condition.describe())
+                    detail = condition.describe()
                     deterministic_basis = True
-        if details:
+            if detail is not None:
+                fired.append(
+                    FiredCondition(
+                        kind=condition.type,
+                        detail=detail,
+                        requires_human_confirmation=condition.confirmation_required,
+                    )
+                )
+        if fired:
             triggered.append(
                 TriggeredGate(
                     gate_id=gate.id,
                     verdict=Verdict(gate.verdict),
                     precedence=gate.precedence,
                     reason=" ".join(gate.reason.split()),
-                    detail="; ".join(details),
+                    detail="; ".join(c.detail for c in fired),
                     matched_anti_pattern_ids=contributing_anti_patterns,
+                    fired_conditions=fired,
                     deterministic_basis=deterministic_basis,
                     supporting_quotes=[
                         quote_by_id[i]
@@ -642,10 +682,16 @@ def _build_explanation(
         lines.append("")
         lines.append("Gates triggered (the first decided the verdict):")
         for gate in triggered_gates:
-            basis = "deterministic" if gate.deterministic_basis else "model judgement"
-            lines.append(
-                f"  - {gate.gate_id} -> {gate.verdict.value} [{basis}] ({gate.detail})"
-            )
+            lines.append(f"  - {gate.gate_id} -> {gate.verdict.value}")
+            for condition in gate.fired_conditions:
+                basis = (
+                    "needs human confirmation"
+                    if condition.requires_human_confirmation
+                    else "stands on its own"
+                )
+                lines.append(
+                    f"      condition {condition.kind} [{basis}]: {condition.detail}"
+                )
             lines.append(f"      {gate.reason}")
             for quote in gate.supporting_quotes:
                 lines.append(f'      Quoted from the request: "{quote}"')
@@ -780,19 +826,23 @@ def score(
         # Gates arrive in precedence order, so the first one decides.
         deciding = triggered_gates[0]
         verdict = deciding.verdict
-        # A gate that fired only on an anti-pattern match rests entirely on a
-        # model judgement about the world. Dimension thresholds and intake
-        # predicates are deterministic given the assessment; those stand on
-        # their own. See ADR-020.
-        if not deciding.deterministic_basis and deciding.matched_anti_pattern_ids:
+        # Confirmation follows the CONDITIONS THAT FIRED, not the gate (ADR-028).
+        # ALL of them must require it: one condition that stands on its own is
+        # sufficient basis for the verdict, even where another that also fired
+        # would need review. `all()` over a non-empty list, and the list is
+        # non-empty by construction — a gate with no fired condition is not in
+        # this list.
+        needing = [c for c in deciding.fired_conditions if c.requires_human_confirmation]
+        if len(needing) == len(deciding.fired_conditions):
             requires_confirmation = True
-            quoted = "; ".join(f'"{q}"' for q in deciding.supporting_quotes) or "(none)"
+            described = "; ".join(f"{c.kind} ({c.detail})" for c in needing)
+            quoted = "; ".join(f'"{q}"' for q in deciding.supporting_quotes)
             confirmation_reason = (
-                f"{verdict.value} rests on the anti-pattern(s) "
-                f"{', '.join(deciding.matched_anti_pattern_ids)}, which is a "
-                f"judgement the model made about this request rather than a "
-                f"deterministic check. It quoted: {quoted}. Confirm the quote "
-                f"supports the finding before rejecting the request."
+                f"{verdict.value} rests on {len(needing)} condition(s) of gate "
+                f"{deciding.gate_id} that are judgements rather than settled "
+                f"facts about the request: {described}. "
+                + (f"Quoted from the request: {quoted}. " if quoted else "")
+                + "Confirm the finding before refusing the request."
             )
     elif not scorable:
         verdict = Verdict.INCOMPLETE

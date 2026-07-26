@@ -364,9 +364,17 @@ def triage_tab() -> None:
                 value=(preset.where_the_data_lives or "") if preset else "",
             )
             row_b = st.columns(4)
+            # The question, not the rule, is what was wrong here: the form asked
+            # how often the process runs while the rubric asked how many times
+            # the agent would do the task. See ADR-029.
             times_per_period = row_b[0].number_input(
-                "How often it runs", 0, 1_000_000,
+                "Times this task would be done, end to end", 0, 1_000_000,
                 value=(preset.times_per_period if preset and preset.times_per_period else 0),
+                help=(
+                    "If one submission contains many items the agent would "
+                    "handle separately, count the items: a tender with 200 "
+                    "requirements is 200, not 1."
+                ),
             )
             period_choices = ["(not stated)"] + [p.value for p in Period]
             period_value = row_b[1].selectbox(

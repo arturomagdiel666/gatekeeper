@@ -338,13 +338,7 @@ dimensions:
     label: Process frequency
     axis: >-
       VOLUME of the target process, in instances per year. Nothing else. An
-      INSTANCE is one unit of work the agent would handle end to end, once — and
-      that is not always the noun the request uses. A tender containing 200
-      requirements, where the agent drafts a response to each requirement, is
-      200 instances and not one. A monthly close where the agent writes a
-      commentary for each of 60 P&L lines is 720 instances a year and not 12.
-      Count what the agent does, once, and fill the intake volume field in that
-      same unit.
+      INSTANCE is one unit of work the agent would handle end to end, once.
     description: >-
       Frequency is what lets a fixed build cost compound into a return. A rare
       process can be valuable per instance and still be a poor agent target,
@@ -353,15 +347,12 @@ dimensions:
       drives feasibility rather than return, and is deliberately not measured
       here. See the proposed eighth dimension in docs/DECISIONS.md.
 
-      WHY THE INSTANCE IS NOW DEFINED IN THE AXIS. This dimension scored 100%
-      agreement in the study — but only because the derivation table below
-      shadowed the anchors on 25 of 30 cases. Where a scorer had to reason, the
-      unit was undefined: one corpus case is 45 tenders a year or about 4,500
-      requirement responses, which is the difference between level 2 and level 4.
-      The defect was latent rather than active, and it would have surfaced the
-      moment a request arrived with the volume field blank. Defining the unit
-      also settles what the intake field means, since the derivation reads it
-      literally.
+      ONE RULE, NOT TWO. The axis defines the unit and the derivation reads the
+      intake field. It does not also tell a scorer to recount: Phase 4 added
+      that instruction, the two rules disagreed by up to two bands, and
+      agreement fell from 100% to 88%. The instance definition now lives in the
+      question the form asks, so there is nothing left to arbitrate. See
+      ADR-029.
     weight: 0.13
     direction: higher_is_better
     # DETERMINISTIC DERIVATION. When the requester states the volume on the

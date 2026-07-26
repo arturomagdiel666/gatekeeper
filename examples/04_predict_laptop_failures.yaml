@@ -28,8 +28,8 @@ stated_benefit: |
 
 who_does_this_today: Four end user computing engineers
 people_affected: 4000
-times_per_period: 30
-period: month
+times_per_period: 4000
+period: year
 prior_tool_for_these_users: none
 where_the_data_lives: ServiceNow tickets only; no device telemetry collected
 data_sensitivity: internal
@@ -70,8 +70,9 @@ reference_assessment:
       score: 4
       confidence: high
       evidence: >-
-        Level 4: 30 unplanned replacements a month is 360 a year, and the
-        prediction would run across a 4,000-machine fleet continuously.
+        Level 4: the task done end to end is one prediction for one machine, and
+        the fleet is 4,000 machines, so at least 4,000 a year. The 30 unplanned
+        replacements a month are the failures, not the work the agent does.
     - dimension_id: implementation_effort
       score: 2
       confidence: low

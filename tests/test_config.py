@@ -529,16 +529,12 @@ class TestProcessFrequencyDefinesTheInstance:
         assert "one unit of work the agent would handle end to end, once" in axis
         assert axis.strip() != ""
 
-    def test_the_axis_works_an_example_where_the_unit_is_not_the_obvious_noun(self):
-        axis = " ".join(self.DIMENSION.axis.split())
-        assert "200 instances and not one" in axis
-        assert "720 instances a year and not 12" in axis
-
-    def test_the_intake_field_is_tied_to_the_same_unit(self):
-        """The derivation reads the form literally, so the form must mean this."""
-        assert "fill the intake volume field in that same unit" in " ".join(
-            self.DIMENSION.axis.split()
-        )
+    # The two tests that stood here asserted the recount instruction was present
+    # in the axis — the worked examples, and "fill the intake volume field in
+    # that same unit". Phase 5 deletes that instruction rather than arbitrating
+    # between it and the derivation, so the tests go with it. What replaced them
+    # is TestProcessFrequencyAsksOneQuestion below, which asserts the axis
+    # defines the unit and does NOT tell a scorer to recount (ADR-029).
 
 
 class TestTheRewrittenRulesReachTheModel:
@@ -553,3 +549,86 @@ class TestTheRewrittenRulesReachTheModel:
         assert "LOWER of the two" in prompt
         assert "one unit of work the agent would handle end to end, once" in prompt
         assert "Never estimate a magnitude the request does not state" in prompt
+
+
+class TestProcessFrequencyAsksOneQuestion:
+    """ADR-029: the axis defines the unit, the form asks for it, nothing recounts.
+
+    Phase 4 added a recount instruction to the axis beside a derivation that
+    reads the intake field literally. The two disagreed by up to two bands and
+    agreement fell from 100% to 88%. The instruction is gone; the definition
+    moved into the question the form asks.
+    """
+
+    DIMENSION = RUBRIC.dimension_by_id("process_frequency")
+
+    def test_the_axis_still_defines_the_instance(self):
+        axis = " ".join(self.DIMENSION.axis.split())
+        assert "one unit of work the agent would handle end to end, once" in axis
+
+    def test_the_axis_no_longer_tells_the_scorer_to_recount(self):
+        axis = " ".join(self.DIMENSION.axis.split())
+        for instruction in (
+            "and not one",
+            "and not 12",
+            "Count what the agent does",
+            "fill the intake volume field",
+        ):
+            assert instruction not in axis, instruction
+
+    def test_the_description_carries_no_recount_rule_either(self):
+        """Criterion 2: a deleted rule is deleted from all three places."""
+        description = " ".join(self.DIMENSION.description.split())
+        assert "4,500 requirement responses" not in description
+        assert "recount" in description, "the deletion is recorded, not silent"
+
+    def test_the_derivation_still_reads_the_field_literally(self):
+        derivation = self.DIMENSION.derivation
+        assert derivation.source == "intake_volume"
+        assert [b.below_per_year for b in derivation.bands] == [12, 100, 1000, 10000]
+        assert derivation.otherwise == 5
+        assert derivation.is_fallback is False, "authoritative, as before"
+
+
+class TestExemplarVolumesAnswerTheNewQuestion:
+    """Criterion: each exemplar's volume field is the agent's unit of work.
+
+    The relabel is only worth anything if the values on the form mean what the
+    new question asks. This is the check that would have caught the one that
+    did not — exemplar 04, where the form counted laptop FAILURES while the
+    reference assessment reasoned about the 4,000-machine fleet, and the
+    derivation quietly scored the failures.
+    """
+
+    def test_the_laptop_fleet_is_counted_rather_than_its_failures(self):
+        from examples import load_example
+
+        example = load_example("predict_laptop_failures")
+        assert example.intake.instances_per_year == 4000
+        entry = next(
+            e
+            for e in example.reference_assessment.dimension_assessments
+            if e.dimension_id == "process_frequency"
+        )
+        assert entry.score == 4
+        assert "one prediction for one machine" in " ".join(entry.evidence.split())
+
+    def test_every_exemplar_volume_lands_on_the_band_its_evidence_claims(self):
+        """The derivation overrides the model, so a mismatch is invisible at runtime."""
+        from examples import load_examples
+        from scoring import derive_scores
+
+        for example in load_examples():
+            derived = derive_scores(RUBRIC, example.intake)
+            if "process_frequency" not in derived:
+                continue  # blank field: the model scores it, nothing to check
+            derived_score, _ = derived["process_frequency"]
+            entry = next(
+                e
+                for e in example.reference_assessment.dimension_assessments
+                if e.dimension_id == "process_frequency"
+            )
+            assert entry.score == derived_score, (
+                example.id,
+                f"reference says {entry.score}, the form derives {derived_score}",
+            )

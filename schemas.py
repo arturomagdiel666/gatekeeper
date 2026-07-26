@@ -166,8 +166,12 @@ class RequestIntake(BaseModel):
         stated_benefit: The benefit the requester claims, if they named one.
         who_does_this_today: Who performs the work now, and roughly how many.
         people_affected: How many people the process touches.
-        times_per_period: How often the process runs, with ``period``. When
-            given, ``process_frequency`` is computed from it in code rather
+        times_per_period: How many times the task would be done END TO END,
+            with ``period``. Not how often the process runs: if one submission
+            contains many items the agent would handle separately, this counts
+            the items. The two are not the same question and asking the first
+            one while scoring the second cost 12 points of agreement (ADR-029).
+            When given, ``process_frequency`` is computed from it in code rather
             than inferred by the model.
         period: The unit ``times_per_period`` is counted in.
         minutes_per_instance: How long one instance takes a person today. With

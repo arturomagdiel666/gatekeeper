@@ -1927,3 +1927,123 @@ project designs against elsewhere by pre-registering thresholds and by keeping
 the verdict field out of the model's schema, and it appeared in the analysis of
 the study built to detect bias. What caught it was not care. It was a second
 party with access to the raw files.
+
+---
+
+## ADR-029 — Phase 5: subtractive repair, and why the last one made things worse
+
+**Date:** 2026-07-26 · **Status:** accepted · **Scope:** rubric.yaml, patterns.yaml, one intake label
+**Evidence:** `evaluacion/09_repair_effect.md` — run 1 (v2.0.0) against run 2 (Phase 4), same 30 cases, same two scorers
+
+Phase 4 was measured. One of its five registered predictions held.
+
+| Dimension | What Phase 4 did | Run 1 | Run 2 |
+|---|---|---|---|
+| `business_value` | **replaced** a judgement with a derivation | 63% | **100%** |
+| `implementation_effort` | untouched | 77% | 80% |
+| `adoption_risk` | untouched | 80% | 83% |
+| `data_governance` | untouched | 100% | 96% |
+| `data_readiness` | **added** a `min()` rule over unrepaired inputs | 80% | 73% |
+| `non_ai_alternative` | **added** numeric bands beside existing prose | 70% | **61%** |
+| `process_frequency` | **added** a unit definition beside a derivation | 100% | **88%** |
+
+Verdict agreement fell 80% → 67%. Overall dimension agreement rose 81% → 83%, which
+is the number that would have been reported as success without the
+pre-registration.
+
+> **Replacing a judgement with a procedure works. Adding a rule alongside a
+> judgement makes it worse.**
+
+Every regression has the same shape: **two rules that disagree, and no
+precedence between them.** This phase deletes one rule from each pair. It does
+not add a third to arbitrate, and it does not add clarifying prose — a repair
+whose section gets longer is the mistake being corrected.
+
+### Registered predictions
+
+Written before implementing. The re-run that tests them is a separate protocol
+and has **not** been run.
+
+| Prediction | Now | Expected |
+|---|---|---|
+| `non_ai_alternative` agreement | 61% | rises above 70%, its pre-Phase-4 level |
+| `process_frequency` agreement | 88% | returns to about 100% |
+| `data_readiness` agreement | 73% | rises above 80% |
+| `business_value` agreement | 100% | **unchanged — not touched** |
+| `existing_licensed_capability` agreement | 0% | rises substantially |
+| Verdict agreement | 67% | rises above 80% |
+
+If `business_value` moves at all, something was touched that should not have
+been. The same honesty note as ADR-026 applies: these predictions were written
+into this log in the commit that implements the first of the three changes, not
+in a commit before it. No re-run has happened, so they remain ex ante with
+respect to the data.
+
+---
+
+### Commit 1 — `process_frequency`: the question was wrong, not either rule
+
+The `axis` defined an instance as the unit of work the agent handles end to end.
+The `derivation` reads the intake volume field literally. **Both are defensible
+and they disagree by up to two bands** — B-06 is 45 tenders by the field and
+about 4,500 requirement responses by the axis. Scorer A named it: *"the axis
+defines the unit but the derivation reads the field literally, and the two
+disagree by two bands."*
+
+Neither rule is wrong. **The intake question and the scoring rule were asking
+about different things.** The form asked *how often the process runs*; the rubric
+asked *how many times the agent would do this task*. Those are not the same
+question, and no amount of arbitrating between the two answers fixes a
+mismatched question.
+
+So the question changed, and the rules did not:
+
+- The intake field is now **"Times this task would be done, end to end"**, with
+  one line of help naming the trap: if one submission contains many items the
+  agent would handle separately, count the items.
+- The `derivation` is **untouched**. After the relabel the field means what the
+  axis means.
+- The recount instruction is **deleted from the axis** — the two worked examples
+  and "fill the intake volume field in that same unit". The axis defines the
+  unit; it does not also tell a scorer to override the form. Deleted from the
+  `description` too, per the rule that a deleted rule is deleted from all three
+  places.
+
+**Departure from the plan, and why.** The plan's suggested label was "How many
+times a year would this task be done, end to end?". The widget is a
+`times_per_period` count beside a period selector, so a label saying "a year"
+next to a dropdown reading "per month" is incoherent. The label carries the part
+that was load-bearing — *this task, end to end* — and the period selector keeps
+doing the annualising. Changing the field to a single per-year number would be a
+schema change, and this phase is config plus one label.
+
+### What the relabel exposed: three exemplars whose reference scores contradicted the config
+
+A test was added asserting that each exemplar's volume field derives the band its
+own reference assessment claims. It failed on **three of the five exemplars that
+have a volume field**, all pre-existing, all invisible until now because **the
+derivation silently overrides the reference score** and the verdicts were decided
+elsewhere.
+
+| Exemplar | Reference said | Form derives | Cause |
+|---|---|---|---|
+| `predict_laptop_failures` | 4 | 3 | The form counted laptop FAILURES (30/month). The task is one prediction per machine, and the fleet is 4,000. The reference evidence had said so in prose all along. |
+| `hr_policy_questions` | 3 | 4 | Arithmetic: 40 questions a week is 2,080 a year, which is the 1,000-10,000 band. The evidence claimed "inside the 100 to 1,000 band ... at its top edge". |
+| `ticket_volume_by_team` | 1 | 2 | Boundary: 12 a year is not "FEWER than about a dozen". The band table starts level 2 at 12. |
+
+Only the first is caused by the relabel; its volume field is now 4,000 a year.
+The other two are plain errors in reference data, corrected here because the band
+table they contradict is **untouched by this phase** — 2,080 was outside the
+level-3 band before Phase 5 and after it. That is the distinction from ADR-027,
+where two exemplar scores went stale because an anchor's *meaning* changed and I
+deliberately did not re-author them: correcting arithmetic against a stable rule
+is not the same act as re-scoring fixtures to match a rule I just edited.
+
+No exemplar verdict changed. `predict_laptop_failures` moved 3.74 → 3.87 and is
+still gated `no_go`; the other two totals did not move at all, which is the
+clearest possible demonstration that those reference scores were dead weight.
+
+**The general finding is worth more than the three rows.** For every dimension
+with a derivation, the exemplar suite has been asserting engine behaviour while
+carrying reference scores that disagree with the config, and nothing failed.
+A fixture that cannot contradict the thing it documents is not evidence.

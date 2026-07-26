@@ -451,7 +451,7 @@ Benefit claimed by the requester:
 Answers the requester gave on the intake form:
 - Who does this today: {intake.who_does_this_today or "(not stated)"}
 - People affected: {intake.people_affected if intake.people_affected is not None else "(not stated)"}
-- How often it runs: {volume}
+- Times this task would be done, end to end: {volume}
 - Minutes one instance takes today: {intake.minutes_per_instance if intake.minutes_per_instance is not None else "(not stated)"}
 - Cost of one instance today: {intake.cost_per_instance if intake.cost_per_instance is not None else "(not stated)"}
 - Last tool built for these same users: {intake.prior_tool_for_these_users.value}

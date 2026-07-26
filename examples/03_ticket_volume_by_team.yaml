@@ -57,11 +57,11 @@ reference_assessment:
         Level 4: all the fields are standard, structured and already in
         ServiceNow, and the monthly export proves the access path works.
     - dimension_id: process_frequency
-      score: 1
+      score: 2
       confidence: high
       evidence: >-
-        Level 1: the reporting process runs once a month, which is 12 instances
-        a year.
+        Level 2: the view is produced once a month, which is 12 a year — the 12
+        to 100 band starts at 12, and level 1 is FEWER than about a dozen.
     - dimension_id: implementation_effort
       score: 1
       confidence: medium

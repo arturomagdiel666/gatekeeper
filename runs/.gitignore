@@ -1,0 +1,6 @@
+# Transcripts are demo artefacts, not source. The two committed ones are the
+# canonical demo runs; everything else a session produces stays local.
+*
+!.gitignore
+!we_think_there_is_something_ai_could_do.json
+!we_would_like_an_ai_agent_that_reads_the.json

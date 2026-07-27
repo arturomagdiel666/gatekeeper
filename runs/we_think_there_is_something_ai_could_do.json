@@ -1,0 +1,164 @@
+{
+  "intake": {
+    "request_text": "We think there is something AI could do with our supplier invoices. The team spends a lot of time on them and it feels like the kind of thing that should be automated by now. Other companies are doing this.\n\nCan you have a look and tell us what is possible?",
+    "requesting_area": "",
+    "business_owner": "Rocio Delgado",
+    "process_description": "",
+    "stated_benefit": null,
+    "who_does_this_today": "",
+    "people_affected": null,
+    "times_per_period": 400,
+    "period": "month",
+    "minutes_per_instance": null,
+    "cost_per_instance": null,
+    "prior_tool_for_these_users": "unknown",
+    "where_the_data_lives": null,
+    "data_sensitivity": "confidential",
+    "existing_deterministic_artefacts": [
+      {
+        "name": "Monthly Excel report",
+        "what_it_does": "pulls all invoices over 5000 euros for review",
+        "completes_without_judgement": false
+      },
+      {
+        "name": "Mailbox rule",
+        "what_it_does": "files invoices by supplier",
+        "completes_without_judgement": false
+      }
+    ]
+  },
+  "verdict": "incomplete",
+  "outcome": {
+    "verdict": "incomplete",
+    "weighted_total": null,
+    "contributions": [],
+    "triggered_gates": [],
+    "unknown_dimensions": [
+      "adoption_risk",
+      "data_readiness",
+      "implementation_effort"
+    ],
+    "ignored_dimension_ids": [],
+    "ignored_anti_pattern_ids": [],
+    "unsupported_anti_patterns": [],
+    "derived_dimensions": [
+      "process_frequency",
+      "data_governance",
+      "non_ai_alternative"
+    ],
+    "fallback_derived_dimensions": [
+      "business_value"
+    ],
+    "resolved_scores": {
+      "business_value": 3,
+      "adoption_risk": null,
+      "data_readiness": null,
+      "process_frequency": 4,
+      "implementation_effort": null,
+      "data_governance": 3,
+      "non_ai_alternative": 2
+    },
+    "unknown_weight": 0.45,
+    "completeness_violation": "never_unknown: data_readiness must always carry a score (each is a gate condition, and a gate whose dimension is unknown cannot fire)",
+    "requires_human_confirmation": false,
+    "confirmation_reason": null,
+    "explanation": "Verdict: INCOMPLETE — never_unknown: data_readiness must always carry a score (each is a gate condition, and a gate whose dimension is unknown cannot fire). No score was computed; the missing information is listed below.\n\nUnknown dimensions: adoption_risk, data_readiness, implementation_effort (0.45 of weight, budget 0.25)\n  Rule violated -> never_unknown: data_readiness must always carry a score (each is a gate condition, and a gate whose dimension is unknown cannot fire)"
+  },
+  "stop_reason": "no_new_information",
+  "stop_detail": "no remaining question can change the verdict; unresolved: adoption_risk, data_readiness, implementation_effort — no intake field supplies any of these",
+  "transcript": [
+    {
+      "n": 1,
+      "tool": "ask",
+      "target_field": "business_owner",
+      "question": "Who would be accountable for this on your side?",
+      "answer": "That would be Rocio Delgado, she supervises Accounts Payable and she would own it.",
+      "recorded": {
+        "field": "business_owner",
+        "value": "Rocio Delgado",
+        "span": "Rocio Delgado",
+        "turn": 1,
+        "question": "Who would be accountable for this on your side?"
+      },
+      "rejected": null
+    },
+    {
+      "n": 2,
+      "tool": "ask",
+      "target_field": "existing_deterministic_artefacts",
+      "question": "What do you already use today to handle these invoices, without any AI?",
+      "answer": "We have a monthly Excel report that pulls all invoices over 5000 euros for review, and a mailbox rule that files them by supplier. The Excel one gives us the list but somebody still has to check each line.",
+      "recorded": {
+        "field": "existing_deterministic_artefacts",
+        "value": "2 artefact(s)",
+        "span": "a monthly Excel report that pulls all invoices over 5000 euros",
+        "turn": 2,
+        "question": "What do you already use today to handle these invoices, without any AI?"
+      },
+      "rejected": null
+    },
+    {
+      "n": 3,
+      "tool": "ask",
+      "target_field": "data_sensitivity",
+      "question": "How would you classify the data on these invoices?",
+      "answer": "It is supplier invoices, so commercial terms and bank details. I would call that confidential, it is not regulated personal data.",
+      "recorded": {
+        "field": "data_sensitivity",
+        "value": "confidential",
+        "span": "I would call that confidential",
+        "turn": 3,
+        "question": "How would you classify the data on these invoices?"
+      },
+      "rejected": null
+    },
+    {
+      "n": 4,
+      "tool": "ask",
+      "target_field": "times_per_period",
+      "question": "How many invoices are handled one by one, and over what period?",
+      "answer": "Roughly 400 invoices a month come through, and each one is handled separately by somebody.",
+      "recorded": {
+        "field": "times_per_period",
+        "value": "400 per month",
+        "span": "Roughly 400 invoices a month",
+        "turn": 4,
+        "question": "How many invoices are handled one by one, and over what period?"
+      },
+      "rejected": null
+    }
+  ],
+  "provenance": [
+    {
+      "field": "business_owner",
+      "value": "Rocio Delgado",
+      "span": "Rocio Delgado",
+      "turn": 1,
+      "question": "Who would be accountable for this on your side?"
+    },
+    {
+      "field": "existing_deterministic_artefacts",
+      "value": "2 artefact(s)",
+      "span": "a monthly Excel report that pulls all invoices over 5000 euros",
+      "turn": 2,
+      "question": "What do you already use today to handle these invoices, without any AI?"
+    },
+    {
+      "field": "data_sensitivity",
+      "value": "confidential",
+      "span": "I would call that confidential",
+      "turn": 3,
+      "question": "How would you classify the data on these invoices?"
+    },
+    {
+      "field": "times_per_period",
+      "value": "400 per month",
+      "span": "Roughly 400 invoices a month",
+      "turn": 4,
+      "question": "How many invoices are handled one by one, and over what period?"
+    }
+  ],
+  "anti_patterns": [],
+  "discarded_anti_patterns": [],
+  "contract": null
+}

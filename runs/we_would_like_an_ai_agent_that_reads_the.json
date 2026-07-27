@@ -1,0 +1,91 @@
+{
+  "intake": {
+    "request_text": "We would like an AI agent that reads the medical certificates employees send to HR and pulls out the diagnosis and the dates, so we stop typing them in by hand.",
+    "requesting_area": "",
+    "business_owner": "",
+    "process_description": "",
+    "stated_benefit": null,
+    "who_does_this_today": "",
+    "people_affected": null,
+    "times_per_period": null,
+    "period": null,
+    "minutes_per_instance": null,
+    "cost_per_instance": null,
+    "prior_tool_for_these_users": "unknown",
+    "where_the_data_lives": null,
+    "data_sensitivity": "unknown",
+    "existing_deterministic_artefacts": null
+  },
+  "verdict": "no_go",
+  "outcome": {
+    "verdict": "no_go",
+    "weighted_total": null,
+    "contributions": [],
+    "triggered_gates": [
+      {
+        "gate_id": "no_named_business_owner",
+        "verdict": "no_go",
+        "precedence": 30,
+        "reason": "No named business owner. The Hub cannot approve an agent without someone accountable for its adoption and for its measurement contract. Resubmit with a named owner who has agreed to the role.",
+        "detail": "intake field business_owner is empty or absent",
+        "matched_anti_pattern_ids": [],
+        "fired_conditions": [
+          {
+            "kind": "intake_field",
+            "detail": "intake field business_owner is empty or absent",
+            "requires_human_confirmation": false
+          }
+        ],
+        "deterministic_basis": true,
+        "supporting_quotes": []
+      }
+    ],
+    "unknown_dimensions": [
+      "business_value",
+      "adoption_risk",
+      "data_readiness",
+      "process_frequency",
+      "implementation_effort",
+      "data_governance",
+      "non_ai_alternative"
+    ],
+    "ignored_dimension_ids": [],
+    "ignored_anti_pattern_ids": [],
+    "unsupported_anti_patterns": [],
+    "derived_dimensions": [
+      "non_ai_alternative"
+    ],
+    "fallback_derived_dimensions": [],
+    "resolved_scores": {
+      "business_value": null,
+      "adoption_risk": null,
+      "data_readiness": null,
+      "process_frequency": null,
+      "implementation_effort": null,
+      "data_governance": null,
+      "non_ai_alternative": null
+    },
+    "unknown_weight": 1.0,
+    "completeness_violation": "every dimension is unknown; nothing to weight",
+    "requires_human_confirmation": false,
+    "confirmation_reason": null,
+    "explanation": "Verdict: NO_GO — forced by 1 blocking gate(s). This is not a low score; it is a categorical finding that the bands do not get to overrule.\n\nGates triggered (the first decided the verdict):\n  - no_named_business_owner -> no_go\n      condition intake_field [stands on its own]: intake field business_owner is empty or absent\n      No named business owner. The Hub cannot approve an agent without someone accountable for its adoption and for its measurement contract. Resubmit with a named owner who has agreed to the role.\n\nUnknown dimensions: business_value, adoption_risk, data_readiness, process_frequency, implementation_effort, data_governance, non_ai_alternative (1.00 of weight, budget 0.25)\n  Rule violated -> every dimension is unknown; nothing to weight"
+  },
+  "stop_reason": "gate_fired",
+  "stop_detail": "no_named_business_owner → no_go: intake field business_owner is empty or absent",
+  "transcript": [
+    {
+      "n": 1,
+      "tool": "ask",
+      "target_field": "business_owner",
+      "question": "Who in HR would be accountable for this agent once it runs?",
+      "answer": "Honestly nobody yet — we were going to work that out later, once we see whether it is feasible.",
+      "recorded": null,
+      "rejected": "the reply did not contain this information"
+    }
+  ],
+  "provenance": [],
+  "anti_patterns": [],
+  "discarded_anti_patterns": [],
+  "contract": null
+}

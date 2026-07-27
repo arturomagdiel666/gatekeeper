@@ -2789,3 +2789,92 @@ off with emoji. That is a prompt-quality problem in exactly the place the model 
 allowed to be weak — it affects how a question reads, never what is recorded or
 decided — and this phase ships without tuning it, because tuning a prompt against
 a single observation is how the earlier phases took a dimension from 70% to 30%.
+
+---
+
+## ADR-035 — Phase 11: converting the last three dimensions, and what that moved
+
+**Status:** accepted · **Date:** 2026-07-27 · **Rubric v3.0.0**
+
+Phase 10 priced the architecture rule: `adoption_risk`, `data_readiness` and
+`implementation_effort` carry 0.45 of the rubric's weight, no intake field
+supplied any of them, and with the model barred from scoring, `go` was
+unreachable. This supplies them. A fully answered intake now reaches `go` at 4.49
+with all seven dimensions derived and no model-produced number anywhere in the
+approval.
+
+The owner took this decision with the trade-off stated in advance: converting may
+relocate the judgement to the requester rather than resolve it, exactly as §4.3
+of the paper documents for `non_ai_alternative`. `docs/RELOCATION.md` records the
+transfer field by field, and is a required deliverable rather than commentary.
+
+### Rules before tables
+
+Every field had to answer one question before it was written into the schema:
+**could two requesters looking at the same real situation give different answers?**
+Where the answer was yes, a numbered rule forces it. R1–R9 live in `rubric.yaml`
+beside the anchors because they ARE the anchor semantics, and there is a test per
+rule. A lookup table over an ambiguous field is a judgement with a number stapled
+to it, which is the failure mode three prose repairs already taught this project.
+
+**R1 is the load-bearing one.** `users_consulted` would otherwise be a question
+about how collaborative the requester feels they were. So a user counts as
+consulted only if the requester can quote something one of them said, and
+`record_field` verifies that quote against what they actually typed — an invented
+quote is dropped and the level demotes from 2 to 4. Same two-part evidence test
+that took the anti-pattern checks from 0% agreement to full agreement (ADR-029).
+
+**The worst signal governs, never the average.** The effort and adoption anchors
+are disjunctive — "several integrations, OR a new platform component, OR
+retraining a whole team" is already a 4 — so a maximum agrees with them and a
+mean would quietly average a blocker away.
+
+### Nothing published moved
+
+Every derivation returns `None` when its evidence object is absent, which is
+every intake in the measured corpus, so those dimensions return to model scoring
+exactly as under v2.0.0. Verified rather than asserted: the reference is still
+174 slots / 25 excluded / 11 both-null / 28 verdicts, and `tools/kappa_system.py`
+reproduces `evals/kappa_system_results.json` byte-identically under v3.0.0. A
+test pins all four counts.
+
+### Two orderings the conversion exposed
+
+**A decided verdict must not end the interview while a question could move it.**
+`adoption_risk` weighs 0.17, which fits inside the 0.25 unknown-weight budget, so
+a request could clear completeness with nobody having been asked who was
+consulted — and the loop would stop and approve. An approval issued while a
+question that could still change it went unasked is the one outcome this product
+exists to prevent. A fired gate stays the exception, and a real one: nothing a
+later answer could add outvotes a gate.
+
+**The contract's baseline had nothing supplying it.** Every interview issued a
+contract recording its baseline as unmeasured. `stated_baseline_value` is now a
+`contract_field`: no dimension needs it, so it is asked only once the verdict is
+heading for `go`.
+
+### The finding that is not a conversion
+
+**`adoption_risk` has no gate.** Nobody consulted, replacing a way of working the
+users chose themselves, 900 people to change — `adoption_risk` derives to 5 and
+the request is still approved at 3.68, because at weight 0.17 the other six
+dimensions outvote it. This is pre-existing behaviour; under v2.0.0 a model
+scoring 5 produced the same result. What changed is that it is now reachable
+deterministically and therefore demonstrable.
+
+The rubric's own reasoning about gates applies directly — *a weight small enough
+to be fair to a normal case is too small to stop an extreme one* — and no gate
+was ever written for the dimension this system says decides whether an internal
+tool succeeds. Adding one would change verdicts, so it is left as an open
+question for the owner and pinned by a test rather than decided inside a phase
+whose brief forbids altering published numbers.
+
+### What still resists
+
+`non_ai_alternative` levels 3–5 need *part / most / all*, which requires reading
+artefact descriptions against the work. The intake deliberately does not ask the
+requester what fraction their existing tool covers: that is the one question in
+the form with an adversarial incentive, since it asks them to price the
+alternative to their own request on the dimension that gates it. So a request
+whose artefacts complete part of the work still needs a human reader. That is the
+honest boundary of this programme and it is left standing.

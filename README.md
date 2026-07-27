@@ -65,15 +65,18 @@ the verdict, when two answers in a row add nothing, or when the budget runs out 
 and it always says which. Every field it fills carries the turn and the words
 that filled it.
 
-One honest ceiling: `adoption_risk`, `data_readiness` and `implementation_effort`
-carry 0.45 of the rubric weight and no intake field supplies any of them, so with
-the model barred from scoring, **`go` is not reachable through the interview.**
-`no_go` and `not_ai` are, by gate, and so is `incomplete` naming exactly which
-dimensions no question can fix. Converting those three is what the measurement
-recommended and has not been done.
+**The interview now reaches approval.** Rubric v3.0.0 converted the last three
+model-scored dimensions into derivations over stated facts, so all seven can be
+resolved without a model touching a score, and eight questions take the reference
+`go` exemplar to a verdict of 4.49 with a full Measurement Contract. What that
+cost is a *relocation*: the judgement did not disappear, it moved to the
+requester. Two of the three fields are biased toward approval and none is
+verified by anyone before a verdict is issued. `docs/RELOCATION.md` names each
+transfer, who now makes it, and what would make it wrong.
 
 ```bash
 python scripts/demo_agent.py                    # offline, scripted, no model
+python scripts/demo_agent.py --scenario go      # eight questions to an approval
 python scripts/demo_agent.py --scenario gate    # a gate ends it in one question
 python scripts/demo_agent.py --live --human     # answer it yourself
 ```
@@ -87,7 +90,7 @@ python3.12-venv` first.
 
 ```bash
 python3 -m venv .venv && source .venv/bin/activate && pip install -r requirements.txt
-pytest                  # 453 tests, no model, no network
+pytest                  # 486 tests, no model, no network
 streamlit run app.py    # the demo; the Triage tab has an offline checkbox
 ```
 
@@ -115,6 +118,7 @@ untested.
 | `scripts/` | Corpus runners and the reference measurement harness |
 | `evals/` | Blind case corpus, scorer files, and every raw measurement output |
 | `evaluacion/` | The study write-ups, in Spanish and English. **This copy is the source of truth**; an older copy exists outside the repository and is no longer maintained |
-| `docs/DECISIONS.md` | ADR-001..033 — why it is shaped this way, with the measurement that forced each change |
+| `docs/RELOCATION.md` | Which judgements the conversion moved onto the requester, and what would make each wrong |
+| `docs/DECISIONS.md` | ADR-001..035 — why it is shaped this way, with the measurement that forced each change |
 | `runs/` | Saved interview transcripts, replayable |
-| `tests/` | 453 tests, all offline |
+| `tests/` | 486 tests, all offline |

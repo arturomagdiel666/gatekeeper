@@ -235,6 +235,148 @@ def _extract_messages(field_name: str, question: str, answer: str) -> list[dict]
 # ---------------------------------------------------------------------------
 
 
+class Interview:
+    """One interview, resumable a turn at a time.
+
+    The loop is split into `next_question` and `submit` so a UI can drive it —
+    Streamlit reruns its script on every interaction and cannot block inside a
+    while loop. `run_interview` below is the same loop for callers that can
+    block, and is four lines because all of the work is here.
+
+    Attributes:
+        intake: The intake as filled so far.
+        transcript: Every turn taken.
+        provenance: Every filled field with its span.
+        stop: The stopping condition once the interview has ended.
+    """
+
+    def __init__(
+        self,
+        request_text: str,
+        provider: LLMProvider,
+        max_questions: int = DEFAULT_MAX_QUESTIONS,
+        approval_date: date | None = None,
+    ) -> None:
+        """Start an interview and run the opening anti-pattern scan.
+
+        Args:
+            request_text: The raw request, as the requester wrote it.
+            provider: The model backend, used only to choose and phrase
+                questions and to extract values and spans.
+            max_questions: Turn budget.
+            approval_date: Passed to the contract draft rather than read from
+                the clock, so review dates stay testable.
+        """
+        self.provider = provider
+        self.max_questions = max_questions
+        self.approval_date = approval_date
+        self.intake = RequestIntake(request_text=request_text)
+        self.found = tools.find_anti_patterns(request_text, provider)
+        self.transcript: list[Turn] = []
+        self.provenance: list[FieldProvenance] = []
+        # Fields already put to the requester, whether or not the reply filled
+        # them. A question asked and not answered is not the same as one never
+        # asked, and only the second should hold a gate back.
+        self._asked: set[str] = set()
+        self._barren = 0
+        self._pending: Turn | None = None
+        self.stop: tuple[StopReason, str] | None = None
+        self.outcome: Outcome = tools.score_and_gate(self.intake, self.found.matches)
+
+    def next_question(self) -> str | None:
+        """The next question to put to the requester, or ``None`` if finished."""
+        if self.stop is not None:
+            return None
+        report = tools.assess_completeness(self.intake, frozenset(self._asked))
+        self.outcome = tools.score_and_gate(self.intake, self.found.matches)
+
+        self.stop = _stopping_reason(
+            report, self.outcome, self.transcript, self._barren, self.max_questions
+        )
+        if self.stop is not None:
+            return None
+
+        askable = useful_fields(report, self.outcome)
+        action = _decide(self.provider, self.intake, report, self.transcript, askable)
+        turn = Turn(n=len(self.transcript) + 1, tool=action["tool"])
+
+        if action["tool"] != "ask":
+            turn.rejected = f"model chose {action['tool']}; ending the interview"
+            self.transcript.append(turn)
+            self.stop = (StopReason.NO_NEW_INFORMATION, f"agent chose {action['tool']}")
+            return None
+
+        field_name = _resolve_field(action.get("target_field", ""), askable)
+        self._asked.add(field_name)
+        turn.target_field = field_name
+        turn.question = action["question"].strip()
+        self._pending = turn
+        return turn.question
+
+    def submit(self, reply: str) -> Turn:
+        """Record the requester's reply to the pending question.
+
+        Args:
+            reply: What they said, verbatim.
+
+        Returns:
+            The completed :class:`Turn`.
+
+        Raises:
+            RuntimeError: If there is no question outstanding.
+        """
+        if self._pending is None:
+            raise RuntimeError("no question is outstanding")
+        turn, self._pending = self._pending, None
+        turn.answer = reply
+
+        extracted = _extract(self.provider, turn.target_field, turn.question, reply)
+        if not extracted.get("answered", False):
+            turn.rejected = "the reply did not contain this information"
+            self._barren += 1
+        else:
+            result = tools.record_field(
+                self.intake,
+                turn.target_field,
+                str(extracted.get("value", "")),
+                str(extracted.get("span", "")),
+                turn.n,
+                turn.question,
+                reply,
+            )
+            if result.accepted:
+                self.intake, self._barren = result.intake, 0
+                turn.recorded = result.provenance
+                self.provenance.append(result.provenance)
+            else:
+                turn.rejected = result.reason
+                self._barren += 1
+        self.transcript.append(turn)
+        return turn
+
+    def result(self) -> InterviewResult:
+        """Everything the interview produced. Callable once it has stopped."""
+        reason, detail = self.stop or (
+            StopReason.NO_NEW_INFORMATION,
+            "interview not finished",
+        )
+        contract = tools.draft_contract(self.intake, self.outcome, self.approval_date)
+        return InterviewResult(
+            intake=self.intake,
+            verdict=self.outcome.verdict,
+            outcome=self.outcome,
+            stop_reason=reason,
+            stop_detail=detail,
+            transcript=self.transcript,
+            provenance=self.provenance,
+            anti_patterns=self.found.matches,
+            discarded_anti_patterns=self.found.discarded,
+            contract=(
+                contract.contract.model_dump(mode="json") if contract.contract else None
+            ),
+        )
+
+
 def run_interview(
     request_text: str,
     answer_fn: Callable[[str], str],
@@ -247,86 +389,17 @@ def run_interview(
     Args:
         request_text: The raw request, as the requester wrote it.
         answer_fn: Called with each question, returns the requester's reply.
-        provider: The model backend, used only to choose and phrase questions
-            and to extract values and spans.
+        provider: The model backend.
         max_questions: Turn budget.
-        approval_date: Passed to the contract draft rather than read from the
-            clock, so review dates stay testable.
+        approval_date: Injected rather than read from the clock.
 
     Returns:
         An :class:`InterviewResult`.
     """
-    intake = RequestIntake(request_text=request_text)
-    found = tools.find_anti_patterns(request_text, provider)
-    transcript: list[Turn] = []
-    provenance: list[FieldProvenance] = []
-    #: Fields already put to the requester, whether or not the reply filled
-    #: them. A question asked and not answered is not the same as one never
-    #: asked, and only the second should hold a gate back.
-    asked: set[str] = set()
-    barren = 0
-
-    while True:
-        report = tools.assess_completeness(intake, frozenset(asked))
-        outcome = tools.score_and_gate(intake, found.matches)
-
-        stop = _stopping_reason(report, outcome, transcript, barren, max_questions)
-        if stop is not None:
-            break
-
-        askable = useful_fields(report, outcome)
-        action = _decide(provider, intake, report, transcript, askable)
-        turn = Turn(n=len(transcript) + 1, tool=action["tool"])
-
-        if action["tool"] != "ask":
-            turn.rejected = f"model chose {action['tool']}; ending the interview"
-            transcript.append(turn)
-            stop = (StopReason.NO_NEW_INFORMATION, f"agent chose {action['tool']}")
-            break
-
-        field_name = _resolve_field(action.get("target_field", ""), askable)
-        asked.add(field_name)
-        turn.target_field = field_name
-        turn.question = action["question"].strip()
-        turn.answer = answer_fn(turn.question)
-
-        extracted = _extract(provider, field_name, turn.question, turn.answer)
-        if not extracted.get("answered", False):
-            turn.rejected = "the reply did not contain this information"
-            barren += 1
-        else:
-            result = tools.record_field(
-                intake,
-                field_name,
-                str(extracted.get("value", "")),
-                str(extracted.get("span", "")),
-                turn.n,
-                turn.question,
-                turn.answer,
-            )
-            if result.accepted:
-                intake, barren = result.intake, 0
-                turn.recorded = result.provenance
-                provenance.append(result.provenance)
-            else:
-                turn.rejected = result.reason
-                barren += 1
-        transcript.append(turn)
-
-    reason, detail = stop
-    contract = tools.draft_contract(intake, outcome, approval_date)
-    return InterviewResult(
-        intake=intake,
-        verdict=outcome.verdict,
-        outcome=outcome,
-        stop_reason=reason,
-        stop_detail=detail,
-        transcript=transcript,
-        provenance=provenance,
-        anti_patterns=found.matches,
-        discarded_anti_patterns=found.discarded,
-        contract=contract.contract.model_dump(mode="json") if contract.contract else None,
-    )
+    interview = Interview(request_text, provider, max_questions, approval_date)
+    while (question := interview.next_question()) is not None:
+        interview.submit(answer_fn(question))
+    return interview.result()
 
 
 def _stopping_reason(

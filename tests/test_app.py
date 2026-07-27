@@ -59,9 +59,15 @@ class TestAppRenders:
         app = fresh_app()
         assert not app.exception
 
-    def test_both_tabs_exist(self):
+    def test_the_three_tabs_exist(self):
+        """Named rather than counted, so a fourth tab does not fail this test.
+
+        The product's claim spans all three: the gate, the interview that fills
+        it, and the review that retires what it approved.
+        """
         app = fresh_app()
-        assert len(app.tabs) == 2
+        labels = {str(tab.label) for tab in app.tabs}
+        assert {"Triage", "Intake agent", "Review simulator"} <= labels
 
     def test_the_title_and_sidebar_render(self):
         app = fresh_app()
@@ -213,4 +219,22 @@ class TestTimeoutFallback:
         assert "no stored assessment to fall back to" in captions
         assert "Measurement Contract" not in " ".join(
             str(i.value) for i in app.subheader
+        )
+
+
+class TestAgentTab:
+    """The intake agent tab. Rendering only — the loop is tested in test_agent."""
+
+    def test_the_agent_tab_states_the_architecture_rule(self):
+        """A visitor must not think the model is scoring anything."""
+        app = fresh_app()
+        text = " ".join(str(item.value) for item in app.markdown)
+        assert "The model asks. The tables decide." in text
+        assert "never assigns a score" in text
+
+    def test_it_offers_the_canonical_vague_request(self):
+        """06_something_with_the_invoices: the case a form cannot finish."""
+        app = fresh_app()
+        assert any(
+            "supplier invoices" in str(area.value) for area in app.text_area
         )

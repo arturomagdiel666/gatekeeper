@@ -23,6 +23,7 @@ from datetime import date
 import streamlit as st
 from dotenv import load_dotenv
 
+from agent import Interview
 from assess import AssessmentError, assess_request
 from config import PATTERNS, RUBRIC
 from contracts import CONTRACTS, issue_contract
@@ -663,6 +664,117 @@ FAILING_AGENT = {
 SCENARIOS = {"Healthy agent": HEALTHY_AGENT, "Failing agent": FAILING_AGENT}
 
 
+DEMO_REQUEST = (
+    "We think there is something AI could do with our supplier invoices. The "
+    "team spends a lot of time on them and it feels like the kind of thing that "
+    "should be automated by now. Other companies are doing this.\n\n"
+    "Can you have a look and tell us what is possible?"
+)
+
+
+def _render_interview_result(result) -> None:
+    """Verdict, gate trace, and the words that filled each field."""
+    st.markdown(
+        f"**Interview ended — {result.stop_reason.value.replace('_', ' ')}**  \n"
+        f"{result.stop_detail}"
+    )
+    render_outcome(result.outcome, None)
+
+    if result.provenance:
+        st.markdown("#### What the interview established")
+        st.caption(
+            "Every field carries the turn that produced it and the requester's "
+            "own words. A span the requester did not say is rejected, exactly "
+            "as a fabricated anti-pattern quote is."
+        )
+        for entry in result.provenance:
+            st.markdown(
+                f"**{entry.field}** = `{entry.value}` · turn {entry.turn}  \n"
+                f"> {entry.question}  \n"
+                f"> *“{entry.span}”*"
+            )
+    else:
+        st.info("The interview ended before it filled any field.")
+
+    if result.contract:
+        st.markdown("#### Measurement Contract (draft)")
+        st.json(result.contract)
+
+    with st.expander("Full transcript"):
+        for turn in result.transcript:
+            st.markdown(f"**Q{turn.n}** ({turn.target_field}) — {turn.question}")
+            st.markdown(f"> {turn.answer}")
+            if turn.rejected:
+                st.caption(f"not recorded: {turn.rejected}")
+
+
+def agent_tab() -> None:
+    """Paste a raw request, answer the agent's questions, watch it decide."""
+    st.subheader("The intake agent")
+    st.markdown(
+        "A request that arrives incomplete returns `incomplete` and stops. That "
+        "is a correct verdict and a useless product. The agent closes the gap "
+        "by **asking** — one question at a time, in your language.\n\n"
+        "**The model asks. The tables decide.** It chooses which question is "
+        "worth your time and reads your answer; it never assigns a score. Every "
+        "number below was computed from a field you filled."
+    )
+
+    state = st.session_state
+    if st.button("Start over", key="agent_reset"):
+        for key in ("interview", "agent_question", "agent_done"):
+            state.pop(key, None)
+
+    if "interview" not in state:
+        request = st.text_area(
+            "The request, as the requester wrote it",
+            value=DEMO_REQUEST,
+            height=140,
+            key="agent_request",
+        )
+        budget = st.slider("Question budget", 1, 12, 8, key="agent_budget")
+        if st.button("Start the interview", type="primary", key="agent_start"):
+            if not request.strip():
+                st.warning("Paste a request first.")
+                return
+            try:
+                interview = Interview(request, get_provider(), max_questions=budget)
+            except Exception as exc:  # noqa: BLE001 - surfaced, not swallowed
+                st.error(f"Could not reach the provider: {type(exc).__name__}: {exc}")
+                return
+            state.interview = interview
+            state.agent_question = interview.next_question()
+            state.agent_done = state.agent_question is None
+            st.rerun()
+        return
+
+    interview = state.interview
+    st.markdown(f"> {interview.intake.request_text}")
+
+    for turn in interview.transcript:
+        st.chat_message("assistant").write(turn.question)
+        st.chat_message("user").write(turn.answer)
+        if turn.rejected:
+            st.caption(f"↳ not recorded: {turn.rejected}")
+
+    if not state.get("agent_done"):
+        st.chat_message("assistant").write(state.agent_question)
+        reply = st.chat_input("Your answer")
+        if reply:
+            interview.submit(reply)
+            state.agent_question = interview.next_question()
+            state.agent_done = state.agent_question is None
+            st.rerun()
+        st.caption(
+            f"Question {len(interview.transcript) + 1} of at most "
+            f"{interview.max_questions}. The agent stops as soon as a gate "
+            "fires or no remaining question can change the verdict."
+        )
+        return
+
+    _render_interview_result(interview.result())
+
+
 def review_tab() -> None:
     st.header("Review an approved agent")
     st.caption(
@@ -862,9 +974,13 @@ def main() -> None:
             "never picks a verdict."
         )
 
-    triage, review_sim = st.tabs(["Triage", "Review simulator"])
+    triage, interview, review_sim = st.tabs(
+        ["Triage", "Intake agent", "Review simulator"]
+    )
     with triage:
         triage_tab()
+    with interview:
+        agent_tab()
     with review_sim:
         review_tab()
 

@@ -481,3 +481,18 @@ def test_the_baseline_is_asked_for_only_when_a_contract_will_be_issued():
     assert outcome.verdict is not Verdict.GO
     offered = {f.name for f in agent.useful_fields(report, outcome)}
     assert "stated_baseline_value" not in offered
+
+
+def test_the_fallback_prefers_a_field_that_has_not_been_asked_yet():
+    """A live run put the identical question twice: the decide call timed out,
+    the fallback took the first still-missing field, the extraction failed too,
+    so the field stayed missing and the next fallback took it again."""
+    from agent_tools import ASKABLE_FIELDS
+
+    askable = ASKABLE_FIELDS[:3]
+    first = askable[0].name
+    assert agent._resolve_field("not_a_field", askable, set()) == first
+    assert agent._resolve_field("not_a_field", askable, {first}) == askable[1].name
+    # Every option exhausted: fall back rather than crash on an empty list.
+    every = {f.name for f in askable}
+    assert agent._resolve_field("not_a_field", askable, every) == first

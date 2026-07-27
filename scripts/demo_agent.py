@@ -25,7 +25,7 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
-from agent import run_interview, save_transcript  # noqa: E402
+from agent import Interview, save_transcript  # noqa: E402
 from provider import MockProvider, get_provider  # noqa: E402
 
 REQUEST = (
@@ -285,12 +285,6 @@ SCENARIOS = {
 }
 
 
-def scripted_answer(answers: dict[str, str], asked: list[str]) -> str:
-    """Reply as the requester would, matching on the field the loop targeted."""
-    field = asked[-1] if asked else ""
-    return answers.get(field, "I am not sure about that one, sorry.")
-
-
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--live", action="store_true", help="use the real provider")
@@ -308,38 +302,24 @@ def main() -> int:
     print(f"=== Gatekeeper intake agent · {mode} ===\n")
     print(f"REQUEST:\n{request}\n")
 
-    asked_fields: list[str] = []
-
-    def answer(question: str) -> str:
-        print(f"  Q{len(asked_fields)}: {question}")
+    # Driven a turn at a time through `Interview` rather than through
+    # `run_interview`, so the scripted requester can answer the question that
+    # was actually aimed at them. The loop names the field before it asks, and
+    # reading that is what a UI does too.
+    interview = Interview(
+        request, provider, max_questions=args.max_questions,
+        approval_date=date(2026, 7, 27),
+    )
+    while (question := interview.next_question()) is not None:
+        field = interview.pending_field or ""
+        print(f"  Q{len(interview.transcript) + 1}: {question}")
         if args.human:
             reply = input("  A : ")
         else:
-            reply = scripted_answer(answers, asked_fields)
+            reply = answers.get(field, "I am not sure about that one, sorry.")
             print(f"  A : {reply}")
-        return reply
-
-    # The loop names the field before calling answer_fn, so the scripted
-    # requester can answer the question that was actually asked rather than
-    # pattern-matching on its wording.
-    original_resolve = __import__("agent")._resolve_field
-
-    def tracking_resolve(name, report):
-        resolved = original_resolve(name, report)
-        asked_fields.append(resolved)
-        return resolved
-
-    __import__("agent")._resolve_field = tracking_resolve
-    try:
-        result = run_interview(
-            request,
-            answer,
-            provider,
-            max_questions=args.max_questions,
-            approval_date=date(2026, 7, 27),
-        )
-    finally:
-        __import__("agent")._resolve_field = original_resolve
+        interview.submit(reply)
+    result = interview.result()
 
     print(f"\n--- STOPPED: {result.stop_reason.value} ---")
     print(f"  {result.stop_detail}\n")

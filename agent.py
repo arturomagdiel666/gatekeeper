@@ -448,12 +448,22 @@ class Interview:
             self.stop = (StopReason.NO_NEW_INFORMATION, f"agent chose {action['tool']}")
             return None
 
-        field_name = _resolve_field(action.get("target_field", ""), askable)
+        field_name = _resolve_field(action.get("target_field", ""), askable, self._asked)
         self._asked.add(field_name)
         turn.target_field = field_name
         turn.question = action["question"].strip()
         self._pending = turn
         return turn.question
+
+    @property
+    def pending_field(self) -> str | None:
+        """The intake field the outstanding question is aimed at, if any.
+
+        Exposed because both callers need it: a scripted requester answers the
+        field rather than pattern-matching the wording, and a UI labels the
+        question with it.
+        """
+        return self._pending.target_field if self._pending else None
 
     def submit(self, reply: str) -> Turn:
         """Record the requester's reply to the pending question.
@@ -700,9 +710,23 @@ def _extract(provider: LLMProvider, field_name: str, question: str, answer: str)
         return {"answered": False, "value": "", "span": ""}
 
 
-def _resolve_field(name: str, askable: list) -> str:
-    """Hold the model to the menu. A field it invented is replaced, not honoured."""
-    return name if name in {f.name for f in askable} else askable[0].name
+def _resolve_field(name: str, askable: list, asked: set[str] | None = None) -> str:
+    """Hold the model to the menu. A field it invented is replaced, not honoured.
+
+    When the model's turn was unusable and the choice falls back to this
+    function, it prefers a field that has NOT been put to the requester yet. A
+    live run put the identical question twice in a row — the decide call timed
+    out, the fallback took the first still-missing field, the extraction failed
+    too, so the field stayed missing and the next fallback took the same one.
+    The barren counter ends that after two rounds, but asking somebody the same
+    question twice while a dozen unasked ones remain is not a good way to spend
+    the two turns.
+    """
+    allowed = {f.name for f in askable}
+    if name in allowed:
+        return name
+    fresh = [f for f in askable if f.name not in (asked or set())]
+    return (fresh or askable)[0].name
 
 
 # ---------------------------------------------------------------------------

@@ -145,6 +145,12 @@ DECIDE_SCHEMA: dict = {
 #: both were rejected, and two barren answers ended the interview with one field
 #: filled. Same lesson as ADR-032 one level down: **a constraint that can be
 #: moved into the grammar is not enforced by leaving it implicit.**
+#:
+#: `maxItems` on every array is the same lesson a third time. An unbounded array
+#: in a grammar is an invitation to generate elements until something else stops
+#: you: a live run hung for minutes on `data_evidence` because nothing in the
+#: grammar said when the list of systems could end. Twelve is far above any real
+#: answer and finite, which is the only property that matters here.
 VALUE_SCHEMAS: dict[str, dict] = {
     "text": {"type": "string"},
     "number": {"type": "number"},
@@ -163,6 +169,7 @@ VALUE_SCHEMAS: dict[str, dict] = {
     },
     "artefacts": {
         "type": "array",
+        "maxItems": 12,
         "items": {
             "type": "object",
             "properties": {
@@ -178,7 +185,7 @@ VALUE_SCHEMAS: dict[str, dict] = {
     "data_evidence": {
         "type": "object",
         "properties": {
-            "systems": {"type": "array", "items": {"type": "string"}},
+            "systems": {"type": "array", "items": {"type": "string"}, "maxItems": 12},
             "sample_checked": {
                 "type": "string",
                 "enum": ["not_looked", "looked_usable", "looked_problems"],
@@ -196,7 +203,9 @@ VALUE_SCHEMAS: dict[str, dict] = {
     "effort_evidence": {
         "type": "object",
         "properties": {
-            "systems_to_integrate": {"type": "array", "items": {"type": "string"}},
+            "systems_to_integrate": {
+                "type": "array", "items": {"type": "string"}, "maxItems": 12
+            },
             "procurement": {
                 "type": "string",
                 "enum": [
@@ -206,7 +215,7 @@ VALUE_SCHEMAS: dict[str, dict] = {
                     "new_vendor",
                 ],
             },
-            "approving_teams": {"type": "array", "items": {"type": "string"}},
+            "approving_teams": {"type": "array", "items": {"type": "string"}, "maxItems": 12},
         },
         "required": ["systems_to_integrate", "procurement", "approving_teams"],
     },

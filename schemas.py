@@ -42,6 +42,7 @@ from pydantic import BaseModel, ConfigDict, Field
 __all__ = [
     "Confidence",
     "AntiPatternMatch",
+    "DeterministicArtefact",
     "RequestIntake",
     "Period",
     "PriorTool",
@@ -136,6 +137,40 @@ class DataSensitivity(str, Enum):
     UNKNOWN = "unknown"
 
 
+class DeterministicArtefact(BaseModel):
+    """One deterministic thing that already exists today for this work.
+
+    The input to ``non_ai_alternative``'s derivation, and the reason that
+    dimension is a computation rather than a judgement (ADR-030).
+
+    **Why this and not a percentage.** The obvious computation would be to ask
+    the requester what fraction of cases their current rules already close. That
+    is the one question in the intake with an adversarial incentive: it asks them
+    to price the alternative to their own request, on the dimension that gates
+    it. Every derivation that works in this rubric — ``times_per_period``,
+    ``data_sensitivity`` — draws on a fact the requester has no reason to shade.
+    So the form asks what EXISTS and the level is derived from the list.
+
+    Attributes:
+        name: What it is, in the requester's words.
+        what_it_does: What it produces, in the requester's words. The coverage
+            rule in ``rubric.yaml`` reads this text against the work the request
+            describes, so a qualifier here ("about half the tickets") is
+            load-bearing rather than decorative.
+        completes_without_judgement: After this runs, is the work done, or does
+            someone still have to decide something? The only field that asks for
+            an assessment, and it is a yes/no about what happens next in the
+            requester's own process — not a claim about the value of their
+            request.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: str
+    what_it_does: str
+    completes_without_judgement: bool
+
+
 class RequestIntake(BaseModel):
     """A request submitted to the AI Agent Hub.
 
@@ -187,6 +222,12 @@ class RequestIntake(BaseModel):
         where_the_data_lives: The systems holding the data.
         data_sensitivity: Classification of that data. When given,
             ``data_governance`` is computed from it in code.
+        existing_deterministic_artefacts: The deterministic things that exist
+            today for this work — see :class:`DeterministicArtefact`.
+            ``non_ai_alternative`` is derived from this list, and the three
+            states are distinct: an EMPTY list is a strong, reproducible signal
+            that nothing exists, while ``None`` means nobody was asked and the
+            dimension is recorded unknown rather than estimated (ADR-030).
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -207,6 +248,9 @@ class RequestIntake(BaseModel):
     prior_tool_for_these_users: PriorTool = PriorTool.UNKNOWN
     where_the_data_lives: str | None = None
     data_sensitivity: DataSensitivity = DataSensitivity.UNKNOWN
+    #: ``None`` and ``[]`` mean different things here and the derivation reads
+    #: both: None is "not asked", [] is "asked, nothing exists".
+    existing_deterministic_artefacts: list[DeterministicArtefact] | None = None
 
     @property
     def instances_per_year(self) -> float | None:

@@ -31,6 +31,7 @@ from provider import get_provider
 from review import POLICY, ObservedMetrics, Recommendation, review
 from schemas import (
     DataSensitivity,
+    DeterministicArtefact,
     MeasurementContract,
     Period,
     PriorTool,
@@ -41,6 +42,11 @@ from scoring import Verdict, score
 load_dotenv()
 
 st.set_page_config(page_title="Gatekeeper", page_icon="🚪", layout="wide")
+
+#: Rows offered for the "what already exists" list. Three is enough for every
+#: exemplar and keeps the form short; the derivation reads however many are
+#: filled in, including none (ADR-030).
+ARTEFACT_ROWS = 3
 
 VERDICT_STYLE: dict[str, tuple[str, str]] = {
     "go": ("#1a7f37", "GO"),
@@ -418,6 +424,54 @@ def triage_tab() -> None:
                 value=float(preset.cost_per_instance or 0.0) if preset else 0.0,
                 help="The cash alternative to the minutes above.",
             )
+
+            # non_ai_alternative is DERIVED from these rows (ADR-030). The form
+            # asks what exists rather than what fraction it covers, because the
+            # fraction is the one number a requester has an incentive to shade —
+            # it prices the alternative to their own request, on the dimension
+            # that gates it.
+            st.markdown(
+                "**What already exists for this work, without AI**  \n"
+                "Leave every row blank if nothing does — that is a real answer "
+                "and it is scored as one."
+            )
+            preset_artefacts = (
+                (preset.existing_deterministic_artefacts or []) if preset else []
+            )
+            artefact_rows: list[dict] = []
+            for slot in range(ARTEFACT_ROWS):
+                existing = (
+                    preset_artefacts[slot] if slot < len(preset_artefacts) else None
+                )
+                cols = st.columns([2, 3, 2])
+                name = cols[0].text_input(
+                    "What it is",
+                    value=existing.name if existing else "",
+                    key=f"artefact_name_{slot}",
+                    label_visibility="visible" if slot == 0 else "collapsed",
+                    placeholder="a report, a rule, a template…",
+                )
+                what = cols[1].text_input(
+                    "What it produces",
+                    value=existing.what_it_does if existing else "",
+                    key=f"artefact_does_{slot}",
+                    label_visibility="visible" if slot == 0 else "collapsed",
+                    placeholder="and for how much of the work",
+                )
+                done = cols[2].checkbox(
+                    "After it runs, the work is done",
+                    value=bool(existing.completes_without_judgement)
+                    if existing
+                    else False,
+                    key=f"artefact_done_{slot}",
+                    help=(
+                        "Tick only if nobody has to decide anything afterwards. "
+                        "Leave it clear if a person still judges something."
+                    ),
+                )
+                artefact_rows.append(
+                    {"name": name, "what_it_does": what, "completes": done}
+                )
         use_reference = st.checkbox(
             "Score the example's hand-authored assessment instead of calling the model",
             value=False,
@@ -447,6 +501,19 @@ def triage_tab() -> None:
         period=Period(period_value) if period_value != "(not stated)" else None,
         minutes_per_instance=minutes_per_instance or None,
         cost_per_instance=cost_per_instance or None,
+        # Always a list, never None, once the form has been submitted: the
+        # requester was asked, so an empty list means "nothing exists" rather
+        # than "nobody asked". None is reserved for submissions that predate the
+        # question (ADR-030).
+        existing_deterministic_artefacts=[
+            DeterministicArtefact(
+                name=row["name"].strip(),
+                what_it_does=row["what_it_does"].strip(),
+                completes_without_judgement=row["completes"],
+            )
+            for row in artefact_rows
+            if row["name"].strip()
+        ],
         prior_tool_for_these_users=PriorTool(prior_tool),
         where_the_data_lives=where_the_data_lives.strip() or None,
         data_sensitivity=DataSensitivity(data_sensitivity),

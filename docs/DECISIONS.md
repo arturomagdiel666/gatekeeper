@@ -2192,3 +2192,113 @@ first came out **+2**, because the study history had been written into a
 `description` — a field that **is** rendered into the assessment prompt. Moving
 it here cost nothing and removed prompt weight: rationale belongs in this log,
 and the config should carry only what the model or the scorer has to act on.
+
+---
+
+## ADR-030 — Phase 6: `non_ai_alternative` becomes a computation
+
+**Date:** 2026-07-26 · **Status:** accepted · **Scope:** one dimension, one intake field
+**Evidence:** `evaluacion/10_three_runs.md` — three runs, identical corpus, identical scorers
+
+### The partition that motivates this phase
+
+Group the seven dimensions by **how a score is arrived at** rather than by what
+was done to them:
+
+| Mechanism | Dimensions | Agreement (run 3) | Mean |
+|---|---|---|---|
+| **Derivation** — computed from an intake field | `process_frequency`, `data_governance`, `business_value` | 100 · 100 · 92 | **97%** |
+| **Nothing** — anchors only | `adoption_risk`, `implementation_effort` | 73 · 70 | **72%** |
+| **Prose procedure, no computation** | `data_readiness`, `non_ai_alternative` | 67 · 30 | **48%** |
+
+The partition is clean and has no overlap, and at slot level across the 196
+scoreable scores in run 3 it reads **97% where both scorers derived, 60% where
+both judged**.
+
+> **A procedure written in prose is 24 points worse than writing no procedure
+> at all.**
+
+`non_ai_alternative` has been repaired in prose three times — 70% → 61% → 30% —
+each repair locally reasonable and evidence-driven, and it gates. It produces six
+of eight verdict disagreements. **This phase stops trying to write it better.**
+
+### Registered predictions
+
+Written before implementing. The re-run that tests them is a separate protocol
+and has **not** been run.
+
+| Prediction | Now | Expected |
+|---|---|---|
+| `non_ai_alternative` agreement | 30% | **above 90%** — it joins the computation class |
+| Verdict agreement | 73% | above 80% |
+| Untouched dimensions | 67–100% | **stay within ±7** of run 3 |
+
+Interpretation is fixed in advance: **above 90% confirms the mechanism
+hypothesis. 70–90% means the derivation's entry point is the residual problem, as
+it already is for `business_value`. Below 70% means computation does not rescue
+this dimension and it should be demoted off the gate.**
+
+The third prediction is a genuine control. Run 3 found every untouched dimension
+drifting downward and could not separate variance from systematic drift. If they
+hold steady while only the rebuilt dimension moves, the drift was an artefact of
+the earlier phases; if they fall again, drift is real and has a cause worth
+finding.
+
+---
+
+### Commit 1 — the intake asks for artefacts, not for a fraction
+
+The obvious computation is *"what fraction of cases do your current rules or
+reports already close?"* and it is the wrong question. `times_per_period` and
+`data_sensitivity` work because they are **neutral facts a requester has no
+reason to shade.** That one asks the requester to **price the alternative to
+their own request, on the dimension that gates it** — the only field in the
+intake with an adversarial incentive, in a pattern whose entire track record
+comes from non-adversarial fields.
+
+So the form asks **what exists**, and the level is derived from the list.
+`existing_deterministic_artefacts` is a repeating entry of three fields:
+
+- `name` — what it is, in the requester's words
+- `what_it_does` — what it produces, in their words. The coverage rule reads this
+  text, so a qualifier here ("about half the tickets") is load-bearing.
+- `completes_without_judgement` — *after this runs, is the work done, or does
+  someone still have to decide something?* The only field asking for an
+  assessment, and it is a yes/no about what happens next in their own process.
+
+**Three states, all distinct and all meaningful.** A populated list derives a
+level; an **empty** list is a strong and reproducible signal that nothing exists;
+**absent** means nobody was asked, and the dimension is recorded unknown rather
+than estimated. Absent is the refusal branch, consistent with `business_value`.
+
+### The exemplars, and where each entry came from
+
+Entries were drawn only from a sentence the request already contains. Where a
+request names no deterministic tooling the list is **empty**; nothing was
+invented.
+
+| Exemplar | List | Drawn from |
+|---|---|---|
+| `ticket_handover_summaries` | empty | "Handover notes are written by hand into the ticket in ServiceNow at the end of each shift." The team lead's written definition of a good note is quality criteria, not something that produces a note. |
+| `hr_policy_questions` | empty | "we answer from the same handful of policy PDFs every time" — the PDFs are the source, not something that finishes the work. |
+| `ticket_volume_by_team` | 1, completing | "My team lead exports it to Excel and pivots it by hand once a month." |
+| `predict_laptop_failures` | empty | "The endpoint management agent could probably report some of that but it has never been switched on" — never switched on is not something that exists today. |
+| `contract_renewal_drafting` | 1, not completing | "The buyers have a standard template for the summary" — it lays out the summary; the buyer still reads three sources and writes it. |
+| `something_with_the_invoices` | **absent** | The request says nothing whatever about what exists today. Leaving it absent is the honest answer and it is the exemplar built to be unanswerable. |
+| `ticket_routing_classifier` | 1, completing | "The keyword rules we set up years ago now cover maybe half of the tickets and they get worse every time a team is renamed or a new service is added." |
+
+**One judgement call worth recording.** `hr_policy_questions` names a bundled
+assistant that IT says already searches the same library. It is **not** in this
+list, on two grounds: an LLM assistant is not a *deterministic* artefact, and
+"nobody has tried it" means it is not doing the work today. That request is
+caught by `existing_licensed_capability`, which is where a licence claim belongs.
+
+**A cross-phase consequence, flagged rather than resolved.** ADR-029 justified
+the two-part evidence test partly on the grounds that a licence claim which fails
+Part B is "not lost — it is scored on `non_ai_alternative`, which carries the
+already-licensed language at level 5". **That justification does not survive this
+phase.** The rebuilt dimension measures what is *finished today*, so a licensed
+capability nobody has switched on scores 1, not 5. The compensation argument is
+void; the two-part test now stands or falls on its own merits. This was not
+anticipated by either phase brief and is the kind of interaction only a
+cross-phase read catches.

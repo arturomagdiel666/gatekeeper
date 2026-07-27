@@ -12,6 +12,7 @@ from pydantic import ValidationError
 
 from config import load_rubric
 from schemas import (
+    DeterministicArtefact,
     SCORE_MAX,
     SCORE_MIN,
     Assessment,
@@ -201,3 +202,59 @@ class TestBannedSynonymList:
         """A field name must never appear on its own banned list."""
         names = property_names(Assessment.model_json_schema())
         assert names.isdisjoint(set(banned_synonyms()))
+
+
+class TestDeterministicArtefacts:
+    """ADR-030: non_ai_alternative's input. Three states, all distinct."""
+
+    def test_absent_and_empty_are_different_answers(self):
+        """The distinction the derivation turns on, so it must survive the model."""
+        assert RequestIntake(request_text="x").existing_deterministic_artefacts is None
+        asked = RequestIntake(request_text="x", existing_deterministic_artefacts=[])
+        assert asked.existing_deterministic_artefacts == []
+
+    def test_an_entry_carries_a_name_a_description_and_a_completion_flag(self):
+        artefact = DeterministicArtefact(
+            name="Keyword routing rules",
+            what_it_does="route about half of the tickets on their own",
+            completes_without_judgement=True,
+        )
+        intake = RequestIntake(
+            request_text="x", existing_deterministic_artefacts=[artefact]
+        )
+        assert intake.existing_deterministic_artefacts[0].completes_without_judgement
+
+    def test_the_completion_flag_is_required(self):
+        """It is the only field that asks for an assessment; a default would let
+        the form skip the one question the level turns on."""
+        with pytest.raises(ValidationError):
+            DeterministicArtefact(name="A report", what_it_does="counts tickets")
+
+    def test_the_user_message_renders_all_three_states_distinguishably(self):
+        from assess import build_user_message
+
+        absent = build_user_message(RequestIntake(request_text="x"))
+        assert "(not asked)" in absent
+        empty = build_user_message(
+            RequestIntake(request_text="x", existing_deterministic_artefacts=[])
+        )
+        assert "listed nothing" in empty
+        filled = build_user_message(
+            RequestIntake(
+                request_text="x",
+                existing_deterministic_artefacts=[
+                    DeterministicArtefact(
+                        name="Monthly pivot",
+                        what_it_does="produces the counts",
+                        completes_without_judgement=True,
+                    ),
+                    DeterministicArtefact(
+                        name="Summary template",
+                        what_it_does="lays out the headings",
+                        completes_without_judgement=False,
+                    ),
+                ],
+            )
+        )
+        assert "Monthly pivot: produces the counts [after this runs the work is done]" in filled
+        assert "somebody still has to decide something" in filled

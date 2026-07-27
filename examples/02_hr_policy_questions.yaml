@@ -32,6 +32,11 @@ period: week
 prior_tool_for_these_users: none
 where_the_data_lives: Intranet document library
 data_sensitivity: internal
+existing_deterministic_artefacts: []
+# Empty. "we answer from the same handful of policy PDFs every time" — the PDFs
+# are the source, not something that finishes the work. The bundled assistant IT
+# mentioned is neither deterministic nor in use ("nobody has tried it"), so it
+# does not belong here; it is caught by existing_licensed_capability instead.
 
 reference_assessment:
   archetype_id: rag_qa

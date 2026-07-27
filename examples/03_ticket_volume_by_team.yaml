@@ -27,6 +27,13 @@ period: month
 prior_tool_for_these_users: unknown
 where_the_data_lives: ServiceNow
 data_sensitivity: internal
+existing_deterministic_artefacts:
+  # "My team lead exports it to Excel and pivots it by hand once a month."
+  - name: Monthly Excel pivot off the ServiceNow export
+    what_it_does: >-
+      exports the tickets and pivots them by hand once a month to produce the
+      counts by team and category that the request asks for
+    completes_without_judgement: true
 
 reference_assessment:
   archetype_id: null

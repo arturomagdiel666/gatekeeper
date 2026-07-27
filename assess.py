@@ -441,6 +441,19 @@ def build_user_message(intake: RequestIntake) -> str:
             f"{intake.times_per_period} per {intake.period.value} "
             f"(about {intake.instances_per_year:,.0f} a year)"
         )
+    artefacts = "(not asked)"
+    if intake.existing_deterministic_artefacts is not None:
+        artefacts = "(none — the requester was asked and listed nothing)"
+        if intake.existing_deterministic_artefacts:
+            artefacts = "\n" + "\n".join(
+                f"    * {a.name}: {a.what_it_does} "
+                + (
+                    "[after this runs the work is done]"
+                    if a.completes_without_judgement
+                    else "[after this runs somebody still has to decide something]"
+                )
+                for a in intake.existing_deterministic_artefacts
+            )
     return f"""Assess this request.
 
 Requesting area: {intake.requesting_area or "(not stated)"}
@@ -464,6 +477,7 @@ Answers the requester gave on the intake form:
 - Last tool built for these same users: {intake.prior_tool_for_these_users.value}
 - Where the data lives: {intake.where_the_data_lives or "(not stated)"}
 - Data classification: {intake.data_sensitivity.value}
+- Deterministic things that already exist for this work: {artefacts}
 
 Use these answers. "Last tool built for these same users" is direct evidence
 for adoption_risk and appears nowhere else. Where an answer is "(not stated)"

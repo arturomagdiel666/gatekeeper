@@ -1,0 +1,116 @@
+# Reference exemplar: a strong GO.
+# Scored against the anchors, not tuned to reach a pleasant answer.
+# Contrast with 01: this is a predictive archetype, so data_readiness reaches
+# level 5 through genuine labels rather than a curated reference set, and
+# adoption_risk is at the floor because nothing changes for the end user.
+id: ticket_routing_classifier
+title: Route incoming service desk tickets to the right team
+expected_verdict: go
+expected_gate: null
+
+requesting_area: IT Service Desk
+business_owner: Ana Ruiz (Service Desk Manager)
+request_text: |
+  Every ticket that comes into the service desk gets assigned to one of
+  fourteen resolver groups. Right now a first-line analyst reads each one and
+  picks the group. When they pick wrong the ticket bounces - it sits in the
+  wrong queue until someone notices, gets sent back, and starts again. About
+  one in five tickets bounces at least once, and a bounced ticket takes roughly
+  a day and a half longer to close than one that lands correctly the first time.
+
+  We would like the description to be read automatically and the resolver group
+  suggested, with the analyst able to override it. The keyword rules we set up
+  years ago now cover maybe half of the tickets and they get worse every time a
+  team is renamed or a new service is added.
+process_description: |
+  Tickets arrive in ServiceNow by portal and email, about 4,000 a month. A
+  first-line analyst reads the description and assigns a resolver group from a
+  list of fourteen. Every assignment and every reassignment since 2021 is in
+  the ticket history, so for each ticket we know both what was picked first and
+  which group actually closed it. Nothing about this is visible to the person
+  who raised the ticket - they see the same portal either way.
+stated_benefit: |
+  Around 800 bounced tickets a month, each adding about a day and a half to
+  resolution. Fewer bounces means faster closes and less re-reading of the
+  same ticket by three different teams.
+
+who_does_this_today: Four first-line analysts on the triage rota
+people_affected: 4
+times_per_period: 4000
+period: month
+prior_tool_for_these_users: adopted
+where_the_data_lives: ServiceNow
+data_sensitivity: internal
+existing_deterministic_artefacts:
+  # "The keyword rules we set up years ago now cover maybe half of the tickets
+  # and they get worse every time a team is renamed or a new service is added."
+  - name: Keyword routing rules
+    what_it_does: >-
+      route about half of the tickets to a resolver group on their own, and
+      degrade every time a team is renamed or a new service is added
+    completes_without_judgement: true
+
+reference_assessment:
+  archetype_id: classification
+  anti_pattern_matches: []
+  proposed_metric_id: cycle_time_reduction
+  stated_baseline_value: null
+  dimension_assessments:
+    - dimension_id: business_value
+      score: 5
+      confidence: high
+      evidence: >-
+        Level 5 by volume of avoidable delay: roughly 800 bounced tickets a
+        month, each adding about a day and a half to resolution, is on the
+        order of 14,000 avoidable ticket-days a year, plus the analyst time
+        spent re-reading tickets that three teams have already opened. The
+        request states both the bounce rate and the delay, so the magnitude is
+        stated rather than inferred.
+    - dimension_id: adoption_risk
+      score: 1
+      confidence: high
+      evidence: >-
+        Level 1: nothing changes for the person who raised the ticket, and for
+        the analyst the suggested group appears in the field they already fill
+        in, with an override available. No new tool, no new step, no new
+        screen. A prior tool for these same users was adopted.
+    - dimension_id: data_readiness
+      score: 5
+      confidence: high
+      evidence: >-
+        Level 5: every assignment and reassignment since 2021 is in the ticket
+        history, so the group that actually closed the ticket is an unambiguous
+        outcome variable - this is a predictive archetype and the labels are a
+        by-product of the existing process rather than something that has to be
+        created. The data is centralized in ServiceNow with an access path
+        already in use for reporting.
+    - dimension_id: process_frequency
+      score: 5
+      confidence: high
+      evidence: >-
+        Level 5: 4,000 tickets a month is 48,000 instances a year, well above
+        the 10,000 threshold, and the queue is continuous.
+    - dimension_id: implementation_effort
+      score: 2
+      confidence: medium
+      evidence: >-
+        Level 2: one integration against a ServiceNow API already in use, no
+        new infrastructure, and one team to coordinate. Medium confidence
+        because the existing keyword rules have to be retired in a controlled
+        way rather than switched off, which the request does not describe.
+    - dimension_id: data_governance
+      score: 2
+      confidence: high
+      evidence: >-
+        Level 2: internal ticket descriptions containing staff names and work
+        contact details. No restricted classification, no customer or regulated
+        data, and no contractual bar on processing is indicated.
+    - dimension_id: non_ai_alternative
+      score: 3
+      confidence: high
+      evidence: >-
+        Level 3: deterministic keyword rules already exist and cover roughly
+        half the tickets, so a non-AI approach genuinely delivers part of this.
+        It is not level 4 because the request states the rules degrade with
+        every renamed team and new service, which is the maintenance failure
+        rules cannot escape - the remaining half is free-text judgement.

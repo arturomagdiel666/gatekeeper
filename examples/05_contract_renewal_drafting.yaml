@@ -33,6 +33,13 @@ period: year
 prior_tool_for_these_users: abandoned
 where_the_data_lives: Contract repository, ERP, shared folder
 data_sensitivity: confidential
+existing_deterministic_artefacts:
+  # "The buyers have a standard template for the summary"
+  - name: Standard renewal summary template
+    what_it_does: >-
+      lays out the two-page summary the renewal meeting expects, with the
+      headings in a fixed order
+    completes_without_judgement: false
 
 reference_assessment:
   archetype_id: summarization

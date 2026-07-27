@@ -1,4 +1,4 @@
-"""Offline tests of the six reference exemplars.
+"""Offline tests of the seven reference exemplars.
 
 These test the scoring ENGINE, not the model: each example carries a
 hand-authored, anchor-faithful assessment, and the assertion is that the engine
@@ -25,8 +25,8 @@ def ids(examples):
 
 
 class TestTheExampleSetItself:
-    def test_there_are_six_examples(self):
-        assert len(EXAMPLES) == 6
+    def test_there_are_seven_examples(self):
+        assert len(EXAMPLES) == 7
 
     def test_the_required_verdicts_are_all_covered(self):
         verdicts = {e.expected_verdict for e in EXAMPLES}

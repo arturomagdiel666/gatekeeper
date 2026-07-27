@@ -38,6 +38,11 @@ period: day
 prior_tool_for_these_users: adopted
 where_the_data_lives: ServiceNow
 data_sensitivity: internal
+existing_deterministic_artefacts: []
+# Empty, and drawn from the request: "Handover notes are written by hand into
+# the ticket in ServiceNow at the end of each shift." The team lead's written
+# definition of a good note is quality criteria, not something that produces a
+# note, so it is not an artefact.
 
 reference_assessment:
   archetype_id: summarization

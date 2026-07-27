@@ -18,7 +18,14 @@ from pathlib import Path
 import yaml
 from pydantic import BaseModel, ConfigDict
 
-from schemas import Assessment, DataSensitivity, Period, PriorTool, RequestIntake
+from schemas import (
+    Assessment,
+    DataSensitivity,
+    DeterministicArtefact,
+    Period,
+    PriorTool,
+    RequestIntake,
+)
 
 __all__ = ["Example", "EXAMPLES_DIR", "load_examples", "load_example"]
 
@@ -48,6 +55,9 @@ class Example(BaseModel):
     prior_tool_for_these_users: PriorTool = PriorTool.UNKNOWN
     where_the_data_lives: str | None = None
     data_sensitivity: DataSensitivity = DataSensitivity.UNKNOWN
+    #: None means the exemplar deliberately does not answer the question — which
+    #: for `non_ai_alternative` is the refusal branch, not an empty list.
+    existing_deterministic_artefacts: list[DeterministicArtefact] | None = None
     reference_assessment: Assessment
 
     @property
@@ -68,6 +78,7 @@ class Example(BaseModel):
             prior_tool_for_these_users=self.prior_tool_for_these_users,
             where_the_data_lives=self.where_the_data_lives,
             data_sensitivity=self.data_sensitivity,
+            existing_deterministic_artefacts=self.existing_deterministic_artefacts,
         )
 
 

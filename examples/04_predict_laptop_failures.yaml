@@ -33,6 +33,10 @@ period: year
 prior_tool_for_these_users: none
 where_the_data_lives: ServiceNow tickets only; no device telemetry collected
 data_sensitivity: internal
+existing_deterministic_artefacts: []
+# Empty. "The endpoint management agent could probably report some of that but
+# it has never been switched on" — something that has never been switched on does
+# not exist today.
 
 reference_assessment:
   archetype_id: forecasting

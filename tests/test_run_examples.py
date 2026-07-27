@@ -14,6 +14,8 @@ from pathlib import Path
 
 import pytest
 
+from examples import load_examples
+
 SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "run_examples.py"
 
 
@@ -45,8 +47,8 @@ def test_timeouts_are_counted_separately_and_never_as_mismatches(run_script):
 
     output = run_script(always_times_out)
 
-    assert output.count("TIMEOUT") >= 6
-    assert "6 timed out (not counted as mismatches)" in output
+    assert output.count("TIMEOUT") >= len(load_examples())
+    assert f"{len(load_examples())} timed out (not counted as mismatches)" in output
     # Nothing completed, so nothing can have matched or mismatched.
     assert "0/0 completed verdicts match" in output
     assert "no answer within 30s" in output
@@ -80,7 +82,7 @@ def test_a_timeout_row_is_marked_distinctly_from_a_mismatch(run_script):
 
     assert "1 timed out (not counted as mismatches)" in output
     # The five that completed are all anchor-faithful, so all five match.
-    assert "5/5 completed verdicts match" in output
+    assert f"{len(load_examples()) - 1}/{len(load_examples()) - 1} completed verdicts match" in output
     # The timed-out TABLE row (the last such line; the first is progress
     # output) uses its own marker, not the mismatch marker.
     timeout_rows = [l for l in output.splitlines() if "TIMEOUT" in l and ids[0] in l]

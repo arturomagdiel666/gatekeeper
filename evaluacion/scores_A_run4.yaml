@@ -1,0 +1,707 @@
+# Scorer A — run 4. Rubric v2.0.0, patterns v2.0.0.
+# Conventions used throughout (declared once, applied uniformly):
+#  - business_value: scoring_rule step (1). Denomination priority follows the
+#    derivation's declaration order (person_hours -> currency -> cases).
+#    person_hours is only used where the request states a PER-INSTANCE duration
+#    (the derivation's input is `minutes_per_instance`); otherwise the cases
+#    denomination is used and confidence is low (`volume_only`). Currency bands
+#    are USD; MXN converted at 18 MXN/USD (rate in effect), recorded in evidence.
+#  - process_frequency / data_governance: derived from the intake lines
+#    (Frecuencia / Clasificación) when present; `judged` or null when "—".
+#  - non_ai_alternative: artefact list built from the request text, then the
+#    derivation applied. Non-deterministic human judgement (a lawyer reading, an
+#    analyst classifying, a translation agency) is NOT an artefact. A thing that
+#    exists but is not running today is NOT an artefact. Templates, catalogues
+#    and mappings the request refers to as held ARE artefacts.
+
+- case_id: A-01
+  archetype: summarization
+  artefacts:
+    - name: "Grabación automática de las juntas en Teams"
+      what_it_does: "Produces a recording of each review meeting; it is already switched on"
+      completes_without_judgement: false
+      quote: "Las juntas son en Teams y quedan grabadas porque ya lo tenemos activado."
+  anti_pattern_matches: []
+  near_misses:
+    - pattern: existing_licensed_capability
+      failed_part: "Part B"
+      note: "Part A quotable ('Las juntas son en Teams'); Part B not — Teams is named as where the recording lives, never as a platform that already produces the acuerdos. Exactly the ruled-out error."
+  dimensions:
+    business_value: {score: 2, anchor_level: 2, confidence: low, resolution: derived, quote: "Son unas ocho juntas al mes entre revisión mensual, forecast y cierre.", note: "cases denomination (volume_only, confidence low): 8/month x 12 = 96 instances/year, which falls in the 50-500 band = level 2. No person-hours or currency figure stated ('Pasamos muchísimo tiempo' is not a magnitude)."}
+    adoption_risk: {score: 2, anchor_level: 2, confidence: medium, resolution: judged, quote: "Queremos una IA que escuche la junta y saque los acuerdos y los responsables automáticamente.", note: "The requester manages the area whose meetings these are and the change removes a step from a workflow (Teams meetings) they already run daily. No previous-tool history stated, so level 1 is not available."}
+    data_readiness: {score: 3, anchor_level: 3, confidence: medium, resolution: judged, quote: "Alguien del equipo toma notas en Word y las manda por correo.", note: "AVAILABILITY 3 — recordings exist in Teams (one system, plausible access path) but audio/transcript quality never checked on real records. EVALUABILITY 3 — generative archetype; past Word minutes exist but no agreed criteria for a good acuerdos list, nothing standing in the way of agreeing one. min(3,3)=3."}
+    process_frequency: {score: 2, anchor_level: 2, confidence: high, resolution: derived, quote: "Frecuencia: 8 al mes", note: "8 x 12 = 96 instances/year; 96 < 100 -> band 2."}
+    implementation_effort: {score: 2, anchor_level: 2, confidence: medium, resolution: judged, quote: "Las juntas son en Teams y quedan grabadas porque ya lo tenemos activado.", note: "Two to six weeks: transcription hook plus distribution of the acuerdos, one team affected, no new vendor."}
+    data_governance: {score: 2, anchor_level: 2, confidence: high, resolution: derived, quote: "Clasificación: interno", note: "intake_sensitivity mapping internal -> 2."}
+    non_ai_alternative: {score: 2, anchor_level: 2, confidence: medium, resolution: derived, branch: none_complete, quote: "Las juntas son en Teams y quedan grabadas porque ya lo tenemos activado.", note: "One artefact (the recording) exists and runs today; after it runs somebody still has to extract acuerdos and responsables. Manual note-taking excluded from the list as non-deterministic. -> none_complete = 2."}
+  ambiguous_anchors:
+    - "data_readiness 3 vs 4 (evaluability): whether past Word minutes count as 'a handful of reference outputs'."
+
+- case_id: A-02
+  archetype: extraction
+  artefacts:
+    - name: "Plantillas de captura por proveedor"
+      what_it_does: "Extract the invoice fields for the 30 largest suppliers from their fixed layout"
+      completes_without_judgement: true
+      quote: "de los 400 proveedores solo los 30 más grandes tienen plantilla"
+  anti_pattern_matches: []
+  near_misses: []
+  dimensions:
+    business_value: {score: 4, anchor_level: 4, confidence: low, resolution: derived, quote: "Son unas 2,800 facturas al mes.", note: "cases denomination (volume_only, confidence low): 2,800 x 12 = 33,600 invoices/year, inside the 5,000-50,000 band = level 4. No per-instance capture time and no currency figure stated, so the two higher-priority denominations were unavailable."}
+    adoption_risk: {score: 4, anchor_level: 4, confidence: medium, resolution: judged, quote: "Ya intentamos con plantillas por proveedor pero se rompen cada que alguien cambia su formato", note: "Anchor 4 clause 'a previous tool built for these same users was quietly abandoned' — the per-supplier templates were left covering 30 of 400 suppliers. The four capturistas are not stated to have been consulted; the requester is their supervisor."}
+    data_readiness: {score: 5, anchor_level: 5, confidence: high, resolution: judged, quote: "Tenemos todas las facturas de los últimos cuatro años en el repositorio con su captura correspondiente ya validada contra el pago.", note: "AVAILABILITY 5 — four years of centralized history, quality verified against payment on real records. EVALUABILITY 5 — predictive/extraction archetype with an unambiguous outcome variable: the validated capture is the label. min(5,5)=5."}
+    process_frequency: {score: 5, anchor_level: 5, confidence: high, resolution: derived, quote: "Frecuencia: 2,800 al mes", note: "2,800 x 12 = 33,600 instances/year; 33,600 > 10,000 -> band 5."}
+    implementation_effort: {score: 3, anchor_level: 3, confidence: medium, resolution: judged, quote: "La factura llega por correo a un buzón, se descarga, se captura en SAP y se archiva.", note: "About one quarter: extraction pipeline over 400 layouts, mailbox and repository ingestion, SAP posting and a verification UI — a new pipeline plus a workflow change across CxP and IT."}
+    data_governance: {score: 3, anchor_level: 3, confidence: high, resolution: derived, quote: "Clasificación: confidencial", note: "intake_sensitivity mapping confidential -> 3."}
+    non_ai_alternative: {score: 3, anchor_level: 3, confidence: medium, resolution: derived, branch: coverage_part, quote: "de los 400 proveedores solo los 30 más grandes tienen plantilla", note: "The templates are deterministic and finish the extraction where they apply, and their own description bounds them to 30 of 400 suppliers — a named subset. coverage_rule -> `part` = 3."}
+  ambiguous_anchors:
+    - "non_ai_alternative 2 vs 3: whether a template that 'se rompe' when a layout changes still counts as completing its instances."
+
+- case_id: A-03
+  archetype: rag_qa
+  artefacts:
+    - name: "Buscador de la intranet"
+      what_it_does: "Returns intranet pages/folders matching a search term"
+      completes_without_judgement: false
+      quote: "La gente busca en la intranet o le pregunta a alguien."
+  anti_pattern_matches:
+    - pattern: chatbot_without_job_to_be_done
+      hard_block: false
+      quote: "Nos gustaría tener un chatbot con IA en la intranet, algo tipo ChatGPT pero de la empresa, para que la gente pueda preguntar lo que sea"
+      note: "No stated user task; success framed as experience and image."
+    - pattern: solution_first_no_measurable_problem
+      hard_block: false
+      quote: "Vimos que otras empresas ya lo tienen y creemos que se ve moderno y ayudaría bastante a la experiencia del empleado."
+      note: "Driver is what other companies have; no baseline, no owner, no cost stated."
+  near_misses: []
+  dimensions:
+    business_value: {score: null, anchor_level: null, confidence: null, resolution: judged, quote: "Beneficio afirmado: Mejor experiencia del empleado, imagen de innovación.", note: "UNKNOWN. scoring_rule step (2): no magnitude in any denomination — no person-hours, no currency, no case or ticket count (Frecuencia: —). Missing figure: how many lookups/questions a year, or the time they cost."}
+    adoption_risk: {score: 4, anchor_level: 4, confidence: medium, resolution: judged, quote: "para que la gente pueda preguntar lo que sea y no ande buscando en carpetas", note: "Anchor 4: intended users (all employees) not consulted and the change requires them to adopt a new tool. Level 5 not reached — no previous tool was rejected and nothing is being overridden."}
+    data_readiness: {score: 1, anchor_level: 1, confidence: medium, resolution: judged, quote: "para que la gente pueda preguntar lo que sea", note: "AVAILABILITY 2 — content is spread across intranet folders nobody has curated or joined, no access path stated (Datos: —). EVALUABILITY 1 — generative archetype needs a reference set plus criteria; the question scope is unbounded and nobody recorded what people ask, so a reference set cannot be assembled without first collecting what was never recorded. min(2,1)=1."}
+    process_frequency: {score: null, anchor_level: null, confidence: null, resolution: judged, quote: "Personas: — · Frecuencia: —", note: "UNKNOWN. Derivation input (intake_volume) is blank and the request states no instance count. Missing: questions or lookups per year."}
+    implementation_effort: {score: 4, anchor_level: 4, confidence: low, resolution: judged, quote: "para que la gente pueda preguntar lo que sea", note: "Two or more quarters: an unbounded corpus would have to be curated and given owners across the company, plus a new platform component. Low confidence — scope is undefined by construction."}
+    data_governance: {score: null, anchor_level: null, confidence: null, resolution: judged, quote: "Datos: — · Clasificación: —", note: "UNKNOWN. No data source and no classification stated, and 'preguntar lo que sea' leaves the data domain undefined, so classification, processing permission and access path are all undeterminable. Missing: which corpora are in scope and their classification."}
+    non_ai_alternative: {score: 2, anchor_level: 2, confidence: low, resolution: derived, branch: none_complete, quote: "La gente busca en la intranet o le pregunta a alguien.", note: "Intranet search is deterministic and runs today; after it runs the person still has to decide which result answers them. Asking a colleague excluded as non-deterministic. -> none_complete = 2."}
+  ambiguous_anchors:
+    - "data_readiness 1 vs 2 (evaluability): whether an onboarding-style corpus 'could be assembled' or requires collecting what nobody recorded."
+    - "non_ai_alternative empty vs none_complete: whether a generic intranet search counts as a thing that exists 'for this work'."
+
+- case_id: A-04
+  archetype: extraction
+  artefacts:
+    - name: "Plantillas contractuales aprobadas"
+      what_it_does: "Define the approved baseline text each supplier contract is compared against"
+      completes_without_judgement: false
+      quote: "Tenemos las plantillas aprobadas y unos tres años de contratos revisados en el repositorio"
+  anti_pattern_matches: []
+  near_misses: []
+  dimensions:
+    business_value: {score: 3, anchor_level: 3, confidence: medium, resolution: derived, quote: "El abogado lee el contrato completo. Entre 40 minutos y dos horas según el tamaño.", note: "person_hours denomination (per-instance duration stated): 70/month x 12 = 840 contracts/year; midpoint 80 min = 1.33 h; 840 x 1.33 = 1,120 person-hours/year, inside the 1,000-5,000 band = level 3. Cases denomination would land on the same level (840/year)."}
+    adoption_risk: {score: 2, anchor_level: 2, confidence: medium, resolution: judged, quote: "No queremos que apruebe nada, queremos llegar a la revisión sabiendo dónde ver.", note: "The three lawyers are the intended users, the request is written from inside their workflow and their manager is the requester; the change is a marked-up contract inside a review they already do. No previous-tool history, so level 1 is unavailable."}
+    data_readiness: {score: 3, anchor_level: 3, confidence: medium, resolution: judged, quote: "los comentarios de revisión quedaron en los Word con control de cambios, no en un sistema", note: "AVAILABILITY 4 — templates and three years of reviewed contracts are centralized in the Legal repository with a plausible path to checking quality. EVALUABILITY 3 — no agreed way yet to judge a deviation report, but the approved template is an unambiguous reference and the risk clause list is enumerated, so nothing stands in the way of agreeing one. min(4,3)=3."}
+    process_frequency: {score: 3, anchor_level: 3, confidence: high, resolution: derived, quote: "Frecuencia: 70 al mes", note: "70 x 12 = 840 instances/year; 840 < 1,000 -> band 3."}
+    implementation_effort: {score: 3, anchor_level: 3, confidence: medium, resolution: judged, quote: "que algo lea el contrato y nos marque dónde se apartó de nuestra plantilla y qué cláusulas de riesgo trae", note: "About one quarter: document ingestion pipeline, clause detection against templates, and a review UI for the lawyers."}
+    data_governance: {score: 3, anchor_level: 3, confidence: high, resolution: derived, quote: "Clasificación: confidencial", note: "intake_sensitivity mapping confidential -> 3."}
+    non_ai_alternative: {score: 2, anchor_level: 2, confidence: medium, resolution: derived, branch: none_complete, quote: "El abogado lee el contrato completo.", note: "The approved templates are a held artefact for this work (a template is a named kind), but after consulting them a lawyer still has to decide where the contract departed and what the risk is. The three years of reviewed contracts are history, not a thing that finishes an instance. -> none_complete = 2."}
+  ambiguous_anchors:
+    - "non_ai_alternative empty vs none_complete: whether a passive baseline document (a contract template) is a thing that 'exists for this work' or only reference material."
+
+- case_id: A-05
+  archetype: anomaly_detection
+  artefacts:
+    - name: "Excel de pipeline de cada gerente regional"
+      what_it_does: "Downloads Salesforce data and produces that region's pipeline numbers"
+      completes_without_judgement: false
+      quote: "Cada gerente regional descarga de Salesforce y arma su Excel."
+  anti_pattern_matches:
+    - pattern: reporting_in_disguise
+      hard_block: true
+      quote: "Quiero abrir algo el lunes en la mañana y saber en qué estamos parados sin pedirle nada a nadie."
+      note: "The requested artefact is a view of what already happened — pipeline by region and by seller, one version of the number. Nothing is predicted, generated or decided."
+  near_misses:
+    - pattern: existing_licensed_capability
+      failed_part: "Part B"
+      note: "Part A quotable ('Cada gerente regional descarga de Salesforce'); Part B not — Salesforce is named as the place the data lives, never as a platform that already produces this view. Explicitly the ruled-out error."
+  dimensions:
+    business_value: {score: 2, anchor_level: 2, confidence: low, resolution: derived, quote: "Frecuencia: semanal", note: "cases denomination (volume_only, confidence low): weekly = 52 forecast cycles/year, inside the 50-500 band = level 2. No per-instance duration and no currency figure stated."}
+    adoption_risk: {score: 4, anchor_level: 4, confidence: medium, resolution: judged, quote: "Ahorita cada gerente regional arma su propio Excel y cada quien lo calcula distinto", note: "Anchor 4: the change requires the regional managers to abandon a way of working they chose themselves and adopt a new tool; the request comes from the Director, and there is no statement that the four regional managers were consulted."}
+    data_readiness: {score: 3, anchor_level: 3, confidence: medium, resolution: judged, quote: "las juntas de forecast se van en discutir de quién es el número bueno", note: "AVAILABILITY 3 — pipeline data sits in Salesforce with a plausible access path, but its quality has not been checked on real records and the disputed numbers suggest it has not. EVALUABILITY 3 — no agreed definition of the right number yet, though nothing stands in the way of agreeing one. min(3,3)=3."}
+    process_frequency: {score: 2, anchor_level: 2, confidence: medium, resolution: derived, quote: "Cuatro regiones, junta semanal de forecast.", note: "weekly = 52 instances/year; 52 < 100 -> band 2."}
+    implementation_effort: {score: 2, anchor_level: 2, confidence: medium, resolution: judged, quote: "Cada gerente regional descarga de Salesforce y arma su Excel.", note: "Two to six weeks: one integration against Salesforce plus agreeing the definitions; no new vendor or licence stated."}
+    data_governance: {score: 3, anchor_level: 3, confidence: high, resolution: derived, quote: "Clasificación: confidencial", note: "intake_sensitivity mapping confidential -> 3."}
+    non_ai_alternative: {score: 2, anchor_level: 2, confidence: medium, resolution: derived, branch: none_complete, quote: "las juntas de forecast se van en discutir de quién es el número bueno", note: "Four regional Excels exist and run weekly, but after they run somebody still has to decide which number is the good one — no instance is finished. -> none_complete = 2."}
+  ambiguous_anchors:
+    - "archetype: no archetype in patterns.yaml covers reporting; anomaly_detection recorded for the 'avísame cuando algo se salga de lo normal' half, but the dominant ask is a view."
+
+- case_id: A-06
+  archetype: summarization
+  artefacts: []
+  anti_pattern_matches: []
+  near_misses:
+    - pattern: existing_licensed_capability
+      failed_part: "Part B"
+      note: "Part A quotable ('Datos: SharePoint de Marketing'); Part B not — SharePoint is named as where the material lives, never as a platform that already translates or adapts it."
+  dimensions:
+    business_value: {score: 2, anchor_level: 2, confidence: medium, resolution: derived, quote: "Costo aproximado 240 mil pesos al año.", note: "currency denomination, already annual: 240,000 MXN / 18 MXN per USD (rate in effect) = 13,333 USD/year, inside the 10k-50k band = level 2. Robust to the rate: at 17 MXN/USD it is 14,118 USD, still level 2. Confidence medium because a conversion was required."}
+    adoption_risk: {score: 2, anchor_level: 2, confidence: medium, resolution: judged, quote: "De todas formas alguien lo revisa antes de que salga.", note: "The requester manages the seven-person team that would use it, the team already reviews the agency output, and the change fits that review workflow with minor adjustment. No previous-tool history, so level 1 is unavailable."}
+    data_readiness: {score: 4, anchor_level: 4, confidence: medium, resolution: judged, quote: "necesita quedar lo bastante bien para que alguien de mi equipo lo ajuste en una hora en vez de escribirlo desde cero", note: "AVAILABILITY 4 — source material is centralized in Marketing's SharePoint and is the input itself, with a plausible path to checking it. EVALUABILITY 4 — generative archetype with a stated draft quality criterion (good enough to be finished in one hour) plus years of agency output as reference; no curated reference set with agreed criteria yet. min(4,4)=4."}
+    process_frequency: {score: 3, anchor_level: 3, confidence: high, resolution: derived, quote: "Frecuencia: 150 al año", note: "150 instances/year; 150 < 1,000 -> band 3."}
+    implementation_effort: {score: 2, anchor_level: 2, confidence: medium, resolution: judged, quote: "Queremos poder traducir y adaptar internamente.", note: "Two to six weeks: SharePoint intake plus a drafting step and a review process the team already has; one team affected, no new system of record."}
+    data_governance: {score: 2, anchor_level: 2, confidence: high, resolution: derived, quote: "Clasificación: interno", note: "intake_sensitivity mapping internal -> 2."}
+    non_ai_alternative: {score: 1, anchor_level: 1, confidence: medium, resolution: derived, branch: empty, quote: "Se manda a agencia externa.", note: "The only thing that finishes this work today is an external translation agency — human judgement, not a deterministic means, so it is not an artefact under the axis 'finished today BY DETERMINISTIC MEANS'. No glossary, template, translation memory or machine translation tool is mentioned. Empty list is a real answer here, not a missing one. -> empty = 1."}
+  ambiguous_anchors:
+    - "non_ai_alternative: the agency plainly finishes the work today but is excluded as non-deterministic; this is the case where the derivation and the plain reading of 'strength of the non-AI alternative' diverge most."
+
+- case_id: A-07
+  archetype: forecasting
+  artefacts: []
+  anti_pattern_matches: []
+  near_misses: []
+  dimensions:
+    business_value: {score: 4, anchor_level: 4, confidence: medium, resolution: derived, quote: "Cada reemplazo nos cuesta alrededor de 90 mil pesos entre reclutamiento, curva de aprendizaje y cobertura. Perdemos unas 140 personas al año.", note: "currency denomination: 90,000 MXN x 140 = 12,600,000 MXN/year; 12,600,000 / 18 MXN per USD (rate in effect) = 700,000 USD/year, inside the 250k-1M band = level 4. Confidence medium — annualisation and conversion both required. Recorded as stated; the rubric scores the size of the prize, not the fraction of turnover that is actually avoidable."}
+    adoption_risk: {score: 4, anchor_level: 4, confidence: medium, resolution: judged, quote: "para que el jefe directo pueda actuar antes", note: "Anchor 4: the intended users are line managers across 3,000 employees, none of whom is stated to have been consulted, and acting on a retention prediction is a new workflow they do not have today. The requester is HR, not the users."}
+    data_readiness: {score: 4, anchor_level: 4, confidence: medium, resolution: judged, quote: "También tenemos quién renunció y cuándo.", note: "AVAILABILITY 4 — five years of payroll, tenure, performance, absence and climate data centralized in SuccessFactors and payroll, with a plausible path to checking quality, but no quality check on real records is reported. EVALUABILITY 5 — predictive archetype with an unambiguous outcome variable: who resigned and when. min(4,5)=4."}
+    process_frequency: {score: null, anchor_level: null, confidence: null, resolution: judged, quote: "Personas: 3,000 · Frecuencia: —", note: "UNKNOWN. Derivation input blank. An instance is one employee scored once, but the scoring cadence is not stated: annual scoring of 3,000 employees = 3,000/year (band 4), monthly = 36,000/year (band 5). Missing: how often the prediction would be produced."}
+    implementation_effort: {score: 3, anchor_level: 3, confidence: medium, resolution: judged, quote: "Tenemos los datos de nómina, antigüedad, evaluaciones de desempeño, incrementos, ausentismo y las encuestas de clima de los últimos cinco años.", note: "About one quarter: a new data pipeline joining payroll, SuccessFactors and survey data, plus a way to deliver predictions to line managers; HR and IT to coordinate."}
+    data_governance: {score: 4, anchor_level: 4, confidence: high, resolution: derived, quote: "Clasificación: regulado", note: "intake_sensitivity mapping regulated -> 4. Level 5 is not derivable and no contractual bar or works-council refusal is stated in the request."}
+    non_ai_alternative: {score: 1, anchor_level: 1, confidence: high, resolution: derived, branch: empty, quote: "No se hace. Nos enteramos cuando entregan la carta.", note: "The request states outright that nothing is done today. Nothing deterministic finishes any part of this work. -> empty = 1."}
+  ambiguous_anchors:
+    - "business_value: whether a total cost of turnover is the magnitude of the benefit or only its ceiling; the rubric's step (1) admits the stated figure without discounting."
+
+- case_id: A-08
+  archetype: classification
+  artefacts:
+    - name: "Procedimiento manual de verificación y reseteo en Active Directory"
+      what_it_does: "Verifies identity with two directory questions and executes the reset; the ticket is resolved when it finishes"
+      completes_without_judgement: true
+      quote: "el agente verifica identidad con dos preguntas del directorio y ejecuta el reseteo en Active Directory"
+  anti_pattern_matches:
+    - pattern: deterministic_rule_suffices
+      hard_block: true
+      quote: "el agente verifica identidad con dos preguntas del directorio y ejecuta el reseteo en Active Directory"
+      second_quote: "Datos: Active Directory · Clasificación: confidencial"
+      note: "PART A — the complete decision logic is stated in one sentence (two directory questions, then reset). PART B — the inputs that rule needs are already values in a system today: the directory, named as the data source."
+    - pattern: rpa_relabeled
+      hard_block: true
+      quote: "El usuario levanta ticket, el agente verifica identidad con dos preguntas del directorio y ejecuta el reseteo en Active Directory. Toma unos cuatro minutos."
+      note: "Fixed, judgement-free steps against named systems, inputs are directory fields rather than documents or free text."
+  near_misses:
+    - pattern: zero_error_tolerance_no_human
+      failed_part: "the perfect-accuracy half"
+      note: "The no-human half is quotable ('sin que un agente intervenga'), but the request never says it has to be right every time or rules out a review step. Both halves are required, so no match."
+    - pattern: existing_licensed_capability
+      failed_part: "Part B"
+      note: "Part A quotable (Active Directory is a platform the company runs); Part B not — AD is named as where the reset is executed, never as a platform that already offers self-service reset."
+  dimensions:
+    business_value: {score: 3, anchor_level: 3, confidence: medium, resolution: derived, quote: "Toma unos cuatro minutos. Son como 1,300 tickets al mes.", note: "person_hours denomination (per-instance duration stated): 1,300 x 12 = 15,600 tickets/year; 15,600 x 4 min = 62,400 min = 1,040 person-hours/year, inside the 1,000-5,000 band = level 3. The cases denomination would read 15,600/year = level 4, but person_hours has priority in the declaration order."}
+    adoption_risk: {score: 4, anchor_level: 4, confidence: medium, resolution: judged, quote: "Queremos ponerle IA para que el usuario le escriba a un asistente y este le resetee la contraseña sin que un agente intervenga.", note: "Anchor 4: the intended users are the end users raising the tickets; they are not stated to have been consulted and the change requires them to adopt a new channel instead of raising a ticket."}
+    data_readiness: {score: 3, anchor_level: 3, confidence: medium, resolution: judged, quote: "el agente verifica identidad con dos preguntas del directorio", note: "AVAILABILITY 3 — the directory attributes used for verification sit in one system with a plausible access path, but their quality and completeness have not been checked on real records. EVALUABILITY 5 — the outcome is unambiguous: the reset either succeeded for the right person or it did not. min(3,5)=3."}
+    process_frequency: {score: 5, anchor_level: 5, confidence: high, resolution: derived, quote: "Frecuencia: 1,300 al mes", note: "1,300 x 12 = 15,600 instances/year; 15,600 > 10,000 -> band 5."}
+    implementation_effort: {score: 3, anchor_level: 3, confidence: low, resolution: judged, quote: "para que el usuario le escriba a un asistente y este le resetee la contraseña sin que un agente intervenga", note: "About one quarter: an identity-verification workflow plus a write integration into Active Directory and a security review, with the service desk and identity teams to coordinate. Low confidence — this is normally a configuration of an identity platform, which would be a 1."}
+    data_governance: {score: 3, anchor_level: 3, confidence: high, resolution: derived, quote: "Clasificación: confidencial", note: "intake_sensitivity mapping confidential -> 3."}
+    non_ai_alternative: {score: 5, anchor_level: 5, confidence: medium, resolution: derived, branch: coverage_all, quote: "el agente verifica identidad con dos preguntas del directorio y ejecuta el reseteo en Active Directory", note: "The manual procedure is deterministic and finishes the instance — after it runs the password is reset and nobody has to decide anything further. Read against the work the request describes (resetting passwords, 1,300 a month), it describes that work with no qualification. coverage_rule -> `all` = 5."}
+  ambiguous_anchors:
+    - "non_ai_alternative coverage_all vs coverage_most: the existing procedure finishes every instance but consumes an agent, which the request treats as the remainder to be removed; the coverage_rule reads what_it_does against the work, not against the cost."
+
+- case_id: A-09
+  archetype: classification
+  artefacts:
+    - name: "Catálogo vigente de tipo de riesgo y área del cuerpo"
+      what_it_does: "Defines the categories every near-miss report is coded into for the monthly and STPS reports"
+      completes_without_judgement: false
+      quote: "los primeros tres años usaban un catálogo distinto al de ahora"
+  anti_pattern_matches: []
+  near_misses: []
+  dimensions:
+    business_value: {score: 3, anchor_level: 3, confidence: low, resolution: derived, quote: "Llegan entre 60 y 90 reportes al mes.", note: "cases denomination (volume_only, confidence low): 75/month x 12 = 900 reports/year, inside the 500-5,000 band = level 3. No per-instance classification time and no currency figure stated."}
+    adoption_risk: {score: 2, anchor_level: 2, confidence: low, resolution: judged, quote: "Queremos que se clasifiquen solos al momento de capturarlos.", note: "The two EHS people are the intended users, the requester is their coordinator and describes their pain, and the change removes a step rather than adding one. Level 1 unavailable (no previous-tool history); low confidence because consultation is inferred from the requester's role, not stated."}
+    data_readiness: {score: 4, anchor_level: 4, confidence: medium, resolution: judged, quote: "Tenemos ocho años de reportes ya clasificados, aunque los primeros tres años usaban un catálogo distinto al de ahora.", note: "AVAILABILITY 4 — centralized in the EHS system, five years usable under the current catalogue, quality partially characterised by the requester but not verified on a sample. EVALUABILITY 4 — predictive archetype with labelled examples, but the labels are known to be noisy ('a veces se clasifican mal') and the catalogue changed, so they are a usable proxy rather than a settled outcome variable. min(4,4)=4."}
+    process_frequency: {score: 3, anchor_level: 3, confidence: high, resolution: derived, quote: "Frecuencia: 75 al mes", note: "75 x 12 = 900 instances/year; 900 < 1,000 -> band 3."}
+    implementation_effort: {score: 2, anchor_level: 2, confidence: medium, resolution: judged, quote: "Los reportes de casi-accidente los captura el supervisor en texto libre", note: "Two to six weeks: one integration into the EHS capture form plus a classifier trained on existing history; one team affected."}
+    data_governance: {score: 3, anchor_level: 3, confidence: low, resolution: judged, quote: "alguien de EHS los clasifica por tipo de riesgo y área del cuerpo para el reporte mensual y para STPS", note: "JUDGED — the Clasificación field is blank. Anchor 3: personal data beyond basic identifiers (incident narratives naming workers, with body part affected) plus a statutory reporting obligation to STPS. Level 4 is arguable if body-part data is treated as health information; recorded as 3 with low confidence."}
+    non_ai_alternative: {score: 2, anchor_level: 2, confidence: low, resolution: derived, branch: none_complete, quote: "Un analista de EHS clasifica manualmente.", note: "The current catalogue is a held mapping for this work, but after consulting it somebody still has to decide the category — and the request says the human classification is itself unreliable and late. Manual classification excluded as non-deterministic. -> none_complete = 2."}
+  ambiguous_anchors:
+    - "data_governance 3 vs 4: whether 'área del cuerpo' on a near-miss report is health information (restricted) or personal data beyond basic identifiers."
+    - "non_ai_alternative empty vs none_complete: whether a category catalogue is a thing that 'exists for this work' or only the label space."
+
+- case_id: A-10
+  archetype: rag_qa
+  artefacts:
+    - name: "Búsqueda de la biblioteca de SharePoint"
+      what_it_does: "Returns catalogue, configuration and price documents matching a search"
+      completes_without_judgement: false
+      quote: "Búsqueda en SharePoint y preguntarle al de soporte comercial con más años."
+  anti_pattern_matches: []
+  near_misses:
+    - pattern: existing_licensed_capability
+      failed_part: "Part B"
+      note: "Part A quotable ('en una biblioteca de SharePoint'); Part B not — SharePoint is named as where the 900 PDFs live, never as a platform that already answers these questions. patterns.yaml warns rag_qa is the most common false positive here, and this is one."
+  dimensions:
+    business_value: {score: null, anchor_level: null, confidence: null, resolution: judged, quote: "Los vendedores pierden mucho tiempo buscando qué configuración aplica para un cliente y qué precio de lista corresponde.", note: "UNKNOWN. scoring_rule step (2): no magnitude in any denomination — 'mucho tiempo' is not a figure, no per-instance duration, no currency, and Frecuencia is blank so no case count either. Missing: how many lookups a year, or the time or rework cost they carry."}
+    adoption_risk: {score: 4, anchor_level: 4, confidence: low, resolution: judged, quote: "Queremos preguntarle en lenguaje natural", note: "Anchor 4: the intended users are 45 salespeople, the requester is commercial support rather than the users, no consultation is stated, and the change substitutes a new tool for the search-and-ask habit they have now. Low confidence — the alternative reading is level 3."}
+    data_readiness: {score: 3, anchor_level: 3, confidence: medium, resolution: judged, quote: "Son como 900 documentos entre catálogos, guías de configuración, boletines de precio y notas de compatibilidad, en PDF, en una biblioteca de SharePoint.", note: "AVAILABILITY 3 — 900 PDFs in one SharePoint library with a plausible access path, but currency and quality never checked on real records (price bulletins and compatibility notes go stale). EVALUABILITY 3 — no agreed way yet to judge an answer, though the request names the question shape and answers are checkable against the cited document, so nothing stands in the way. min(3,3)=3."}
+    process_frequency: {score: null, anchor_level: null, confidence: null, resolution: judged, quote: "Personas: 45 · Frecuencia: —", note: "UNKNOWN. Derivation input blank and no instance count is stated anywhere in the request. Missing: configuration or price lookups per year."}
+    implementation_effort: {score: 3, anchor_level: 3, confidence: medium, resolution: judged, quote: "que nos diga la respuesta y de qué documento la sacó", note: "About one quarter: an ingestion and retrieval pipeline over 900 PDFs with citation support, plus a UI and document ownership for currency."}
+    data_governance: {score: 3, anchor_level: 3, confidence: high, resolution: derived, quote: "Clasificación: confidencial", note: "intake_sensitivity mapping confidential -> 3."}
+    non_ai_alternative: {score: 2, anchor_level: 2, confidence: medium, resolution: derived, branch: none_complete, quote: "Cuando no encuentran, asumen o copian de una cotización anterior.", note: "SharePoint search is deterministic and runs today, but after it runs the salesperson still has to decide which document applies — and the request says that when it fails they guess. Asking the most experienced colleague excluded as non-deterministic. -> none_complete = 2."}
+  ambiguous_anchors: []
+
+- case_id: A-11
+  archetype: classification
+  artefacts:
+    - name: "Revisión manual de una muestra del 15% contra la política"
+      what_it_does: "Applies the written expense policy to 15% of reports and settles compliance for those reports"
+      completes_without_judgement: true
+      quote: "Se revisa una muestra del 15%."
+  anti_pattern_matches: []
+  near_misses:
+    - pattern: existing_licensed_capability
+      failed_part: "Part B"
+      note: "Part A quotable ('Datos: Concur'); Part B not — Concur is named as where the expense reports live, and the request never says its audit capability covers this."
+  dimensions:
+    business_value: {score: null, anchor_level: null, confidence: null, resolution: judged, quote: "Personas: — · Frecuencia: — · Datos: Concur · Clasificación: —", note: "UNKNOWN. scoring_rule step (2): no magnitude in any denomination — no report volume, no review time, no leakage figure. Missing: expense reports per year, or the cost of the non-compliance being missed."}
+    adoption_risk: {score: 4, anchor_level: 4, confidence: low, resolution: judged, quote: "Solicitante: (no indicado)", note: "Anchor 4: no requester is named, so no user of the controllership team is stated to have been consulted, and the change replaces sampling with exception review — a different way of working. Level 5 not reached: no previous tool was rejected or abandoned."}
+    data_readiness: {score: 3, anchor_level: 3, confidence: low, resolution: judged, quote: "Queremos que la IA revise los reportes de gastos y detecte los que no cumplen la política", note: "AVAILABILITY 3 — reports sit in Concur, one system with a plausible access path, quality never checked on real records. EVALUABILITY 3 — the policy is an unambiguous reference and the 15% sample review produces decisions, but no agreed labelled set is stated; nothing stands in the way of agreeing one. min(3,3)=3."}
+    process_frequency: {score: null, anchor_level: null, confidence: null, resolution: judged, quote: "Frecuencia: —", note: "UNKNOWN. Derivation input blank and the request states no volume. Missing: expense reports per year."}
+    implementation_effort: {score: 2, anchor_level: 2, confidence: low, resolution: judged, quote: "para que el equipo de contraloría solo revise los que tienen problema", note: "Two to six weeks: one integration against Concur plus encoding the policy checks and adjusting the review process. Low confidence — scope is stated in two sentences."}
+    data_governance: {score: 3, anchor_level: 3, confidence: low, resolution: judged, quote: "Datos: Concur · Clasificación: —", note: "JUDGED — the Clasificación field is blank. Anchor 3: expense reports are confidential business data carrying personal data beyond basic identifiers (who spent what, where, with whom). Level 4 is arguable if they are read as financial records; recorded as 3 with low confidence."}
+    non_ai_alternative: {score: 3, anchor_level: 3, confidence: low, resolution: derived, branch: coverage_part, quote: "Se revisa una muestra del 15%.", note: "The sample review is a deterministic manual application of a written policy and settles compliance for the reports it touches; its own description bounds it to 15% of them. coverage_rule -> `part` = 3. Low confidence: whether applying an expense policy by hand is deterministic is itself arguable, and if it is not, the list is empty and the level is 1."}
+  ambiguous_anchors:
+    - "non_ai_alternative: whether a human applying a written policy is 'deterministic'; this single judgement moves the level between 1 and 3."
+    - "data_governance 3 vs 4 for employee expense data."
+
+- case_id: A-12
+  archetype: classification
+  artefacts: []
+  anti_pattern_matches: []
+  near_misses:
+    - pattern: deterministic_rule_suffices
+      failed_part: "Part A"
+      note: "Part B is quotable ('Datos: SAP maestro de proveedores' — the names are already values in a system today), but Part A is not: the request never states the matching logic. 'con filtros de Excel' names a past method, not an if-X-then-Y rule or a lookup, and fuzzy name matching is not a rule a person states in one sentence."
+  dimensions:
+    business_value: {score: 3, anchor_level: 3, confidence: low, resolution: derived, quote: "Frecuencia: 250 altas al mes", note: "cases denomination (volume_only, confidence low): 250 x 12 = 3,000 supplier creations/year, inside the 500-5,000 band = level 3. No per-instance duration; 'a veces nos hace pagar dos veces' carries no currency figure."}
+    adoption_risk: {score: 3, anchor_level: 3, confidence: low, resolution: judged, quote: "cuando alguien dé de alta uno nuevo nos avise si ya existe", note: "Anchor 3: the duplicate warning adds a new step at creation time for whoever registers a supplier, and adoption depends on master data asking people to heed it. The requester is a user of the detection half, which is why this is not a 4."}
+    data_readiness: {score: 3, anchor_level: 3, confidence: low, resolution: judged, quote: "Hicimos una limpieza hace dos años con filtros de Excel y encontramos como 600 duplicados de 11 mil registros.", note: "AVAILABILITY 4 — the supplier master is centralized in SAP and its quality has been checked on real records (600 duplicates found in 11,000). EVALUABILITY 3 — no agreed way yet to judge a proposed duplicate pair; the 600 found two years ago are not stated to have been retained as labelled pairs, though nothing stands in the way of agreeing a standard. min(4,3)=3."}
+    process_frequency: {score: 4, anchor_level: 4, confidence: high, resolution: derived, quote: "Frecuencia: 250 altas al mes", note: "250 x 12 = 3,000 instances/year; 3,000 < 10,000 -> band 4."}
+    implementation_effort: {score: 3, anchor_level: 3, confidence: medium, resolution: judged, quote: "Queremos que se detecten los duplicados en el maestro y que cuando alguien dé de alta uno nuevo nos avise si ya existe.", note: "About one quarter: a matching pipeline over the master plus a creation-time check inside SAP, coordinating master data and the SAP team."}
+    data_governance: {score: 3, anchor_level: 3, confidence: high, resolution: derived, quote: "Clasificación: confidencial", note: "intake_sensitivity mapping confidential -> 3."}
+    non_ai_alternative: {score: 1, anchor_level: 1, confidence: medium, resolution: derived, branch: empty, quote: "Desde entonces no se ha vuelto a hacer.", note: "The Excel-filter cleanup is deterministic but is not doing the work today — the request says it has not been repeated in two years. 'Cuando alguien lo nota' is not deterministic and no duplicate check exists at creation. Nothing deterministic runs today. -> empty = 1."}
+  ambiguous_anchors:
+    - "non_ai_alternative empty vs none_complete: a deterministic method that was demonstrably used once and then stopped — the instruction rules out things 'never switched on', but is silent on things switched off."
+
+- case_id: B-01
+  archetype: summarization
+  artefacts:
+    - name: "Formato y lenguaje de descripción de puesto de la empresa"
+      what_it_does: "Fixes the structure and wording standard a job description must follow"
+      completes_without_judgement: false
+      quote: "se genere el borrador con nuestro formato y nuestro lenguaje"
+    - name: "Biblioteca de 400 descripciones aprobadas en SuccessFactors"
+      what_it_does: "Holds approved descriptions a recruiter copies from for a similar role"
+      completes_without_judgement: false
+      quote: "Tenemos como 400 descripciones aprobadas de los últimos años en SuccessFactors, aunque de calidad variable."
+  anti_pattern_matches: []
+  near_misses: []
+  dimensions:
+    business_value: {score: 2, anchor_level: 2, confidence: low, resolution: derived, quote: "Unas 25 vacantes nuevas al mes.", note: "cases denomination (volume_only, confidence low): 25 x 12 = 300 vacancies/year, inside the 50-500 band = level 2. No per-instance writing time and no currency figure stated."}
+    adoption_risk: {score: 2, anchor_level: 2, confidence: medium, resolution: judged, quote: "Queremos que a partir del título, el nivel y las responsabilidades que nos da el hiring manager, se genere el borrador con nuestro formato y nuestro lenguaje.", note: "The requester is one of the eight recruiters who would use it, and the draft slots into the write-then-HRBP-review workflow they already run. Level 1 unavailable — no previous tool is reported."}
+    data_readiness: {score: 4, anchor_level: 4, confidence: medium, resolution: judged, quote: "Tenemos como 400 descripciones aprobadas de los últimos años en SuccessFactors, aunque de calidad variable.", note: "AVAILABILITY 4 — centralized in SuccessFactors and its quality already characterised on real records ('de calidad variable'). EVALUABILITY 4 — generative archetype with reference outputs (400 approved descriptions) and draft criteria (house format, plus the legal-requirement filter), but no curated set with agreed criteria. min(4,4)=4."}
+    process_frequency: {score: 3, anchor_level: 3, confidence: high, resolution: derived, quote: "Frecuencia: 25 al mes", note: "25 x 12 = 300 instances/year; 300 < 1,000 -> band 3."}
+    implementation_effort: {score: 2, anchor_level: 2, confidence: medium, resolution: judged, quote: "El reclutador escribe en Word y la revisa el HRBP.", note: "Two to six weeks: one integration against SuccessFactors plus a drafting step in a process that already has a reviewer; one team affected."}
+    data_governance: {score: 2, anchor_level: 2, confidence: high, resolution: derived, quote: "Clasificación: interno", note: "intake_sensitivity mapping internal -> 2."}
+    non_ai_alternative: {score: 2, anchor_level: 2, confidence: low, resolution: derived, branch: none_complete, quote: "hoy cada reclutador la escribe desde cero o copia una parecida y la edita", note: "Two artefacts exist for this work — the house format and the library of approved descriptions — and neither finishes an instance: after consulting them a recruiter still has to choose, write and edit. -> none_complete = 2."}
+  ambiguous_anchors: []
+
+- case_id: B-02
+  archetype: classification
+  artefacts:
+    - name: "Catálogo de motivos y severidad"
+      what_it_does: "Defines the fixed set of reasons and severities every complaint is coded into"
+      completes_without_judgement: false
+      quote: "Tenemos tres años clasificadas con el mismo catálogo de motivos, que no ha cambiado."
+  anti_pattern_matches: []
+  near_misses:
+    - pattern: existing_licensed_capability
+      failed_part: "Part B"
+      note: "Part A quotable ('Datos: Salesforce Service Cloud'); Part B not — Service Cloud is named as where the complaints live, and the request never says its own AI already classifies them."
+  dimensions:
+    business_value: {score: 4, anchor_level: 4, confidence: low, resolution: derived, quote: "Llegan unas 1,100 quejas al mes.", note: "cases denomination (volume_only, confidence low): 1,100 x 12 = 13,200 complaints/year, inside the 5,000-50,000 band = level 4. No per-instance classification time and no currency figure stated."}
+    adoption_risk: {score: 2, anchor_level: 2, confidence: low, resolution: judged, quote: "Un analista clasifica manualmente al cierre de mes.", note: "The intended user is the analyst who does the coding today, the requester is their manager describing their pain, and the change removes a month-end step rather than adding one. Low confidence — consultation is inferred from the requester's role."}
+    data_readiness: {score: 4, anchor_level: 4, confidence: medium, resolution: judged, quote: "Tenemos tres años clasificadas con el mismo catálogo de motivos, que no ha cambiado.", note: "AVAILABILITY 4 — three years centralized in Service Cloud under a stable catalogue, with a plausible path to checking quality but no check on a real sample reported. EVALUABILITY 4 — labelled history exists but the request states the labels were applied with a different criterion each month, so they are a usable proxy, not a settled outcome variable. min(4,4)=4."}
+    process_frequency: {score: 5, anchor_level: 5, confidence: high, resolution: derived, quote: "Frecuencia: 1,100 al mes", note: "1,100 x 12 = 13,200 instances/year; 13,200 > 10,000 -> band 5."}
+    implementation_effort: {score: 2, anchor_level: 2, confidence: medium, resolution: judged, quote: "el agente escribe qué pasó en texto libre", note: "Two to six weeks: one integration against Service Cloud plus a classifier trained on three years of history; one existing process (month-end coding) to adjust."}
+    data_governance: {score: 3, anchor_level: 3, confidence: high, resolution: derived, quote: "Clasificación: confidencial", note: "intake_sensitivity mapping confidential -> 3."}
+    non_ai_alternative: {score: 2, anchor_level: 2, confidence: low, resolution: derived, branch: none_complete, quote: "se hace con criterio distinto según quién lo hizo ese mes", note: "The motive catalogue is a held mapping for exactly this work but finishes nothing on its own — somebody still has to read each complaint and decide. Manual classification excluded as non-deterministic, and the request says outright it is not consistent. -> none_complete = 2."}
+  ambiguous_anchors:
+    - "non_ai_alternative empty vs none_complete: whether a classification catalogue is an artefact or just the label space."
+
+- case_id: B-03
+  archetype: extraction
+  artefacts:
+    - name: "Reconciliación anual en Excel de SCCM contra facturas"
+      what_it_does: "Exports the SCCM inventory, crosses it against invoices and produces the overspend report; it produced the 1.4M MXN finding"
+      completes_without_judgement: true
+      quote: "Una vez al año, alguien exporta el inventario de SCCM, lo cruza contra las facturas en Excel y arma un reporte."
+  anti_pattern_matches:
+    - pattern: deterministic_rule_suffices
+      hard_block: true
+      quote: "Queremos que la IA compare lo que compramos contra lo que está instalado y contra quién lo usa, y nos diga dónde estamos pagando de más."
+      second_quote: "alguien exporta el inventario de SCCM, lo cruza contra las facturas en Excel y arma un reporte"
+      note: "PART A — the decision logic is the request itself: compare purchased against installed against used. PART B — the inputs are already values in systems today, and the request says somebody already exports and crosses them."
+    - pattern: reporting_in_disguise
+      hard_block: true
+      quote: "nos diga dónde estamos pagando de más"
+      note: "The wanted output is a number and a list about what already happened; nothing is predicted, generated or decided."
+  near_misses: []
+  dimensions:
+    business_value: {score: 3, anchor_level: 3, confidence: medium, resolution: derived, quote: "La última vez encontramos 1.4 millones de pesos al año.", note: "currency denomination, already annual: 1,400,000 MXN / 18 MXN per USD (rate in effect) = 77,778 USD/year, inside the 50k-250k band = level 3. Confidence medium because a conversion was required."}
+    adoption_risk: {score: 2, anchor_level: 2, confidence: low, resolution: judged, quote: "Una vez al año, alguien exporta el inventario de SCCM, lo cruza contra las facturas en Excel y arma un reporte.", note: "The two IT asset people are the intended users, the requester is their coordinator, and the output replaces a spreadsheet they already build — an existing workflow with minor adjustment. Low confidence — no consultation or owner commitment is stated."}
+    data_readiness: {score: 3, anchor_level: 3, confidence: low, resolution: judged, quote: "no sabemos con certeza cuántas estamos usando realmente", note: "AVAILABILITY 3 — purchases and installs exist in SCCM and contracts with a plausible access path (they are crossed by hand each year), but quality has not been checked on real records and the third input, actual usage, is not stated to be captured anywhere. EVALUABILITY 4 — the outcome (paid but unused) is computable and checkable, giving a usable proxy short of a settled reference. min(3,4)=3."}
+    process_frequency: {score: 1, anchor_level: 1, confidence: medium, resolution: derived, quote: "Frecuencia: anual", note: "1 instance/year (one reconciliation end to end); 1 < 12 -> band 1."}
+    implementation_effort: {score: 3, anchor_level: 3, confidence: medium, resolution: judged, quote: "Tarda como tres semanas y para cuando sale ya cambió.", note: "About one quarter: a new pipeline joining SCCM, contract and usage data, plus a reporting surface; IT asset management and procurement to coordinate."}
+    data_governance: {score: 3, anchor_level: 3, confidence: high, resolution: derived, quote: "Clasificación: confidencial", note: "intake_sensitivity mapping confidential -> 3."}
+    non_ai_alternative: {score: 4, anchor_level: 4, confidence: medium, resolution: derived, branch: coverage_most, quote: "Tarda como tres semanas y para cuando sale ya cambió.", note: "The annual Excel reconciliation is deterministic and finishes the instance — it produces the overspend answer with nobody left to decide. Read against the work the request describes, it covers it with a stated remainder: it is annual and stale by the time it lands. coverage_rule -> `most` = 4."}
+  ambiguous_anchors:
+    - "non_ai_alternative most vs all: whether staleness and cadence count as 'a stated exception or remainder' under the coverage_rule, or only as cost."
+    - "archetype: no archetype covers a reconciliation; extraction recorded for the contract-entitlement half."
+
+- case_id: B-04
+  archetype: summarization
+  artefacts:
+    - name: "Reporte de variaciones del cierre"
+      what_it_does: "Produces every P&L line's movement against budget and against prior month"
+      completes_without_judgement: false
+      quote: "El analista abre el reporte de variaciones, busca en el detalle qué causó cada movimiento"
+  anti_pattern_matches: []
+  near_misses: []
+  dimensions:
+    business_value: {score: 3, anchor_level: 3, confidence: low, resolution: derived, quote: "Son unas 60 líneas comentadas por cierre, doce cierres al año.", note: "cases denomination (volume_only, confidence low): 60 x 12 = 720 commented lines/year, inside the 500-5,000 band = level 3. No per-instance duration is stated — 'los primeros cinco días del mes se van en eso' does not say for how many of the five people, so the person_hours denomination has no unambiguous input (1 analyst reads ~480 h/year = level 2; 5 analysts ~2,400 h/year = level 3)."}
+    adoption_risk: {score: 2, anchor_level: 2, confidence: medium, resolution: judged, quote: "Queremos que la IA lea las variaciones y escriba el comentario, y que el analista lo valide.", note: "The five analysts are the intended users, the requester is their controller, and the draft-then-validate shape keeps the workflow they already have with minor adjustment."}
+    data_readiness: {score: 3, anchor_level: 3, confidence: low, resolution: judged, quote: "le pregunta al dueño del centro de costos si no es obvio", note: "AVAILABILITY 3 — variance numbers and detail sit in SAP and the closing files with a plausible access path, but the causal explanation is partly in the cost centre owners' heads and no quality check on real records is reported. EVALUABILITY 3 — generative archetype; past commentaries exist in the closing files but there is no agreed definition of a good comment, with nothing standing in the way of agreeing one. min(3,3)=3."}
+    process_frequency: {score: 3, anchor_level: 3, confidence: high, resolution: derived, quote: "Frecuencia: 720 al año", note: "720 instances/year; 720 < 1,000 -> band 3."}
+    implementation_effort: {score: 3, anchor_level: 3, confidence: medium, resolution: judged, quote: "El analista abre el reporte de variaciones, busca en el detalle qué causó cada movimiento", note: "About one quarter: a pipeline into SAP variance detail plus a drafting and validation surface inside the close calendar; finance and IT to coordinate."}
+    data_governance: {score: 3, anchor_level: 3, confidence: high, resolution: derived, quote: "Clasificación: confidencial", note: "intake_sensitivity mapping confidential -> 3."}
+    non_ai_alternative: {score: 2, anchor_level: 2, confidence: medium, resolution: derived, branch: none_complete, quote: "El analista abre el reporte de variaciones, busca en el detalle qué causó cada movimiento", note: "The variance report is deterministic and runs every close, but after it runs the analyst still has to work out the cause and write the comment. -> none_complete = 2."}
+  ambiguous_anchors:
+    - "business_value denomination: the request states a duration ('los primeros cinco días del mes') that cannot be turned into person-hours without assuming headcount."
+
+- case_id: B-05
+  archetype: rag_qa
+  artefacts:
+    - name: "Carpeta compartida de respuestas anteriores"
+      what_it_does: "Holds previously answered questionnaires that are searched and adapted"
+      completes_without_judgement: false
+      quote: "Se buscan respuestas anteriores en una carpeta compartida y se adaptan."
+  anti_pattern_matches: []
+  near_misses: []
+  dimensions:
+    business_value: {score: 2, anchor_level: 2, confidence: medium, resolution: derived, quote: "Nos llegan unos 15 cuestionarios al año, cada uno toma entre uno y tres días de alguien.", note: "person_hours denomination (per-instance duration stated): 15 x 2 days midpoint x 8 h = 240 person-hours/year, inside the 200-1,000 band = level 2 (range check: 1 day = 120 h -> level 1; 3 days = 360 h -> level 2). The cases denomination would read 15/year = level 1, but person_hours has priority."}
+    adoption_risk: {score: 2, anchor_level: 2, confidence: medium, resolution: judged, quote: "ahí es donde se nos va el tiempo", note: "The requester is one of the four people who answer these questionnaires and speaks as a user; the change fits the search-and-adapt workflow they already run. Level 1 unavailable — no previous tool is reported."}
+    data_readiness: {score: 3, anchor_level: 3, confidence: medium, resolution: judged, quote: "Se buscan respuestas anteriores en una carpeta compartida y se adaptan.", note: "AVAILABILITY 3 — prior answers exist in one shared folder with an obvious access path, but nothing is curated and quality has not been checked on real records. EVALUABILITY 3 — generative archetype; past answers exist as raw material but there is no agreed standard for a good answer (the complaint is inconsistency), with nothing standing in the way of agreeing one. min(3,3)=3."}
+    process_frequency: {score: 2, anchor_level: 2, confidence: high, resolution: derived, quote: "Frecuencia: 15 al año", note: "15 instances/year; 12 <= 15 < 100 -> band 2."}
+    implementation_effort: {score: 2, anchor_level: 2, confidence: medium, resolution: judged, quote: "Queremos algo que conteste esos cuestionarios usando lo que ya hemos contestado antes.", note: "Two to six weeks: ingest one shared folder, match incoming questions to prior answers, minor plumbing; one team affected."}
+    data_governance: {score: 3, anchor_level: 3, confidence: high, resolution: derived, quote: "Clasificación: confidencial", note: "intake_sensitivity mapping confidential -> 3."}
+    non_ai_alternative: {score: 2, anchor_level: 2, confidence: medium, resolution: derived, branch: none_complete, quote: "Se buscan respuestas anteriores en una carpeta compartida y se adaptan.", note: "Folder search is deterministic and is what they use today, but after it runs somebody still has to decide which prior answer applies and adapt it. -> none_complete = 2."}
+  ambiguous_anchors: []
+
+- case_id: B-06
+  archetype: rag_qa
+  artefacts:
+    - name: "Repositorio de propuestas anteriores en SharePoint (búsqueda manual)"
+      what_it_does: "Holds seven years of submitted proposals that are searched and copied from, with win/loss known"
+      completes_without_judgement: false
+      quote: "Búsqueda manual en propuestas anteriores y copiar-pegar-adaptar."
+  anti_pattern_matches: []
+  near_misses:
+    - pattern: existing_licensed_capability
+      failed_part: "Part B"
+      note: "Part A quotable ('Datos: SharePoint de Propuestas'); Part B not — SharePoint is named as where the proposals live, never as a platform that already drafts the responses."
+  dimensions:
+    business_value: {score: 1, anchor_level: 1, confidence: low, resolution: derived, quote: "Participamos en unas 45 licitaciones al año.", note: "cases denomination (volume_only, confidence low): 45 tenders/year, below 50 = level 1. No per-instance duration is stated. The '8 a 30 millones de pesos' figure is the value of a tender, not a benefit magnitude — using it would mean estimating an incremental win rate the request does not state, which scoring_rule forbids. Recorded with the tension explicit: an instance read as one requirement rather than one tender would give 1,800-9,000/year = level 3."}
+    adoption_risk: {score: 2, anchor_level: 2, confidence: medium, resolution: judged, quote: "que se genere un borrador de respuesta por requisito, con la referencia de dónde salió, y que la persona lo edite", note: "The three-person proposals team is the intended user, the requester is their manager, and the draft-then-edit shape is the copy-paste-adapt workflow they already run, with minor adjustment."}
+    data_readiness: {score: 4, anchor_level: 4, confidence: medium, resolution: judged, quote: "Tenemos siete años de propuestas presentadas en SharePoint, y sabemos cuáles ganamos.", note: "AVAILABILITY 4 — seven years centralized in SharePoint with a plausible path to checking quality, no check on a real sample reported. EVALUABILITY 4 — generative archetype with reference outputs (submitted proposals) plus win/loss as a coarse proxy, but no curated reference set with agreed criteria. min(4,4)=4."}
+    process_frequency: {score: 2, anchor_level: 2, confidence: medium, resolution: derived, quote: "Frecuencia: 45 al año", note: "45 instances/year (one tender end to end, per the intake field); 12 <= 45 < 100 -> band 2."}
+    implementation_effort: {score: 3, anchor_level: 3, confidence: medium, resolution: judged, quote: "Las licitaciones que nos llegan traen entre 40 y 200 requisitos", note: "About one quarter: requirement parsing from the pliego, a retrieval pipeline over seven years of proposals with citations, and an editing surface for the team."}
+    data_governance: {score: 3, anchor_level: 3, confidence: high, resolution: derived, quote: "Clasificación: confidencial", note: "intake_sensitivity mapping confidential -> 3."}
+    non_ai_alternative: {score: 2, anchor_level: 2, confidence: medium, resolution: derived, branch: none_complete, quote: "Búsqueda manual en propuestas anteriores y copiar-pegar-adaptar.", note: "SharePoint search over the proposal archive is deterministic and is the current method, but after it runs somebody still has to decide which prior answer fits the requirement and adapt it. -> none_complete = 2."}
+  ambiguous_anchors:
+    - "business_value: the instance unit (tender vs requirement) moves this dimension two bands, and the stated currency figure is deal value rather than benefit."
+
+- case_id: B-07
+  archetype: none
+  archetype_note: "No archetype in patterns.yaml fits: nothing is classified, extracted, generated, predicted, retrieved or ranked. The work is a join between two systems plus a notification."
+  artefacts:
+    - name: "Cruce trimestral del reporte de capacitación contra la plantilla vigente, con envío de correos"
+      what_it_does: "Produces the list of who is missing which mandatory course, by area and boss, and sends the reminders"
+      completes_without_judgement: true
+      quote: "Se exporta el reporte del sistema de capacitación, se cruza con la plantilla vigente en Excel y se mandan correos manualmente."
+  anti_pattern_matches:
+    - pattern: deterministic_rule_suffices
+      hard_block: true
+      quote: "Necesitamos saber quién no ha completado las capacitaciones obligatorias de código de conducta, anticorrupción y protección de datos, por área y por jefe, y que le llegue recordatorio a quien falta."
+      second_quote: "Se exporta el reporte del sistema de capacitación, se cruza con la plantilla vigente en Excel"
+      note: "PART A — the complete logic is stated in one sentence (completed yes/no, grouped by area and boss, remind those missing). PART B — the inputs are already values in the training system and the payroll roster, and the request says they are exported and crossed today."
+    - pattern: rpa_relabeled
+      hard_block: true
+      quote: "Se exporta el reporte del sistema de capacitación, se cruza con la plantilla vigente en Excel y se mandan correos manualmente."
+      note: "Structured data moved between named systems along a fixed path, inputs are records rather than documents or free text, no judgement in any step."
+    - pattern: reporting_in_disguise
+      hard_block: true
+      quote: "Necesitamos saber quién no ha completado las capacitaciones obligatorias ... por área y por jefe"
+      note: "The primary ask is visibility into what already happened, sliced by two dimensions."
+  near_misses: []
+  dimensions:
+    business_value: {score: 1, anchor_level: 1, confidence: low, resolution: derived, quote: "Frecuencia: trimestral", note: "cases denomination (volume_only, confidence low): quarterly = 4 instances/year, below 50 = level 1. No per-instance duration and no currency figure stated ('Subir el porcentaje de cumplimiento antes de auditoría' carries no magnitude)."}
+    adoption_risk: {score: 2, anchor_level: 2, confidence: low, resolution: judged, quote: "Queremos que la IA nos dé eso automáticamente en lugar de estar persiguiendo a la gente.", note: "The two compliance people are the intended users, the requester is their coordinator, and the output replaces a spreadsheet step they already perform each quarter. Low confidence — no consultation or owner commitment is stated."}
+    data_readiness: {score: 4, anchor_level: 4, confidence: medium, resolution: judged, quote: "Se exporta el reporte del sistema de capacitación, se cruza con la plantilla vigente en Excel", note: "AVAILABILITY 4 — both sources are centralized and are already joined by hand every quarter, which is quality checked in practice on real records. EVALUABILITY 5 — the outcome is unambiguous: a person either completed the course or did not. min(4,5)=4."}
+    process_frequency: {score: 1, anchor_level: 1, confidence: high, resolution: derived, quote: "Cada trimestre.", note: "4 instances/year; 4 < 12 -> band 1."}
+    implementation_effort: {score: 2, anchor_level: 2, confidence: medium, resolution: judged, quote: "Datos: Sistema de capacitación + nómina", note: "Two to six weeks: a couple of integrations, minor data plumbing and an email step; no new vendor or licence."}
+    data_governance: {score: 3, anchor_level: 3, confidence: high, resolution: derived, quote: "Clasificación: confidencial", note: "intake_sensitivity mapping confidential -> 3."}
+    non_ai_alternative: {score: 5, anchor_level: 5, confidence: medium, resolution: derived, branch: coverage_all, quote: "Se exporta el reporte del sistema de capacitación, se cruza con la plantilla vigente en Excel y se mandan correos manualmente.", note: "The quarterly procedure is deterministic and finishes the instance: after it runs the list exists and the reminders are out, with nobody left to decide anything. Read against the work the request describes (know who is missing, by area and boss, and remind them), it covers it with nothing left qualified — only the manual effort, which is cost, not coverage. coverage_rule -> `all` = 5."}
+  ambiguous_anchors:
+    - "non_ai_alternative most vs all: whether 'se mandan correos manualmente' is a remainder in the coverage sense or purely an effort complaint."
+
+- case_id: B-08
+  archetype: rag_qa
+  artefacts:
+    - name: "Correo de bienvenida con ligas"
+      what_it_does: "Sends every new joiner a fixed set of links at the start of onboarding"
+      completes_without_judgement: false
+      quote: "Hay un correo de bienvenida con ligas y el jefe directo hace lo que puede."
+  anti_pattern_matches:
+    - pattern: chatbot_without_job_to_be_done
+      hard_block: false
+      quote: "Queremos un asistente de IA que acompañe al colaborador nuevo durante sus primeros 90 días, que le resuelva dudas y lo haga sentir acompañado. Algo conversacional, con la personalidad de la empresa."
+      note: "The artefact is an interface with no specific question it answers or task it completes; success is described as experience."
+    - pattern: solution_first_no_measurable_problem
+      hard_block: false
+      quote: "Beneficio afirmado: Mejor experiencia de ingreso y que la gente se integre más rápido."
+      note: "No baseline: nobody says what onboarding costs today or how long integration takes, so success could not be demonstrated."
+  near_misses: []
+  dimensions:
+    business_value: {score: 2, anchor_level: 2, confidence: low, resolution: derived, quote: "Frecuencia: 40 ingresos al mes", note: "cases denomination (volume_only, confidence low): 40 x 12 = 480 new joiners/year, inside the 50-500 band = level 2. No per-instance duration and no currency figure stated."}
+    adoption_risk: {score: 4, anchor_level: 4, confidence: medium, resolution: judged, quote: "Queremos un asistente de IA que acompañe al colaborador nuevo durante sus primeros 90 días", note: "Anchor 4: the intended users are new joiners, none of whom can have been consulted, and the change requires them to adopt a new tool that has no place in a workflow they have yet to learn."}
+    data_readiness: {score: 2, anchor_level: 2, confidence: low, resolution: judged, quote: "Hay un correo de bienvenida con ligas y el jefe directo hace lo que puede.", note: "AVAILABILITY 2 — the onboarding material is scattered behind links and in managers' practice, with no corpus identified (Datos: —) and no access path stated. EVALUABILITY 2 — the material a judgement could be built from exists (HR policies, the welcome links), but nobody recorded what new joiners actually ask, so assembling a reference set with criteria is a project of the same size. min(2,2)=2."}
+    process_frequency: {score: 3, anchor_level: 3, confidence: high, resolution: derived, quote: "Frecuencia: 40 ingresos al mes", note: "40 x 12 = 480 instances/year; 480 < 1,000 -> band 3."}
+    implementation_effort: {score: 3, anchor_level: 3, confidence: low, resolution: judged, quote: "Algo conversacional, con la personalidad de la empresa.", note: "About one quarter: a corpus would have to be assembled and given an owner, plus a conversational surface and a tone standard; HR and IT to coordinate. Low confidence — the scope is defined only as 'resuelva dudas'."}
+    data_governance: {score: 2, anchor_level: 2, confidence: low, resolution: judged, quote: "Hay un correo de bienvenida con ligas", note: "JUDGED — the Clasificación field is blank. The identifiable corpus is internal onboarding material with limited personal fields (the joiner's name, manager, start date), which is anchor 2. Low confidence: the request never names a data source."}
+    non_ai_alternative: {score: 2, anchor_level: 2, confidence: medium, resolution: derived, branch: none_complete, quote: "Hay un correo de bienvenida con ligas y el jefe directo hace lo que puede.", note: "The welcome email is deterministic and goes out today, but after it lands the joiner still has questions and somebody still has to decide the answers. The manager's improvisation is excluded as non-deterministic. -> none_complete = 2."}
+  ambiguous_anchors:
+    - "data_readiness 1 vs 2 (evaluability): whether a reference set for onboarding answers 'could be assembled' from existing HR material or requires collecting questions nobody recorded."
+
+- case_id: B-09
+  archetype: summarization
+  artefacts: []
+  anti_pattern_matches: []
+  near_misses:
+    - pattern: existing_licensed_capability
+      failed_part: "Part B"
+      note: "Part A quotable ('Datos: Salesforce Service Cloud'); Part B not — Service Cloud is named as where the conversations live, and the request never says its own capability already drafts replies."
+  dimensions:
+    business_value: {score: 4, anchor_level: 4, confidence: low, resolution: derived, quote: "Son 3,400 tickets al mes", note: "cases denomination (volume_only, confidence low): 3,400 x 12 = 40,800 tickets/year, inside the 5,000-50,000 band = level 4. No per-instance handling time and no currency figure stated; the 6-hour vs 4-hour first-response figure is a cycle time, not one of the three denominations."}
+    adoption_risk: {score: 4, anchor_level: 4, confidence: medium, resolution: judged, quote: "Hay plantillas pero están en un documento que nadie abre.", note: "Anchor 4 clause 'a previous tool built for these same users was quietly abandoned' — the reply templates are exactly that. The 22 agents are not stated to have been consulted; the requester is their manager. The draft-then-edit shape would otherwise argue for 2, which is why the abandoned-templates fact decides it."}
+    data_readiness: {score: 4, anchor_level: 4, confidence: medium, resolution: judged, quote: "tenemos cuatro años de conversaciones con su desenlace, incluyendo si el cliente reabrió el ticket", note: "AVAILABILITY 4 — four years centralized in Service Cloud with a plausible path to checking quality, no check on a real sample reported. EVALUABILITY 4 — generative archetype with abundant reference outputs (past agent replies) and reopening as a usable proxy, but no curated reference set with agreed criteria for a good reply. min(4,4)=4."}
+    process_frequency: {score: 5, anchor_level: 5, confidence: high, resolution: derived, quote: "Frecuencia: 3,400 al mes", note: "3,400 x 12 = 40,800 instances/year; 40,800 > 10,000 -> band 5."}
+    implementation_effort: {score: 3, anchor_level: 3, confidence: medium, resolution: judged, quote: "Queremos que el sistema le proponga un borrador de respuesta al agente, que él edita y manda.", note: "About one quarter: a retrieval pipeline over four years of conversations plus a UI change inside the agent console, with service and IT to coordinate."}
+    data_governance: {score: 3, anchor_level: 3, confidence: high, resolution: derived, quote: "Clasificación: confidencial", note: "intake_sensitivity mapping confidential -> 3."}
+    non_ai_alternative: {score: 1, anchor_level: 1, confidence: medium, resolution: derived, branch: empty, quote: "Hay plantillas pero están en un documento que nadie abre.", note: "The reply templates are deterministic and would be an artefact, but the request states they are not doing the work today — nobody opens the document. Under rule 3 (available but not switched on) they are excluded, and nothing else deterministic exists. -> empty = 1."}
+  ambiguous_anchors:
+    - "non_ai_alternative empty vs none_complete: templates that exist but are unused — the clearest instance in the corpus of the 'not doing the work today' exclusion."
+
+- case_id: B-10
+  archetype: classification
+  artefacts:
+    - name: "Catálogo de cuentas y centros de costo vigente"
+      what_it_does: "Defines the accounts and cost centres every movement must be coded to"
+      completes_without_judgement: false
+      quote: "con el catálogo de cuentas actual desde hace cuatro"
+  anti_pattern_matches: []
+  near_misses:
+    - pattern: deterministic_rule_suffices
+      failed_part: "Part A"
+      note: "Part B is quotable ('Datos: SAP' — the movements and their concepts are values in a system today), but Part A is not: the request says the analyst reads the concept and decides, and states no if-X-then-Y rule, lookup or mapping from concept to account."
+  dimensions:
+    business_value: {score: 5, anchor_level: 5, confidence: low, resolution: derived, quote: "Unos 9,000 movimientos al mes.", note: "cases denomination (volume_only, confidence low): 9,000 x 12 = 108,000 movements/year, above 50,000 = level 5. No per-instance duration and no currency figure stated."}
+    adoption_risk: {score: 2, anchor_level: 2, confidence: medium, resolution: judged, quote: "Queremos que se sugiera la cuenta automáticamente.", note: "The six accounting analysts are the intended users, the requester is their head, and a suggestion inside the coding step they already perform is an existing workflow with minor adjustment."}
+    data_readiness: {score: 5, anchor_level: 5, confidence: high, resolution: judged, quote: "Tenemos seis años de movimientos ya clasificados y auditados, con el catálogo de cuentas actual desde hace cuatro.", note: "AVAILABILITY 5 — six years of centralized history whose quality has been verified on real records by audit, four of them under the current catalogue. EVALUABILITY 5 — predictive archetype with an unambiguous, audited outcome variable: the posted account and cost centre. min(5,5)=5."}
+    process_frequency: {score: 5, anchor_level: 5, confidence: high, resolution: derived, quote: "Frecuencia: 9,000 al mes", note: "9,000 x 12 = 108,000 instances/year; 108,000 > 10,000 -> band 5."}
+    implementation_effort: {score: 3, anchor_level: 3, confidence: medium, resolution: judged, quote: "Hoy lo hace el analista leyendo el concepto", note: "About one quarter: a classifier over six years of SAP history plus a suggestion surface inside the posting workflow; accounting and the SAP team to coordinate."}
+    data_governance: {score: 3, anchor_level: 3, confidence: high, resolution: derived, quote: "Clasificación: confidencial", note: "intake_sensitivity mapping confidential -> 3."}
+    non_ai_alternative: {score: 2, anchor_level: 2, confidence: medium, resolution: derived, branch: none_complete, quote: "Hoy lo hace el analista leyendo el concepto", note: "The chart of accounts is a held mapping for this work but finishes nothing on its own — somebody still has to read the concept and decide which account it is. No auto-coding rule or derivation is reported in SAP. -> none_complete = 2."}
+  ambiguous_anchors: []
+
+- case_id: B-11
+  archetype: classification
+  artefacts: []
+  anti_pattern_matches:
+    - pattern: deterministic_rule_suffices
+      hard_block: true
+      quote: "oportunidades que llevan dos años sin moverse y siguen en el forecast, y campos obligatorios llenados con \"n/a\""
+      second_quote: "El CRM está sucio. Hay cuentas duplicadas, contactos con correos que ya rebotan"
+      note: "PART A — three of the four defect types are stated as rules a person can write in one sentence (no movement in two years; required field equal to 'n/a'; email already bouncing). PART B — the inputs are already values in Salesforce; the request enumerates them as fields of records held in the CRM. Caveat recorded: duplicate account matching is the one part not reducible to a one-sentence rule."
+  near_misses: []
+  dimensions:
+    business_value: {score: null, anchor_level: null, confidence: null, resolution: judged, quote: "Personas: 60 · Frecuencia: — · Datos: Salesforce", note: "UNKNOWN. scoring_rule step (2): no magnitude in any denomination — no record volume, no cleanup hours, no currency. 'Que el forecast sea creíble' carries no figure. Missing: records to be cleaned per year, or the cost of the unreliable forecast."}
+    adoption_risk: {score: 4, anchor_level: 4, confidence: medium, resolution: judged, quote: "Hicimos un esfuerzo el año pasado con un consultor y duró tres meses limpio.", note: "Anchor 4: keeping the CRM clean requires 60 salespeople to change how they record work, none of whom is stated to have been consulted, and the last effort for these same users decayed within three months. Level 5 not reached — a named owner (commercial operations) is requesting it."}
+    data_readiness: {score: 3, anchor_level: 3, confidence: low, resolution: judged, quote: "El CRM está sucio.", note: "AVAILABILITY 4 — the target data is centralized in Salesforce and its quality has been examined on real records during last year's cleanup. EVALUABILITY 3 — no agreed definition of a clean record and no labelled set of correct records, though nothing stands in the way of agreeing one. min(4,3)=3."}
+    process_frequency: {score: null, anchor_level: null, confidence: null, resolution: judged, quote: "Frecuencia: —", note: "UNKNOWN. Derivation input blank and the request states no volume; 'mantenerlo limpio' is continuous with no instance count. Missing: records or corrections per year."}
+    implementation_effort: {score: 4, anchor_level: 4, confidence: medium, resolution: judged, quote: "Queremos que la IA lo limpie y lo mantenga limpio.", note: "Two or more quarters: a one-off remediation plus continuous data quality controls in Salesforce, and retraining how a 60-person sales organisation records its work."}
+    data_governance: {score: 3, anchor_level: 3, confidence: high, resolution: derived, quote: "Clasificación: confidencial", note: "intake_sensitivity mapping confidential -> 3."}
+    non_ai_alternative: {score: 1, anchor_level: 1, confidence: medium, resolution: derived, branch: empty, quote: "Cada quien limpia lo suyo cuando se acuerda.", note: "Nothing deterministic runs today: ad hoc individual cleanup is not deterministic, and the consultant effort was a one-off last year that has since decayed, so it is not doing the work today. No validation rule or duplicate check is reported in the CRM. -> empty = 1."}
+  ambiguous_anchors:
+    - "deterministic_rule_suffices: Part A covers three of four defect types; the anti-pattern gives no rule for partial coverage."
+
+- case_id: B-12
+  archetype: classification
+  artefacts: []
+  anti_pattern_matches:
+    - pattern: data_does_not_exist_yet
+      hard_block: false
+      quote: "Tenemos las NDAs firmadas de los últimos años pero no está registrado cuáles requirieron negociación y cuáles no."
+      note: "Signal 'the decisions to be learned from were never written down'. Advisory only — the no_usable_data gate is what stops this, and it routes to no_go rather than not_ai."
+  near_misses: []
+  dimensions:
+    business_value: {score: 2, anchor_level: 2, confidence: low, resolution: derived, quote: "Llegan unas 25 al mes y estima que 18 son estándar.", note: "cases denomination (volume_only, confidence low): 25 x 12 = 300 NDAs/year, inside the 50-500 band = level 2. No per-instance review time and no currency figure stated."}
+    adoption_risk: {score: 2, anchor_level: 2, confidence: medium, resolution: judged, quote: "Que Legal deje de leer 18 documentos estándar al mes.", note: "The three lawyers are the intended users, their manager is the requester, and the triage sits at the front of a review they already perform. Level 1 unavailable — no previous-tool history."}
+    data_readiness: {score: 1, anchor_level: 1, confidence: high, resolution: judged, quote: "no está registrado cuáles requirieron negociación y cuáles no", note: "AVAILABILITY 3 — the signed NDAs are fully retrievable from the Legal repository, one system with an obvious access path, quality unchecked on real records. EVALUABILITY 1 — predictive archetype with no outcome variable at all: which NDAs required negotiation was never recorded, so it would have to be created from scratch. min(3,1)=1. This is the worked example the rubric itself gives for the `min` rule."}
+    process_frequency: {score: 3, anchor_level: 3, confidence: high, resolution: derived, quote: "Frecuencia: 25 al mes", note: "25 x 12 = 300 instances/year; 300 < 1,000 -> band 3."}
+    implementation_effort: {score: 3, anchor_level: 3, confidence: low, resolution: judged, quote: "Queremos que se clasifiquen en \"estándar, se puede firmar\" y \"necesita abogado\", con la razón.", note: "About one quarter: the outcome variable must be created before anything can be trained or evaluated (lawyers labelling historical NDAs), plus a classifier and a routing step. Below level 5 because the labelling effort here is a few hundred documents, not person-months."}
+    data_governance: {score: 3, anchor_level: 3, confidence: high, resolution: derived, quote: "Clasificación: confidencial", note: "intake_sensitivity mapping confidential -> 3."}
+    non_ai_alternative: {score: 1, anchor_level: 1, confidence: medium, resolution: derived, branch: empty, quote: "Un abogado las revisa todas.", note: "Nothing deterministic exists for this work: the only thing that happens today is a lawyer reading every NDA, which is judgement. Unlike A-04, no approved template or checklist is reported for NDAs. -> empty = 1."}
+  ambiguous_anchors: []
+
+- case_id: B-13
+  archetype: classification
+  artefacts: []
+  anti_pattern_matches: []
+  near_misses: []
+  dimensions:
+    business_value: {score: 3, anchor_level: 3, confidence: low, resolution: derived, quote: "Entran unos 90 cambios al mes.", note: "cases denomination (volume_only, confidence low): 90 x 12 = 1,080 changes/year, inside the 500-5,000 band = level 3. No per-instance duration is stated; 'el comité se junta dos horas cada semana' is a meeting length, not a per-instance figure (a committee-hours reading would give 2 h x 52 x 9 people = 936 h/year = level 2, but that input shape is not the derivation's)."}
+    adoption_risk: {score: 3, anchor_level: 3, confidence: low, resolution: judged, quote: "Queremos que la IA proponga la clasificación de riesgo leyendo la solicitud, para que el comité solo discuta los que importan.", note: "Anchor 3: the committee is a cross-team body, not a team the requester manages; none of the nine members is stated to have been consulted, and a proposed classification adds a step they must choose to trust — adoption depends on the change coordinator asking them to."}
+    data_readiness: {score: 4, anchor_level: 4, confidence: medium, resolution: judged, quote: "Tenemos dos años de cambios con su clasificación y también sabemos cuáles causaron incidente después, aunque eso último está en otro sistema y nadie los ha cruzado.", note: "AVAILABILITY 4 — two years centralized in ServiceNow with a plausible path to checking quality (the incident data in the other system is a bonus signal, not the required input). EVALUABILITY 4 — the committee's recorded classification is a labelled set and a usable proxy, but it is human judgement rather than a settled outcome variable, and the outcome that would validate it has never been joined. min(4,4)=4."}
+    process_frequency: {score: 4, anchor_level: 4, confidence: high, resolution: derived, quote: "Frecuencia: 90 al mes", note: "90 x 12 = 1,080 instances/year; 1,080 < 10,000 -> band 4."}
+    implementation_effort: {score: 2, anchor_level: 2, confidence: medium, resolution: judged, quote: "Datos: ServiceNow", note: "Two to six weeks: one integration against ServiceNow plus a classifier over two years of labelled changes, and the committee's agenda to adjust; no new platform."}
+    data_governance: {score: 2, anchor_level: 2, confidence: high, resolution: derived, quote: "Clasificación: interno", note: "intake_sensitivity mapping internal -> 2."}
+    non_ai_alternative: {score: 1, anchor_level: 1, confidence: low, resolution: derived, branch: empty, quote: "El comité revisa todo.", note: "Nothing deterministic exists: the committee's risk assessment is judgement, and no risk matrix, questionnaire or scoring rule is reported as held. 'bajo, medio o alto' is stated as the committee's output values, not as an artefact that produces them. -> empty = 1. Low confidence: if the three-level scale were read as a held catalogue (as in A-09 or B-10) the branch would be none_complete = 2."}
+  ambiguous_anchors:
+    - "non_ai_alternative empty vs none_complete: whether a bare set of outcome values counts as a held mapping."
+    - "business_value denomination: a weekly committee's hours are a stated duration but not a per-instance one."
+
+- case_id: B-14
+  archetype: summarization
+  artefacts:
+    - name: "Descarga manual de números de cada plataforma para armar la lámina"
+      what_it_does: "Pulls the campaign numbers out of each platform and assembles them into one slide"
+      completes_without_judgement: false
+      quote: "Alguien entra a cada plataforma, baja números y arma una lámina."
+  anti_pattern_matches:
+    - pattern: reporting_in_disguise
+      hard_block: true
+      quote: "Queremos que la IA nos resuma cómo fue cada campaña y nos diga qué funcionó, sin tener que abrir cinco plataformas distintas."
+      note: "Every question is about what already happened, and the wanted output is the slide of numbers they assemble today."
+    - pattern: solution_first_no_measurable_problem
+      hard_block: false
+      quote: "Beneficio afirmado: Ahorrar tiempo en reportes."
+      note: "No baseline: no volume, no time, no cost, and no requester is named to commit to a target."
+  near_misses: []
+  dimensions:
+    business_value: {score: null, anchor_level: null, confidence: null, resolution: judged, quote: "Personas: — · Frecuencia: — · Datos: — · Clasificación: —", note: "UNKNOWN. scoring_rule step (2): no magnitude in any denomination — no campaign count, no reporting hours, no currency. Missing: campaigns reported per year, or the time each report takes."}
+    adoption_risk: {score: 4, anchor_level: 4, confidence: low, resolution: judged, quote: "Solicitante: (no indicado)", note: "Anchor 4: no requester and no user is named, so nobody is stated to have been consulted, and the change replaces the slide someone assembles today with a new tool. Level 5 not reached — nothing indicates a previous tool was rejected."}
+    data_readiness: {score: 2, anchor_level: 2, confidence: low, resolution: judged, quote: "sin tener que abrir cinco plataformas distintas", note: "AVAILABILITY 2 — the numbers are spread across five platforms nobody has joined, with no access path stated (Datos: —). EVALUABILITY 3 — generative archetype; past láminas exist as reference outputs but there is no agreed standard for 'qué funcionó', with nothing standing in the way of agreeing one. min(2,3)=2."}
+    process_frequency: {score: null, anchor_level: null, confidence: null, resolution: judged, quote: "Frecuencia: —", note: "UNKNOWN. Derivation input blank and the request states no instance count. Missing: campaigns reported per year."}
+    implementation_effort: {score: 3, anchor_level: 3, confidence: low, resolution: judged, quote: "sin tener que abrir cinco plataformas distintas", note: "About one quarter: five platform integrations and a new reporting surface. Low confidence — the platforms are not even named."}
+    data_governance: {score: 2, anchor_level: 2, confidence: low, resolution: judged, quote: "Alguien entra a cada plataforma, baja números y arma una lámina.", note: "JUDGED — the Clasificación field is blank. The identifiable data is campaign performance metrics: internal business data with no personal fields, covered by ordinary access, which is anchor 2 (anchor 1 is not claimed because the platforms and their contracts are unnamed). Low confidence."}
+    non_ai_alternative: {score: 2, anchor_level: 2, confidence: low, resolution: derived, branch: none_complete, quote: "Alguien entra a cada plataforma, baja números y arma una lámina.", note: "Pulling the numbers per platform is deterministic and happens today, but the instance is not finished when it ends: somebody still has to decide 'qué funcionó', which is the half the request is actually asking for. -> none_complete = 2."}
+  ambiguous_anchors:
+    - "non_ai_alternative: the existing procedure completes the numbers half and not the insight half; the derivation has no way to express a partly-completing single artefact other than through the coverage branches."
+
+- case_id: B-15
+  archetype: classification
+  archetype_note: "Ranking leads by probability of conversion; recommendation is the alternative reading, but the outcome variable is a recorded binary event, which is classification's shape."
+  artefacts:
+    - name: "Trabajo de leads por orden de llegada"
+      what_it_does: "Orders the incoming leads by arrival for the business development team to work"
+      completes_without_judgement: false
+      quote: "Orden de llegada, con algo de criterio del que los trabaja."
+  anti_pattern_matches: []
+  near_misses: []
+  dimensions:
+    business_value: {score: 4, anchor_level: 4, confidence: low, resolution: derived, quote: "Nos entran unos 800 leads al mes entre web, ferias y campañas", note: "cases denomination (volume_only, confidence low): 800 x 12 = 9,600 leads/year, inside the 5,000-50,000 band = level 4. No per-instance duration and no currency figure stated; the 4% conversion rate is a rate, not a magnitude."}
+    adoption_risk: {score: 4, anchor_level: 4, confidence: medium, resolution: judged, quote: "El equipo de desarrollo comercial rota mucho, este año se fueron cuatro de siete.", note: "Anchor 4: the seven reps are not stated to have been consulted, the requester is commercial operations rather than the users, and the change overrides the arrival-order-plus-own-criterion way of working they use now; the turnover means most intended users have not yet been hired."}
+    data_readiness: {score: 4, anchor_level: 4, confidence: medium, resolution: judged, quote: "Tenemos cuatro años de leads en Salesforce con su desenlace — cuáles se convirtieron en oportunidad y cuáles en venta.", note: "AVAILABILITY 4 — four years centralized in Salesforce with a plausible path to checking quality, no check on a real sample reported. EVALUABILITY 5 — predictive archetype with an unambiguous recorded outcome variable: converted to opportunity, converted to sale. min(4,5)=4."}
+    process_frequency: {score: 4, anchor_level: 4, confidence: high, resolution: derived, quote: "Frecuencia: 800 al mes", note: "800 x 12 = 9,600 instances/year; 9,600 < 10,000 -> band 4."}
+    implementation_effort: {score: 3, anchor_level: 3, confidence: medium, resolution: judged, quote: "Queremos que se ordenen por probabilidad de convertirse", note: "About one quarter: a scoring pipeline over four years of Salesforce history plus a change to how the queue is presented and worked; sales operations and IT to coordinate."}
+    data_governance: {score: 3, anchor_level: 3, confidence: high, resolution: derived, quote: "Clasificación: confidencial", note: "intake_sensitivity mapping confidential -> 3."}
+    non_ai_alternative: {score: 2, anchor_level: 2, confidence: low, resolution: derived, branch: none_complete, quote: "Orden de llegada, con algo de criterio del que los trabaja.", note: "Arrival ordering is deterministic and is what runs today, but the request states a person's own criterion is applied on top, so the ordering is not finished when it ends. -> none_complete = 2."}
+  ambiguous_anchors:
+    - "non_ai_alternative: FIFO arguably 'finishes' an ordering, but not the ordering the request asks for; the coverage_rule compares what_it_does against the described work, which FIFO does not do at all."
+
+- case_id: B-16
+  archetype: classification
+  artefacts:
+    - name: "Regla de asignación por especialidad a uno de seis proveedores"
+      what_it_does: "Maps the type of work (aire acondicionado, eléctrico, plomería, mobiliario, limpieza profunda, jardinería) to the contracted provider"
+      completes_without_judgement: false
+      quote: "las asignamos a uno de seis proveedores según de qué se trate"
+  anti_pattern_matches: []
+  near_misses:
+    - pattern: deterministic_rule_suffices
+      failed_part: "Part B"
+      note: "Part A is quotable — 'las asignamos a uno de seis proveedores según de qué se trate — aire acondicionado, eléctrico, plomería, mobiliario, limpieza profunda, jardinería' is a complete mapping. Part B is not: the request never says the category is already a value in the form. 'Una persona lee y asigna' implies the opposite — the category has to be read out of free text. A rule nobody can feed is not a rule that solves it."
+    - pattern: single_user_workaround
+      failed_part: "the 'not a process' half"
+      note: "One person is the only assigner and the request exists because she goes on holiday, but 140 requests a month is an organisational process that continues regardless of who holds the role — the pattern's 'it would stop being needed if that person changed role' signal fails."
+  dimensions:
+    business_value: {score: 3, anchor_level: 3, confidence: low, resolution: derived, quote: "Entran unas 140 solicitudes al mes.", note: "cases denomination (volume_only, confidence low): 140 x 12 = 1,680 requests/year, inside the 500-5,000 band = level 3. No per-instance duration and no currency figure stated."}
+    adoption_risk: {score: 2, anchor_level: 2, confidence: low, resolution: judged, quote: "Queremos que se asigne solo, porque hoy se atora cuando la persona que asigna está de vacaciones.", note: "The single assigner is the intended user and the requester is her coordinator describing the bottleneck; auto-assignment sits inside the form-to-provider workflow that already exists. Low confidence — consultation is inferred, and level 1 is unavailable with no previous-tool history."}
+    data_readiness: {score: 3, anchor_level: 3, confidence: medium, resolution: judged, quote: "Tenemos el histórico de asignaciones de tres años.", note: "AVAILABILITY 3 — the data lives in a form plus a spreadsheet, an accessible path but quality never checked on real records. EVALUABILITY 4 — three years of past assignments are labelled examples for a fixed six-way outcome, short of a verified reference set. min(3,4)=3."}
+    process_frequency: {score: 4, anchor_level: 4, confidence: high, resolution: derived, quote: "Frecuencia: 140 al mes", note: "140 x 12 = 1,680 instances/year; 1,680 < 10,000 -> band 4."}
+    implementation_effort: {score: 2, anchor_level: 2, confidence: medium, resolution: judged, quote: "Datos: Formulario + hoja de cálculo", note: "Two to six weeks: one integration against the form, a six-way classifier over three years of history, and a notification to the provider; one team affected."}
+    data_governance: {score: 2, anchor_level: 2, confidence: high, resolution: derived, quote: "Clasificación: interno", note: "intake_sensitivity mapping internal -> 2."}
+    non_ai_alternative: {score: 2, anchor_level: 2, confidence: medium, resolution: derived, branch: none_complete, quote: "Una persona lee y asigna.", note: "The category-to-provider mapping is a held rule for exactly this work, but it finishes nothing on its own: somebody still has to read the free-text request and decide which of the six categories it is. -> none_complete = 2."}
+  ambiguous_anchors: []
+
+- case_id: B-17
+  archetype: summarization
+  artefacts: []
+  anti_pattern_matches: []
+  near_misses: []
+  dimensions:
+    business_value: {score: 2, anchor_level: 2, confidence: low, resolution: derived, quote: "Unos 6 comunicados al mes.", note: "cases denomination (volume_only, confidence low): 6 x 12 = 72 communiqués/year, inside the 50-500 band = level 2. No per-instance drafting time and no currency figure stated."}
+    adoption_risk: {score: 2, anchor_level: 2, confidence: medium, resolution: judged, quote: "Queremos que la IA nos dé el primer borrador a partir de los puntos clave, en el tono de la empresa.", note: "The requester is one of the three communications specialists who would use it, and a first draft slots into the write-then-HR-and-Legal-review workflow they already run. Level 1 unavailable — no previous-tool history."}
+    data_readiness: {score: 4, anchor_level: 4, confidence: medium, resolution: judged, quote: "Tenemos el archivo de comunicados de los últimos cinco años.", note: "AVAILABILITY 4 — five years centralized in SharePoint with a plausible path to checking quality. EVALUABILITY 4 — generative archetype with five years of reference outputs and an implicit criterion ('el tono de la empresa'), but no curated set with agreed criteria written down. min(4,4)=4."}
+    process_frequency: {score: 2, anchor_level: 2, confidence: high, resolution: derived, quote: "Frecuencia: 6 al mes", note: "6 x 12 = 72 instances/year; 12 <= 72 < 100 -> band 2."}
+    implementation_effort: {score: 2, anchor_level: 2, confidence: low, resolution: judged, quote: "Se escribe desde cero.", note: "Two to six weeks: SharePoint archive ingestion plus a drafting step into a review process that already exists; one team affected. Level 1 is arguable if an already-licensed drafting capability were configured, but none is named."}
+    data_governance: {score: 2, anchor_level: 2, confidence: high, resolution: derived, quote: "Clasificación: interno", note: "intake_sensitivity mapping internal -> 2. Note only: pre-announcement structural changes would argue higher, but the intake field governs."}
+    non_ai_alternative: {score: 1, anchor_level: 1, confidence: medium, resolution: derived, branch: empty, quote: "Se escribe desde cero.", note: "Nothing deterministic exists for this work: the request states each communiqué is written from scratch, and no template, boilerplate or tone guide is reported as held. The five-year archive is history, not a thing that finishes an instance. -> empty = 1."}
+  ambiguous_anchors:
+    - "non_ai_alternative empty vs none_complete: whether an archive of past outputs is an artefact 'for this work' (compare B-01, where a house format is explicitly named and was counted)."
+
+- case_id: B-18
+  archetype: classification
+  artefacts:
+    - name: "Lista de contratos vigentes con sus proveedores y categorías"
+      what_it_does: "Records which suppliers and categories are under contract — the lookup an off-contract test needs"
+      completes_without_judgement: false
+      quote: "Tenemos todas las órdenes de compra en SAP y la lista de contratos vigentes con sus proveedores y categorías."
+  anti_pattern_matches:
+    - pattern: deterministic_rule_suffices
+      hard_block: true
+      quote: "Negociamos contratos con proveedores preferentes y aun así la gente compra por fuera"
+      second_quote: "Tenemos todas las órdenes de compra en SAP y la lista de contratos vigentes con sus proveedores y categorías."
+      note: "PART A — the decision logic is stated: a purchase order placed with a supplier or category that is not on the preferred-contract list is off-contract spend. PART B — both inputs are already values in systems today, purchase orders in SAP and the contract list in the repository."
+    - pattern: reporting_in_disguise
+      hard_block: true
+      quote: "Queremos identificar ese gasto fuera de contrato y saber quién lo está generando."
+      note: "The wanted output is visibility into what already happened, aggregated by who generated it."
+  near_misses: []
+  dimensions:
+    business_value: {score: 4, anchor_level: 4, confidence: low, resolution: derived, quote: "Frecuencia: 3,000 órdenes al mes", note: "cases denomination (volume_only, confidence low): 3,000 x 12 = 36,000 purchase orders/year, inside the 5,000-50,000 band = level 4. The currency denomination is unusable: '8% y 15% del indirecto' is a percentage with no stated base, and inferring the base would be estimating a magnitude the request does not state."}
+    adoption_risk: {score: 3, anchor_level: 3, confidence: low, resolution: judged, quote: "Queremos identificar ese gasto fuera de contrato y saber quién lo está generando.", note: "Anchor 3: the five-person indirect purchasing team would use the output and their manager is the requester, but the value depends on buyers elsewhere in the company changing where they buy — a new step whose adoption depends on a manager asking them to. Low confidence."}
+    data_readiness: {score: 3, anchor_level: 3, confidence: medium, resolution: judged, quote: "No se mide de forma sistemática.", note: "AVAILABILITY 3 — purchase orders in SAP and a structured contract list both exist with a plausible access path, but they have never been joined and quality has not been checked on real records. EVALUABILITY 4 — on-contract versus off-contract is a checkable outcome once the category mapping is agreed, a usable proxy short of a settled reference set. min(3,4)=3."}
+    process_frequency: {score: 5, anchor_level: 5, confidence: high, resolution: derived, quote: "Frecuencia: 3,000 órdenes al mes", note: "3,000 x 12 = 36,000 instances/year; 36,000 > 10,000 -> band 5."}
+    implementation_effort: {score: 2, anchor_level: 2, confidence: medium, resolution: judged, quote: "Tenemos todas las órdenes de compra en SAP y la lista de contratos vigentes con sus proveedores y categorías.", note: "Two to six weeks: a couple of integrations and minor data plumbing to join two sources that already exist, plus a reporting surface; no new vendor or licence."}
+    data_governance: {score: 3, anchor_level: 3, confidence: high, resolution: derived, quote: "Clasificación: confidencial", note: "intake_sensitivity mapping confidential -> 3."}
+    non_ai_alternative: {score: 2, anchor_level: 2, confidence: medium, resolution: derived, branch: none_complete, quote: "No se mide de forma sistemática.", note: "The contract list is a held lookup for this work, but nothing runs it: the request states the measurement is not done systematically and off-contract spend surfaces only when a preferred supplier complains. After the list is consulted somebody still has to decide what counts. -> none_complete = 2."}
+  ambiguous_anchors:
+    - "deterministic_rule_suffices Part A: the logic is implied by the description of the problem rather than stated as an if-X-then-Y rule."

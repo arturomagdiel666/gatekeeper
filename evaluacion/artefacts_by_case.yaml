@@ -1,0 +1,152 @@
+# Authored intake field: existing_deterministic_artefacts
+#
+# Written by the corpus author, once, for all 30 cases — not by either scorer.
+# In production this field is filled by the requester. Both scorers previously had
+# to construct it from prose, which was the confound in run 4.
+#
+# AUTHORING RULES, applied uniformly and stated so the result is auditable:
+#
+#   R1. An artefact must PRODUCE something when it runs. A passive holding —
+#       an archive, a catalogue, a repository of past work — produces nothing
+#       and is not an artefact. This resolves the "1 vs 2" ambiguity both
+#       scorers flagged.
+#   R2. A thing not running today is not an artefact: switched off, done once
+#       two years ago, or sitting in a document nobody opens.
+#   R3. An LLM-based tool is not deterministic.
+#   R4. A human following a deterministic procedure IS an artefact. A human
+#       exercising judgement is not.
+#   R5. `completes_without_judgement` is answered from what the request says
+#       happens next. If the text shows a person still deciding, arguing, or
+#       adding criterion afterwards, it is false.
+#
+# Every entry carries the verbatim sentence it was drawn from.
+
+A-01:
+  - name: Teams meeting recording
+    what_it_does: Records the meeting automatically; the recording exists after every session
+    completes_without_judgement: false
+    quote: "Las juntas son en Teams y quedan grabadas porque ya lo tenemos activado."
+
+A-02:
+  - name: Per-supplier capture templates
+    what_it_does: Extracts the invoice fields for the 30 largest suppliers
+    completes_without_judgement: true
+    quote: "de los 400 proveedores solo los 30 más grandes tienen plantilla"
+
+A-03: []
+
+A-04:
+  - name: Approved contract templates
+    what_it_does: Provides the reference wording a supplier contract is compared against
+    completes_without_judgement: false
+    quote: "Tenemos las plantillas aprobadas"
+
+A-05:
+  - name: Regional Excel workbooks
+    what_it_does: Each regional manager downloads from Salesforce and builds a pipeline view
+    completes_without_judgement: false
+    quote: "cada quien lo calcula distinto, entonces las juntas de forecast se van en discutir de quién es el número bueno"
+
+A-06: []
+
+A-07: []
+
+A-08:
+  - name: Identity check and Active Directory reset
+    what_it_does: Agent verifies identity with two directory questions and executes the reset
+    completes_without_judgement: true
+    quote: "el agente verifica identidad con dos preguntas del directorio y ejecuta el reseteo en Active Directory"
+
+A-09: []
+
+A-10:
+  - name: SharePoint document search
+    what_it_does: Searches the configuration and pricing library
+    completes_without_judgement: false
+    quote: "Cuando no encuentran, asumen o copian de una cotización anterior."
+
+A-11:
+  - name: 15% sample compliance review
+    what_it_does: A reviewer checks a sample of expense reports against policy
+    completes_without_judgement: false
+    quote: "Se revisa una muestra del 15%."
+
+A-12: []
+
+B-01: []
+
+B-02: []
+
+B-03:
+  - name: Annual SCCM-to-invoice reconciliation
+    what_it_does: Exports the SCCM inventory, cross-references it against invoices in Excel and produces the report
+    completes_without_judgement: true
+    quote: "alguien exporta el inventario de SCCM, lo cruza contra las facturas en Excel y arma un reporte"
+
+B-04:
+  - name: Variance report
+    what_it_does: Produces the month's variances against budget and prior month
+    completes_without_judgement: false
+    quote: "El analista abre el reporte de variaciones, busca en el detalle qué causó cada movimiento"
+
+B-05: []
+
+B-06: []
+
+B-07:
+  - name: Quarterly training compliance cross-reference
+    what_it_does: Exports the training report, cross-references it against current headcount in Excel and sends the reminders
+    completes_without_judgement: true
+    quote: "Se exporta el reporte del sistema de capacitación, se cruza con la plantilla vigente en Excel y se mandan correos manualmente."
+
+B-08:
+  - name: Welcome email with links
+    what_it_does: Sends the new joiner a standard welcome message with links
+    completes_without_judgement: false
+    quote: "Hay un correo de bienvenida con ligas y el jefe directo hace lo que puede."
+
+B-09: []
+
+B-10: []
+
+B-11: []
+
+B-12: []
+
+B-13: []
+
+B-14:
+  - name: Manual per-platform slide build
+    what_it_does: Someone opens each platform, downloads the numbers and assembles a slide
+    completes_without_judgement: false
+    quote: "Alguien entra a cada plataforma, baja números y arma una lámina."
+
+B-15:
+  - name: First-in-first-out working order
+    what_it_does: Leads are worked in the order they arrive
+    completes_without_judgement: false
+    quote: "Orden de llegada, con algo de criterio del que los trabaja."
+
+B-16: []
+
+B-17: []
+
+B-18: []
+
+# Distribution: 13 cases with at least one artefact, 17 empty.
+# Completing entries: A-02, A-08, B-03, B-07 (four).
+#
+# Divergences from what the scorers constructed in run 4, and why:
+#   A-09, B-02, B-16 — a person reading free text and choosing a category is
+#     judgement (R4), so no artefact. Scorer B had B-16 as coverage_all.
+#   B-09 — templates nobody opens are not running (R2). Scorer B had them as
+#     an artefact.
+#   B-01, B-05, B-06, B-10, B-12, B-17 — archives and shared folders produce
+#     nothing (R1).
+#   A-05, B-14, B-15 — the artefact exists and the text shows a person still
+#     deciding afterwards (R5), so completing is false. Scorer B read all
+#     three as completing.
+#
+# These are authoring decisions, not corrections of either scorer. They are
+# listed so that the re-run measures agreement on a STATED field rather than
+# agreement on how to invent one.

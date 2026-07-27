@@ -2715,3 +2715,77 @@ error class multiplied by seven.
 
 Nothing was tuned in response to any of this, and the 7B remains the shipped
 default: `DEFAULT_OLLAMA_MODEL` is untouched.
+
+---
+
+## ADR-034 — Phase 10: an intake agent, and the two things building it exposed
+
+**Status:** accepted · **Date:** 2026-07-27
+
+Phase 2 cut the conversational agent. That decision is reversed here, deliberately
+and by the owner: the project's goal changed, and a portfolio piece for a role
+building an AI Agent Hub that contains no agent is not one.
+
+It is not a reversal of the *reasoning*, though, and that matters. Phase 2 cut a
+conversational agent that would have **scored dimensions in conversation.** This
+one cannot. The measurement programme between then and now settled what the model
+is for — it finds and quotes evidence, kw = 0.97 for computed slots against
+kappa = 0.04 for judged ones — and the agent implements that split rather than
+ignoring it. `score_and_gate` takes a `RequestIntake` and a list of
+quote-verified anti-pattern matches, and there is no parameter through which a
+model-produced number could arrive. A test asserts the signature.
+
+### The interview needs two things a form does not
+
+**A gate must not fire on a field nobody has been asked about.**
+`no_named_business_owner` fires on an empty `business_owner`, which is right for a
+submitted form: the requester had their chance and left it blank. In an interview
+an empty field means *not asked yet*, and honouring the gate at turn zero would
+end every conversation with `no_go` before a word was exchanged. So gates whose
+deciding field is still unasked are held back — and the loop tracks what it has
+*asked*, not just what is *filled*, because a requester who cannot name an owner
+has answered, and the gate must then fire. Asked-and-unanswerable and never-asked
+look identical in the intake and mean opposite things.
+
+**A question has to be able to change something.** A field earns a turn only if
+it can decide a gate or resolve a dimension still unknown. Without that rule the
+agent asked who does the work today — useful context on a form, a wasted turn in
+a conversation — and reached the same verdict four questions later.
+
+### The ceiling, stated rather than hidden
+
+`adoption_risk`, `data_readiness` and `implementation_effort` carry 0.45 of the
+rubric weight between them and no intake field supplies any of them. With the
+model barred from scoring, **`go` is unreachable through the interview.** What is
+reachable is `no_go` and `not_ai` by gate, both decided, and `incomplete` naming
+exactly which dimensions no question can fix.
+
+That is not a defect in the agent. It is the architecture rule's cost, made
+visible, and the fix is the one ADR-031's write-up already recommended: convert
+those three to intake fields. Building the agent did not create that debt, it
+priced it.
+
+### The live run found a defect the offline run could not
+
+The scripted mock filled four fields. The live 7B filled one, and died on
+`existing_deterministic_artefacts` — twice, with `Expecting property name enclosed
+in double quotes`.
+
+The extraction schema had asked for a JSON list **inside a JSON string**.
+Grammar-constrained decoding cannot help with that: the grammar constrains the
+outer string and has nothing whatever to say about its contents. So the hardest
+extraction in the interview was the one piece running unconstrained, and the 7B
+emitted unquoted keys.
+
+`value` is now shaped per field — a real array for the artefact list, a real
+object for volume, an enum for the classifications. **This is ADR-032 recurring
+one level down**: a constraint that can be moved into the grammar is not enforced
+by leaving it implicit. Twice now, in two different files, the same mistake has
+cost a measurable failure.
+
+A second live finding is recorded and **not** fixed: the 7B sometimes pastes the
+whole internal prompt hint into its question, asks four things at once, and signs
+off with emoji. That is a prompt-quality problem in exactly the place the model is
+allowed to be weak — it affects how a question reads, never what is recorded or
+decided — and this phase ships without tuning it, because tuning a prompt against
+a single observation is how the earlier phases took a dimension from 70% to 30%.

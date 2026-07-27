@@ -331,3 +331,87 @@ def test_prior_tool_abandoned_is_recorded():
     )
     assert result.accepted
     assert result.intake.prior_tool_for_these_users is PriorTool.ABANDONED
+
+
+# ---------------------------------------------------------------------------
+# Extraction shape
+# ---------------------------------------------------------------------------
+
+
+def test_structured_fields_get_a_structured_extraction_schema():
+    """The defect the first live run found, pinned.
+
+    Asking for a JSON list inside a JSON string puts the hard part outside the
+    grammar: the constraint applies to the string, not its contents. The 7B
+    emitted unquoted keys twice and the interview died with one field filled.
+    """
+    artefacts = agent.extract_schema_for("existing_deterministic_artefacts")
+    assert artefacts["properties"]["value"]["type"] == "array"
+    assert (
+        artefacts["properties"]["value"]["items"]["properties"][
+            "completes_without_judgement"
+        ]["type"]
+        == "boolean"
+    )
+
+    volume = agent.extract_schema_for("times_per_period")
+    assert volume["properties"]["value"]["type"] == "object"
+    assert volume["properties"]["value"]["properties"]["period"]["enum"] == [
+        "day",
+        "week",
+        "month",
+        "year",
+    ]
+
+    sensitivity = agent.extract_schema_for("data_sensitivity")
+    assert "regulated" in sensitivity["properties"]["value"]["enum"]
+    assert "unknown" not in sensitivity["properties"]["value"]["enum"], (
+        "unknown is the absence of an answer, not one the requester can give"
+    )
+
+    plain = agent.extract_schema_for("business_owner")
+    assert plain["properties"]["value"]["type"] == "string"
+
+
+def test_record_field_accepts_a_native_value_and_a_json_string():
+    """Both, so every transcript recorded before the schema change still replays."""
+    native = tools.record_field(
+        RequestIntake(request_text=VAGUE),
+        "existing_deterministic_artefacts",
+        [{"name": "Excel", "what_it_does": "lists them", "completes_without_judgement": False}],
+        "an Excel report",
+        1,
+        "?",
+        "we have an Excel report",
+    )
+    as_string = tools.record_field(
+        RequestIntake(request_text=VAGUE),
+        "existing_deterministic_artefacts",
+        '[{"name": "Excel", "what_it_does": "lists them", "completes_without_judgement": false}]',
+        "an Excel report",
+        1,
+        "?",
+        "we have an Excel report",
+    )
+    assert native.accepted and as_string.accepted
+    assert (
+        native.intake.existing_deterministic_artefacts
+        == as_string.intake.existing_deterministic_artefacts
+    )
+
+
+def test_an_empty_artefact_list_is_recorded_rather_than_refused_as_no_value():
+    """`[]` is the answer that says nothing exists, and it derives a score."""
+    result = tools.record_field(
+        RequestIntake(request_text=VAGUE),
+        "existing_deterministic_artefacts",
+        [],
+        "nothing really",
+        1,
+        "?",
+        "nothing really, people just do it by hand",
+    )
+    assert result.accepted
+    assert result.intake.existing_deterministic_artefacts == []
+    outcome = tools.score_and_gate(result.intake)
+    assert outcome.resolved_scores["non_ai_alternative"] == 1

@@ -135,15 +135,59 @@ DECIDE_SCHEMA: dict = {
     "required": ["tool", "target_field", "question", "why"],
 }
 
-EXTRACT_SCHEMA: dict = {
-    "type": "object",
-    "properties": {
-        "value": {"type": "string"},
-        "span": {"type": "string"},
-        "answered": {"type": "boolean"},
+#: The shape of `value`, per field parser. A field whose value is structured
+#: gets a structured schema rather than a string holding JSON.
+#:
+#: The first live run failed here. `existing_deterministic_artefacts` asked the
+#: model to write a JSON list *inside a JSON string*, and grammar-constrained
+#: decoding cannot help with that — the grammar constrains the outer string and
+#: has nothing to say about its contents. The 7B emitted unquoted keys twice,
+#: both were rejected, and two barren answers ended the interview with one field
+#: filled. Same lesson as ADR-032 one level down: **a constraint that can be
+#: moved into the grammar is not enforced by leaving it implicit.**
+VALUE_SCHEMAS: dict[str, dict] = {
+    "text": {"type": "string"},
+    "number": {"type": "number"},
+    "data_sensitivity": {
+        "type": "string",
+        "enum": ["public", "internal", "confidential", "regulated"],
     },
-    "required": ["value", "span", "answered"],
+    "prior_tool": {"type": "string", "enum": ["none", "adopted", "abandoned"]},
+    "volume": {
+        "type": "object",
+        "properties": {
+            "times": {"type": "integer"},
+            "period": {"type": "string", "enum": ["day", "week", "month", "year"]},
+        },
+        "required": ["times", "period"],
+    },
+    "artefacts": {
+        "type": "array",
+        "items": {
+            "type": "object",
+            "properties": {
+                "name": {"type": "string"},
+                "what_it_does": {"type": "string"},
+                "completes_without_judgement": {"type": "boolean"},
+            },
+            "required": ["name", "what_it_does", "completes_without_judgement"],
+        },
+    },
 }
+
+
+def extract_schema_for(field_name: str) -> dict:
+    """The extraction schema for one field, with `value` shaped for its parser."""
+    parser = ASKABLE_BY_NAME[field_name].parser
+    return {
+        "type": "object",
+        "properties": {
+            "value": VALUE_SCHEMAS.get(parser, VALUE_SCHEMAS["text"]),
+            "span": {"type": "string"},
+            "answered": {"type": "boolean"},
+        },
+        "required": ["value", "span", "answered"],
+    }
 
 
 def _decide_messages(
@@ -195,16 +239,21 @@ def _decide_messages(
 
 def _extract_messages(field_name: str, question: str, answer: str) -> list[dict]:
     field = ASKABLE_BY_NAME[field_name]
+    # The schema already constrains the SHAPE of `value` — these say what to put
+    # in it, not how to punctuate it.
     shape = {
-        "volume": 'a JSON object: {"times": <integer>, "period": "day"|"week"|"month"|"year"}',
-        "artefacts": (
-            "a JSON list; each entry {\"name\": str, \"what_it_does\": str, "
-            '"completes_without_judgement": true|false}. An empty list [] is the '
-            "correct answer when they said nothing exists"
+        "volume": (
+            "how many, and the period they are counted in. Count the items "
+            "handled separately, not the batches they arrive in"
         ),
-        "data_sensitivity": 'exactly one of: "public", "internal", "confidential", "regulated"',
-        "prior_tool": 'exactly one of: "none", "adopted", "abandoned"',
-        "number": "a bare number",
+        "artefacts": (
+            "one entry per thing that already exists. completes_without_judgement "
+            "is true only if the work is FINISHED when that thing runs. An empty "
+            "list is the correct answer when they said nothing exists"
+        ),
+        "data_sensitivity": "the classification they described",
+        "prior_tool": "what became of the last tool for these users",
+        "number": "the number of minutes",
     }.get(field.parser, "the value in their own words, trimmed")
     return [
         {
@@ -339,7 +388,7 @@ class Interview:
             result = tools.record_field(
                 self.intake,
                 turn.target_field,
-                str(extracted.get("value", "")),
+                extracted.get("value", ""),
                 str(extracted.get("span", "")),
                 turn.n,
                 turn.question,
@@ -525,7 +574,10 @@ def _decide(
 
 def _extract(provider: LLMProvider, field_name: str, question: str, answer: str) -> dict:
     response = _call(
-        provider, _extract_messages(field_name, question, answer), EXTRACT_SCHEMA, 0.0
+        provider,
+        _extract_messages(field_name, question, answer),
+        extract_schema_for(field_name),
+        0.0,
     )
     if response is None:
         return {"answered": False, "value": "", "span": ""}

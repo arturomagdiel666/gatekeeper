@@ -87,7 +87,7 @@ python3.12-venv` first.
 
 ```bash
 python3 -m venv .venv && source .venv/bin/activate && pip install -r requirements.txt
-pytest                  # 450 tests, no model, no network
+pytest                  # 453 tests, no model, no network
 streamlit run app.py    # the demo; the Triage tab has an offline checkbox
 ```
 
@@ -117,4 +117,4 @@ untested.
 | `evaluacion/` | The study write-ups, in Spanish and English. **This copy is the source of truth**; an older copy exists outside the repository and is no longer maintained |
 | `docs/DECISIONS.md` | ADR-001..033 — why it is shaped this way, with the measurement that forced each change |
 | `runs/` | Saved interview transcripts, replayable |
-| `tests/` | 450 tests, all offline |
+| `tests/` | 453 tests, all offline |

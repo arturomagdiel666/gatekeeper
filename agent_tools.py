@@ -302,22 +302,46 @@ class RecordResult(BaseModel):
     provenance: FieldProvenance | None = None
 
 
-def _coerce(field: Askable, value: str) -> Any:
-    """Turn the model's extracted string into the field's declared type.
+def _coerce(field: Askable, value: Any) -> Any:
+    """Turn the extracted value into the field's declared type.
+
+    Accepts the value either already structured — which is what the extraction
+    grammar now produces for the list and volume fields — or as a string holding
+    JSON, which is what a hand-written script or an older transcript supplies.
+    The string path is kept because rejecting it would make every recorded
+    transcript unreplayable, not because a model should be emitting one.
 
     Raises:
         ValueError: If the answer does not carry the value the field needs. The
             message is fed back to the model, so it names what was wrong.
     """
-    text = (value or "").strip()
-    if not text:
+
+    def parsed(text: Any, opener: str) -> Any:
+        if isinstance(text, str):
+            stripped = text.strip()
+            return json.loads(stripped) if stripped.startswith(opener) else None
+        return text
+
+    if field.parser == "artefacts":
+        # `[]` is a real answer meaning nothing exists, so emptiness is checked
+        # after parsing rather than as a blanket "no value" guard (ADR-030).
+        payload = parsed(value, "[")
+        if not isinstance(payload, list):
+            raise ValueError(
+                "expected a list of artefacts, each with name, what_it_does and "
+                "completes_without_judgement. An empty list is a valid and "
+                "meaningful answer: it means nothing exists"
+            )
+        return [DeterministicArtefact.model_validate(item) for item in payload]
+
+    if isinstance(value, str) and not value.strip():
         raise ValueError("the answer carried no value for this field")
 
     if field.parser == "number":
-        return float(text.replace(",", "."))
+        return float(str(value).replace(",", "."))
     if field.parser == "volume":
-        payload = json.loads(text) if text.startswith("{") else None
-        if not payload or "times" not in payload or "period" not in payload:
+        payload = parsed(value, "{")
+        if not isinstance(payload, dict) or "times" not in payload or "period" not in payload:
             raise ValueError(
                 'expected {"times": <int>, "period": "day|week|month|year"}; '
                 "volume and its period are one answer because a number without "
@@ -325,25 +349,16 @@ def _coerce(field: Askable, value: str) -> Any:
             )
         return (int(payload["times"]), Period(str(payload["period"]).lower()))
     if field.parser == "data_sensitivity":
-        return DataSensitivity(text.lower())
+        return DataSensitivity(str(value).strip().lower())
     if field.parser == "prior_tool":
-        return PriorTool(text.lower())
-    if field.parser == "artefacts":
-        payload = json.loads(text) if text.startswith("[") else None
-        if payload is None:
-            raise ValueError(
-                "expected a JSON list of artefacts, each with name, "
-                "what_it_does and completes_without_judgement. An empty list is "
-                "a valid and meaningful answer: it means nothing exists"
-            )
-        return [DeterministicArtefact.model_validate(item) for item in payload]
-    return text
+        return PriorTool(str(value).strip().lower())
+    return str(value).strip()
 
 
 def record_field(
     intake: RequestIntake,
     name: str,
-    value: str,
+    value: Any,
     span: str,
     turn: int,
     question: str,
@@ -359,7 +374,8 @@ def record_field(
     Args:
         intake: The intake to update. Never mutated; a copy is returned.
         name: The field to fill.
-        value: The extracted value, as a string, coerced by the field's parser.
+        value: The extracted value, structured or as a string, coerced by
+            the field's parser.
         span: The requester's own words justifying it, copied verbatim.
         turn: The interview turn.
         question: The question that was asked.

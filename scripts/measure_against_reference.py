@@ -427,33 +427,12 @@ def run_system(cases: list[Case], provider) -> list[dict]:
             continue
 
         outcome = result.outcome
-        # Reconstructing the effective score map takes three sources, and getting
-        # it wrong is easy in both directions — this script did both before landing
-        # here. `outcome.contributions` holds the authoritative post-derivation
-        # values but is EMPTY whenever a case is gated or incomplete. The merged
-        # assessment holds the model's own answers plus the AUTHORITATIVE
-        # derivations, but not the FALLBACK ones: `business_value`'s fallback is
-        # applied inside `score()` on a private copy and is never written back, so
-        # on an unscorable case the value it computed is not recoverable from the
-        # Outcome at all — `fallback_derived_dimensions` names the dimension and
-        # discards the number.
-        #
-        # So: start from the model, overlay the derivations using the production
-        # helpers in the order `score()` applies them, then let contributions win
-        # where they exist. No arithmetic is reimplemented here.
-        scores = {
-            entry.dimension_id: entry.score
-            for entry in result.assessment.dimension_assessments
-        }
-        for dim, (value, _why) in derive_scores(RUBRIC, case.intake).items():
-            scores[dim] = value
-        for dim, (value, _why, _conf) in derive_fallback_scores(
-            RUBRIC, case.intake
-        ).items():
-            if scores.get(dim) is None:
-                scores[dim] = value
-        for contribution in outcome.contributions:
-            scores[contribution.dimension_id] = contribution.raw_score
+        # `resolved_scores` carries every dimension's post-derivation value whether
+        # or not the case turned out scorable (ADR-032). It exists because this
+        # script needed it and reconstructing it by hand was wrong twice:
+        # `contributions` is empty on a gated or incomplete case, and the merged
+        # assessment lacks the fallback derivations.
+        scores = dict(outcome.resolved_scores)
         # A dimension can be absent from the merged assessment, and it is a
         # property of the system rather than of this script: `build_response_schema`
         # pins dimension_assessments to exactly one entry per asked dimension and

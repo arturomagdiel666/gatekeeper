@@ -1,0 +1,1317 @@
+{
+  "per_dimension": [
+    {
+      "dimension": "business_value",
+      "kind": "derived",
+      "n": 24,
+      "exact": 21,
+      "within1": 23
+    },
+    {
+      "dimension": "process_frequency",
+      "kind": "derived",
+      "n": 24,
+      "exact": 24,
+      "within1": 24
+    },
+    {
+      "dimension": "data_governance",
+      "kind": "derived",
+      "n": 25,
+      "exact": 25,
+      "within1": 25
+    },
+    {
+      "dimension": "non_ai_alternative",
+      "kind": "derived",
+      "n": 26,
+      "exact": 26,
+      "within1": 26
+    },
+    {
+      "dimension": "business_value",
+      "kind": "model",
+      "n": 1,
+      "exact": 0,
+      "within1": 0
+    },
+    {
+      "dimension": "adoption_risk",
+      "kind": "model",
+      "n": 25,
+      "exact": 0,
+      "within1": 3
+    },
+    {
+      "dimension": "data_readiness",
+      "kind": "model",
+      "n": 22,
+      "exact": 1,
+      "within1": 7
+    },
+    {
+      "dimension": "implementation_effort",
+      "kind": "model",
+      "n": 21,
+      "exact": 3,
+      "within1": 8
+    },
+    {
+      "dimension": "data_governance",
+      "kind": "model",
+      "n": 2,
+      "exact": 0,
+      "within1": 0
+    },
+    {
+      "dimension": "non_ai_alternative",
+      "kind": "model",
+      "n": 4,
+      "exact": 1,
+      "within1": 1
+    }
+  ],
+  "excluded_by_dimension": {
+    "business_value": 0,
+    "adoption_risk": 5,
+    "data_readiness": 8,
+    "process_frequency": 1,
+    "implementation_effort": 9,
+    "data_governance": 2,
+    "non_ai_alternative": 0
+  },
+  "both_null_by_dimension": {
+    "business_value": 5,
+    "adoption_risk": 0,
+    "data_readiness": 0,
+    "process_frequency": 5,
+    "implementation_effort": 0,
+    "data_governance": 1,
+    "non_ai_alternative": 0
+  },
+  "confusion_matrix": {
+    "go": {
+      "go": 1,
+      "no_go": 3,
+      "not_ai": 0,
+      "incomplete": 4
+    },
+    "no_go": {
+      "go": 0,
+      "no_go": 4,
+      "not_ai": 1,
+      "incomplete": 7
+    },
+    "not_ai": {
+      "go": 0,
+      "no_go": 3,
+      "not_ai": 1,
+      "incomplete": 2
+    },
+    "incomplete": {
+      "go": 0,
+      "no_go": 0,
+      "not_ai": 0,
+      "incomplete": 2
+    }
+  },
+  "errors_by_cost_class": {
+    "false go": 0,
+    "false not_ai": 1,
+    "false no_go": 6,
+    "spurious incomplete": 13
+  },
+  "off_reference": [
+    [
+      "A-01",
+      "no_go",
+      "not_ai"
+    ],
+    [
+      "A-05",
+      "not_ai",
+      "incomplete"
+    ],
+    [
+      "A-06",
+      "go",
+      "incomplete"
+    ],
+    [
+      "A-07",
+      "no_go",
+      "incomplete"
+    ],
+    [
+      "A-09",
+      "go",
+      "incomplete"
+    ],
+    [
+      "A-12",
+      "no_go",
+      "incomplete"
+    ],
+    [
+      "B-02",
+      "go",
+      "incomplete"
+    ],
+    [
+      "B-03",
+      "not_ai",
+      "no_go"
+    ],
+    [
+      "B-05",
+      "no_go",
+      "incomplete"
+    ],
+    [
+      "B-06",
+      "no_go",
+      "incomplete"
+    ],
+    [
+      "B-07",
+      "not_ai",
+      "no_go"
+    ],
+    [
+      "B-08",
+      "no_go",
+      "incomplete"
+    ],
+    [
+      "B-09",
+      "go",
+      "incomplete"
+    ],
+    [
+      "B-10",
+      "go",
+      "no_go"
+    ],
+    [
+      "B-12",
+      "no_go",
+      "incomplete"
+    ],
+    [
+      "B-13",
+      "go",
+      "no_go"
+    ],
+    [
+      "B-14",
+      "not_ai",
+      "no_go"
+    ],
+    [
+      "B-16",
+      "go",
+      "no_go"
+    ],
+    [
+      "B-17",
+      "no_go",
+      "incomplete"
+    ],
+    [
+      "B-18",
+      "not_ai",
+      "incomplete"
+    ]
+  ],
+  "verdict_reference_n": 28,
+  "verdict_excluded": [
+    [
+      "B-01",
+      "go",
+      "no_go"
+    ],
+    [
+      "B-15",
+      "no_go",
+      "go"
+    ]
+  ],
+  "timeouts": [],
+  "errors": [],
+  "latency": {
+    "n": 30,
+    "min_s": 3.7,
+    "median_s": 4.275,
+    "max_s": 5.99
+  },
+  "rows": [
+    {
+      "case_id": "A-01",
+      "error": null,
+      "latency_s": 4.93,
+      "timed_out": false,
+      "verdict": "not_ai",
+      "weighted_total": 3.0,
+      "gates": [
+        "non_ai_alternative_suffices"
+      ],
+      "requires_human_confirmation": true,
+      "retry_count": 0,
+      "scores": {
+        "business_value": 2,
+        "adoption_risk": 3,
+        "data_readiness": 4,
+        "process_frequency": 2,
+        "implementation_effort": 3,
+        "data_governance": 2,
+        "non_ai_alternative": 2
+      },
+      "derived": [
+        "business_value",
+        "data_governance",
+        "non_ai_alternative",
+        "process_frequency"
+      ],
+      "model_scored": [
+        "adoption_risk",
+        "business_value",
+        "data_readiness",
+        "implementation_effort"
+      ],
+      "dropped_by_duplication": [],
+      "ignored_dimension_ids": [],
+      "unsupported_anti_patterns": []
+    },
+    {
+      "case_id": "A-02",
+      "error": null,
+      "latency_s": 4.2,
+      "timed_out": false,
+      "verdict": "go",
+      "weighted_total": 3.78,
+      "gates": [],
+      "requires_human_confirmation": false,
+      "retry_count": 0,
+      "scores": {
+        "business_value": 4,
+        "adoption_risk": 2,
+        "data_readiness": 3,
+        "process_frequency": 5,
+        "implementation_effort": 2,
+        "data_governance": 3,
+        "non_ai_alternative": 3
+      },
+      "derived": [
+        "business_value",
+        "data_governance",
+        "process_frequency"
+      ],
+      "model_scored": [
+        "adoption_risk",
+        "business_value",
+        "data_readiness",
+        "implementation_effort",
+        "non_ai_alternative"
+      ],
+      "dropped_by_duplication": [],
+      "ignored_dimension_ids": [],
+      "unsupported_anti_patterns": []
+    },
+    {
+      "case_id": "A-03",
+      "error": null,
+      "latency_s": 5.2,
+      "timed_out": false,
+      "verdict": "no_go",
+      "weighted_total": null,
+      "gates": [
+        "no_named_business_owner"
+      ],
+      "requires_human_confirmation": false,
+      "retry_count": 0,
+      "scores": {
+        "business_value": null,
+        "adoption_risk": null,
+        "data_readiness": null,
+        "process_frequency": null,
+        "implementation_effort": null,
+        "data_governance": null,
+        "non_ai_alternative": 1
+      },
+      "derived": [
+        "non_ai_alternative"
+      ],
+      "model_scored": [
+        "adoption_risk",
+        "business_value",
+        "data_governance",
+        "data_readiness",
+        "implementation_effort",
+        "process_frequency"
+      ],
+      "dropped_by_duplication": [],
+      "ignored_dimension_ids": [],
+      "unsupported_anti_patterns": []
+    },
+    {
+      "case_id": "A-04",
+      "error": null,
+      "latency_s": 3.7,
+      "timed_out": false,
+      "verdict": "no_go",
+      "weighted_total": 3.27,
+      "gates": [
+        "no_usable_data"
+      ],
+      "requires_human_confirmation": true,
+      "retry_count": 0,
+      "scores": {
+        "business_value": 3,
+        "adoption_risk": 1,
+        "data_readiness": 1,
+        "process_frequency": 3,
+        "implementation_effort": 2,
+        "data_governance": 3,
+        "non_ai_alternative": 2
+      },
+      "derived": [
+        "business_value",
+        "data_governance",
+        "non_ai_alternative",
+        "process_frequency"
+      ],
+      "model_scored": [
+        "adoption_risk",
+        "business_value",
+        "data_readiness",
+        "implementation_effort"
+      ],
+      "dropped_by_duplication": [],
+      "ignored_dimension_ids": [],
+      "unsupported_anti_patterns": []
+    },
+    {
+      "case_id": "A-05",
+      "error": null,
+      "latency_s": 4.47,
+      "timed_out": false,
+      "verdict": "incomplete",
+      "weighted_total": null,
+      "gates": [],
+      "requires_human_confirmation": false,
+      "retry_count": 0,
+      "scores": {
+        "business_value": 2,
+        "adoption_risk": null,
+        "data_readiness": null,
+        "process_frequency": 2,
+        "implementation_effort": null,
+        "data_governance": 3,
+        "non_ai_alternative": 2
+      },
+      "derived": [
+        "business_value",
+        "data_governance",
+        "non_ai_alternative",
+        "process_frequency"
+      ],
+      "model_scored": [
+        "adoption_risk",
+        "business_value",
+        "data_readiness",
+        "implementation_effort"
+      ],
+      "dropped_by_duplication": [],
+      "ignored_dimension_ids": [],
+      "unsupported_anti_patterns": []
+    },
+    {
+      "case_id": "A-06",
+      "error": null,
+      "latency_s": 3.95,
+      "timed_out": false,
+      "verdict": "incomplete",
+      "weighted_total": null,
+      "gates": [],
+      "requires_human_confirmation": false,
+      "retry_count": 0,
+      "scores": {
+        "business_value": 2,
+        "adoption_risk": null,
+        "data_readiness": null,
+        "process_frequency": 3,
+        "implementation_effort": null,
+        "data_governance": 2,
+        "non_ai_alternative": 1
+      },
+      "derived": [
+        "business_value",
+        "data_governance",
+        "non_ai_alternative",
+        "process_frequency"
+      ],
+      "model_scored": [
+        "adoption_risk",
+        "business_value",
+        "data_readiness",
+        "implementation_effort"
+      ],
+      "dropped_by_duplication": [],
+      "ignored_dimension_ids": [],
+      "unsupported_anti_patterns": []
+    },
+    {
+      "case_id": "A-07",
+      "error": null,
+      "latency_s": 5.26,
+      "timed_out": false,
+      "verdict": "incomplete",
+      "weighted_total": null,
+      "gates": [],
+      "requires_human_confirmation": false,
+      "retry_count": 0,
+      "scores": {
+        "business_value": null,
+        "adoption_risk": null,
+        "data_readiness": null,
+        "process_frequency": null,
+        "implementation_effort": null,
+        "data_governance": 4,
+        "non_ai_alternative": 1
+      },
+      "derived": [
+        "data_governance",
+        "non_ai_alternative"
+      ],
+      "model_scored": [
+        "adoption_risk",
+        "business_value",
+        "data_readiness",
+        "implementation_effort",
+        "process_frequency"
+      ],
+      "dropped_by_duplication": [],
+      "ignored_dimension_ids": [],
+      "unsupported_anti_patterns": []
+    },
+    {
+      "case_id": "A-08",
+      "error": null,
+      "latency_s": 5.34,
+      "timed_out": false,
+      "verdict": "not_ai",
+      "weighted_total": 3.771086,
+      "gates": [
+        "non_ai_alternative_suffices",
+        "no_usable_data"
+      ],
+      "requires_human_confirmation": true,
+      "retry_count": 0,
+      "scores": {
+        "business_value": 4,
+        "adoption_risk": null,
+        "data_readiness": 1,
+        "process_frequency": 5,
+        "implementation_effort": 1,
+        "data_governance": 3,
+        "non_ai_alternative": 1
+      },
+      "derived": [
+        "business_value",
+        "data_governance",
+        "process_frequency"
+      ],
+      "model_scored": [
+        "adoption_risk",
+        "business_value",
+        "data_readiness",
+        "implementation_effort",
+        "non_ai_alternative"
+      ],
+      "dropped_by_duplication": [],
+      "ignored_dimension_ids": [],
+      "unsupported_anti_patterns": []
+    },
+    {
+      "case_id": "A-09",
+      "error": null,
+      "latency_s": 4.98,
+      "timed_out": false,
+      "verdict": "incomplete",
+      "weighted_total": null,
+      "gates": [],
+      "requires_human_confirmation": false,
+      "retry_count": 0,
+      "scores": {
+        "business_value": 3,
+        "adoption_risk": null,
+        "data_readiness": null,
+        "process_frequency": 3,
+        "implementation_effort": null,
+        "data_governance": null,
+        "non_ai_alternative": 1
+      },
+      "derived": [
+        "business_value",
+        "non_ai_alternative",
+        "process_frequency"
+      ],
+      "model_scored": [
+        "adoption_risk",
+        "business_value",
+        "data_governance",
+        "data_readiness",
+        "implementation_effort"
+      ],
+      "dropped_by_duplication": [],
+      "ignored_dimension_ids": [],
+      "unsupported_anti_patterns": []
+    },
+    {
+      "case_id": "A-10",
+      "error": null,
+      "latency_s": 4.68,
+      "timed_out": false,
+      "verdict": "incomplete",
+      "weighted_total": null,
+      "gates": [],
+      "requires_human_confirmation": false,
+      "retry_count": 0,
+      "scores": {
+        "business_value": null,
+        "adoption_risk": 3,
+        "data_readiness": 2,
+        "process_frequency": null,
+        "implementation_effort": 2,
+        "data_governance": 3,
+        "non_ai_alternative": 2
+      },
+      "derived": [
+        "data_governance",
+        "non_ai_alternative"
+      ],
+      "model_scored": [
+        "adoption_risk",
+        "business_value",
+        "data_readiness",
+        "implementation_effort",
+        "process_frequency"
+      ],
+      "dropped_by_duplication": [],
+      "ignored_dimension_ids": [],
+      "unsupported_anti_patterns": []
+    },
+    {
+      "case_id": "A-11",
+      "error": null,
+      "latency_s": 4.53,
+      "timed_out": false,
+      "verdict": "no_go",
+      "weighted_total": null,
+      "gates": [
+        "no_named_business_owner",
+        "no_usable_data"
+      ],
+      "requires_human_confirmation": false,
+      "retry_count": 0,
+      "scores": {
+        "business_value": null,
+        "adoption_risk": 1,
+        "data_readiness": 1,
+        "process_frequency": null,
+        "implementation_effort": 1,
+        "data_governance": null,
+        "non_ai_alternative": 2
+      },
+      "derived": [
+        "non_ai_alternative"
+      ],
+      "model_scored": [
+        "adoption_risk",
+        "business_value",
+        "data_governance",
+        "data_readiness",
+        "implementation_effort",
+        "process_frequency"
+      ],
+      "dropped_by_duplication": [],
+      "ignored_dimension_ids": [],
+      "unsupported_anti_patterns": [
+        "existing_licensed_capability"
+      ]
+    },
+    {
+      "case_id": "A-12",
+      "error": null,
+      "latency_s": 4.02,
+      "timed_out": false,
+      "verdict": "incomplete",
+      "weighted_total": null,
+      "gates": [],
+      "requires_human_confirmation": false,
+      "retry_count": 0,
+      "scores": {
+        "business_value": 3,
+        "adoption_risk": null,
+        "data_readiness": null,
+        "process_frequency": 4,
+        "implementation_effort": null,
+        "data_governance": 3,
+        "non_ai_alternative": 1
+      },
+      "derived": [
+        "business_value",
+        "data_governance",
+        "non_ai_alternative",
+        "process_frequency"
+      ],
+      "model_scored": [
+        "adoption_risk",
+        "business_value",
+        "data_readiness",
+        "implementation_effort"
+      ],
+      "dropped_by_duplication": [],
+      "ignored_dimension_ids": [],
+      "unsupported_anti_patterns": []
+    },
+    {
+      "case_id": "B-01",
+      "error": null,
+      "latency_s": 3.92,
+      "timed_out": false,
+      "verdict": "incomplete",
+      "weighted_total": null,
+      "gates": [],
+      "requires_human_confirmation": false,
+      "retry_count": 0,
+      "scores": {
+        "business_value": 2,
+        "adoption_risk": null,
+        "data_readiness": null,
+        "process_frequency": 3,
+        "implementation_effort": null,
+        "data_governance": 2,
+        "non_ai_alternative": 1
+      },
+      "derived": [
+        "business_value",
+        "data_governance",
+        "non_ai_alternative",
+        "process_frequency"
+      ],
+      "model_scored": [
+        "adoption_risk",
+        "business_value",
+        "data_readiness",
+        "implementation_effort"
+      ],
+      "dropped_by_duplication": [],
+      "ignored_dimension_ids": [],
+      "unsupported_anti_patterns": []
+    },
+    {
+      "case_id": "B-02",
+      "error": null,
+      "latency_s": 4.4,
+      "timed_out": false,
+      "verdict": "incomplete",
+      "weighted_total": null,
+      "gates": [],
+      "requires_human_confirmation": false,
+      "retry_count": 0,
+      "scores": {
+        "business_value": 4,
+        "adoption_risk": null,
+        "data_readiness": null,
+        "process_frequency": 5,
+        "implementation_effort": null,
+        "data_governance": 3,
+        "non_ai_alternative": 1
+      },
+      "derived": [
+        "business_value",
+        "data_governance",
+        "non_ai_alternative",
+        "process_frequency"
+      ],
+      "model_scored": [
+        "adoption_risk",
+        "business_value",
+        "data_readiness",
+        "implementation_effort"
+      ],
+      "dropped_by_duplication": [],
+      "ignored_dimension_ids": [],
+      "unsupported_anti_patterns": []
+    },
+    {
+      "case_id": "B-03",
+      "error": null,
+      "latency_s": 5.62,
+      "timed_out": false,
+      "verdict": "no_go",
+      "weighted_total": 2.096387,
+      "gates": [],
+      "requires_human_confirmation": false,
+      "retry_count": 0,
+      "scores": {
+        "business_value": 1,
+        "adoption_risk": null,
+        "data_readiness": 2,
+        "process_frequency": 1,
+        "implementation_effort": 3,
+        "data_governance": 3,
+        "non_ai_alternative": 2
+      },
+      "derived": [
+        "business_value",
+        "data_governance",
+        "process_frequency"
+      ],
+      "model_scored": [
+        "adoption_risk",
+        "business_value",
+        "data_readiness",
+        "implementation_effort",
+        "non_ai_alternative"
+      ],
+      "dropped_by_duplication": [],
+      "ignored_dimension_ids": [],
+      "unsupported_anti_patterns": [
+        "existing_licensed_capability"
+      ]
+    },
+    {
+      "case_id": "B-04",
+      "error": null,
+      "latency_s": 4.59,
+      "timed_out": false,
+      "verdict": "no_go",
+      "weighted_total": 2.82,
+      "gates": [],
+      "requires_human_confirmation": false,
+      "retry_count": 0,
+      "scores": {
+        "business_value": 3,
+        "adoption_risk": 3,
+        "data_readiness": 2,
+        "process_frequency": 3,
+        "implementation_effort": 4,
+        "data_governance": 3,
+        "non_ai_alternative": 2
+      },
+      "derived": [
+        "business_value",
+        "data_governance",
+        "non_ai_alternative",
+        "process_frequency"
+      ],
+      "model_scored": [
+        "adoption_risk",
+        "business_value",
+        "data_readiness",
+        "implementation_effort"
+      ],
+      "dropped_by_duplication": [],
+      "ignored_dimension_ids": [],
+      "unsupported_anti_patterns": []
+    },
+    {
+      "case_id": "B-05",
+      "error": null,
+      "latency_s": 3.91,
+      "timed_out": false,
+      "verdict": "incomplete",
+      "weighted_total": null,
+      "gates": [],
+      "requires_human_confirmation": false,
+      "retry_count": 0,
+      "scores": {
+        "business_value": 1,
+        "adoption_risk": null,
+        "data_readiness": null,
+        "process_frequency": 2,
+        "implementation_effort": null,
+        "data_governance": 3,
+        "non_ai_alternative": 1
+      },
+      "derived": [
+        "business_value",
+        "data_governance",
+        "non_ai_alternative",
+        "process_frequency"
+      ],
+      "model_scored": [
+        "adoption_risk",
+        "business_value",
+        "data_readiness",
+        "implementation_effort"
+      ],
+      "dropped_by_duplication": [],
+      "ignored_dimension_ids": [],
+      "unsupported_anti_patterns": []
+    },
+    {
+      "case_id": "B-06",
+      "error": null,
+      "latency_s": 3.94,
+      "timed_out": false,
+      "verdict": "incomplete",
+      "weighted_total": null,
+      "gates": [],
+      "requires_human_confirmation": false,
+      "retry_count": 0,
+      "scores": {
+        "business_value": 1,
+        "adoption_risk": null,
+        "data_readiness": null,
+        "process_frequency": 2,
+        "implementation_effort": null,
+        "data_governance": 3,
+        "non_ai_alternative": 1
+      },
+      "derived": [
+        "business_value",
+        "data_governance",
+        "non_ai_alternative",
+        "process_frequency"
+      ],
+      "model_scored": [
+        "adoption_risk",
+        "business_value",
+        "data_readiness",
+        "implementation_effort"
+      ],
+      "dropped_by_duplication": [],
+      "ignored_dimension_ids": [],
+      "unsupported_anti_patterns": []
+    },
+    {
+      "case_id": "B-07",
+      "error": null,
+      "latency_s": 5.99,
+      "timed_out": false,
+      "verdict": "no_go",
+      "weighted_total": 2.09,
+      "gates": [],
+      "requires_human_confirmation": false,
+      "retry_count": 0,
+      "scores": {
+        "business_value": 1,
+        "adoption_risk": 5,
+        "data_readiness": 3,
+        "process_frequency": 1,
+        "implementation_effort": 2,
+        "data_governance": 3,
+        "non_ai_alternative": 3
+      },
+      "derived": [
+        "business_value",
+        "data_governance",
+        "process_frequency"
+      ],
+      "model_scored": [
+        "adoption_risk",
+        "business_value",
+        "data_readiness",
+        "implementation_effort",
+        "non_ai_alternative"
+      ],
+      "dropped_by_duplication": [],
+      "ignored_dimension_ids": [],
+      "unsupported_anti_patterns": [
+        "existing_licensed_capability"
+      ]
+    },
+    {
+      "case_id": "B-08",
+      "error": null,
+      "latency_s": 4.26,
+      "timed_out": false,
+      "verdict": "incomplete",
+      "weighted_total": null,
+      "gates": [],
+      "requires_human_confirmation": false,
+      "retry_count": 0,
+      "scores": {
+        "business_value": 2,
+        "adoption_risk": 1,
+        "data_readiness": null,
+        "process_frequency": 3,
+        "implementation_effort": 2,
+        "data_governance": null,
+        "non_ai_alternative": 2
+      },
+      "derived": [
+        "business_value",
+        "non_ai_alternative",
+        "process_frequency"
+      ],
+      "model_scored": [
+        "adoption_risk",
+        "business_value",
+        "data_governance",
+        "data_readiness",
+        "implementation_effort"
+      ],
+      "dropped_by_duplication": [],
+      "ignored_dimension_ids": [],
+      "unsupported_anti_patterns": []
+    },
+    {
+      "case_id": "B-09",
+      "error": null,
+      "latency_s": 4.27,
+      "timed_out": false,
+      "verdict": "incomplete",
+      "weighted_total": null,
+      "gates": [],
+      "requires_human_confirmation": false,
+      "retry_count": 0,
+      "scores": {
+        "business_value": 4,
+        "adoption_risk": null,
+        "data_readiness": null,
+        "process_frequency": 5,
+        "implementation_effort": null,
+        "data_governance": 3,
+        "non_ai_alternative": 1
+      },
+      "derived": [
+        "business_value",
+        "data_governance",
+        "non_ai_alternative",
+        "process_frequency"
+      ],
+      "model_scored": [
+        "adoption_risk",
+        "business_value",
+        "data_readiness",
+        "implementation_effort"
+      ],
+      "dropped_by_duplication": [],
+      "ignored_dimension_ids": [],
+      "unsupported_anti_patterns": []
+    },
+    {
+      "case_id": "B-10",
+      "error": null,
+      "latency_s": 3.84,
+      "timed_out": false,
+      "verdict": "no_go",
+      "weighted_total": 4.036146,
+      "gates": [
+        "no_usable_data"
+      ],
+      "requires_human_confirmation": true,
+      "retry_count": 0,
+      "scores": {
+        "business_value": 5,
+        "adoption_risk": null,
+        "data_readiness": 1,
+        "process_frequency": 5,
+        "implementation_effort": 1,
+        "data_governance": 3,
+        "non_ai_alternative": 1
+      },
+      "derived": [
+        "business_value",
+        "data_governance",
+        "non_ai_alternative",
+        "process_frequency"
+      ],
+      "model_scored": [
+        "adoption_risk",
+        "business_value",
+        "data_readiness",
+        "implementation_effort"
+      ],
+      "dropped_by_duplication": [],
+      "ignored_dimension_ids": [],
+      "unsupported_anti_patterns": []
+    },
+    {
+      "case_id": "B-11",
+      "error": null,
+      "latency_s": 5.6,
+      "timed_out": false,
+      "verdict": "incomplete",
+      "weighted_total": null,
+      "gates": [],
+      "requires_human_confirmation": false,
+      "retry_count": 0,
+      "scores": {
+        "business_value": null,
+        "adoption_risk": null,
+        "data_readiness": null,
+        "process_frequency": null,
+        "implementation_effort": null,
+        "data_governance": 3,
+        "non_ai_alternative": 1
+      },
+      "derived": [
+        "data_governance",
+        "non_ai_alternative"
+      ],
+      "model_scored": [
+        "adoption_risk",
+        "business_value",
+        "data_readiness",
+        "implementation_effort",
+        "process_frequency"
+      ],
+      "dropped_by_duplication": [],
+      "ignored_dimension_ids": [],
+      "unsupported_anti_patterns": [
+        "data_does_not_exist_yet"
+      ]
+    },
+    {
+      "case_id": "B-12",
+      "error": null,
+      "latency_s": 3.99,
+      "timed_out": false,
+      "verdict": "incomplete",
+      "weighted_total": null,
+      "gates": [],
+      "requires_human_confirmation": false,
+      "retry_count": 0,
+      "scores": {
+        "business_value": 2,
+        "adoption_risk": null,
+        "data_readiness": null,
+        "process_frequency": 3,
+        "implementation_effort": null,
+        "data_governance": 3,
+        "non_ai_alternative": 1
+      },
+      "derived": [
+        "business_value",
+        "data_governance",
+        "non_ai_alternative",
+        "process_frequency"
+      ],
+      "model_scored": [
+        "adoption_risk",
+        "business_value",
+        "data_readiness",
+        "implementation_effort"
+      ],
+      "dropped_by_duplication": [],
+      "ignored_dimension_ids": [],
+      "unsupported_anti_patterns": []
+    },
+    {
+      "case_id": "B-13",
+      "error": null,
+      "latency_s": 4.28,
+      "timed_out": false,
+      "verdict": "no_go",
+      "weighted_total": 3.41,
+      "gates": [],
+      "requires_human_confirmation": false,
+      "retry_count": 0,
+      "scores": {
+        "business_value": 3,
+        "adoption_risk": 3,
+        "data_readiness": 2,
+        "process_frequency": 4,
+        "implementation_effort": 2,
+        "data_governance": 2,
+        "non_ai_alternative": 1
+      },
+      "derived": [
+        "business_value",
+        "data_governance",
+        "non_ai_alternative",
+        "process_frequency"
+      ],
+      "model_scored": [
+        "adoption_risk",
+        "business_value",
+        "data_readiness",
+        "implementation_effort"
+      ],
+      "dropped_by_duplication": [],
+      "ignored_dimension_ids": [],
+      "unsupported_anti_patterns": []
+    },
+    {
+      "case_id": "B-14",
+      "error": null,
+      "latency_s": 5.86,
+      "timed_out": false,
+      "verdict": "no_go",
+      "weighted_total": null,
+      "gates": [
+        "no_named_business_owner"
+      ],
+      "requires_human_confirmation": false,
+      "retry_count": 0,
+      "scores": {
+        "business_value": null,
+        "adoption_risk": 2,
+        "data_readiness": null,
+        "process_frequency": null,
+        "implementation_effort": null,
+        "data_governance": null,
+        "non_ai_alternative": 2
+      },
+      "derived": [
+        "non_ai_alternative"
+      ],
+      "model_scored": [
+        "adoption_risk",
+        "business_value",
+        "data_governance",
+        "data_readiness",
+        "implementation_effort",
+        "process_frequency"
+      ],
+      "dropped_by_duplication": [],
+      "ignored_dimension_ids": [],
+      "unsupported_anti_patterns": []
+    },
+    {
+      "case_id": "B-15",
+      "error": null,
+      "latency_s": 3.98,
+      "timed_out": false,
+      "verdict": "go",
+      "weighted_total": 3.746988,
+      "gates": [],
+      "requires_human_confirmation": false,
+      "retry_count": 0,
+      "scores": {
+        "business_value": 4,
+        "adoption_risk": null,
+        "data_readiness": 5,
+        "process_frequency": 4,
+        "implementation_effort": 4,
+        "data_governance": 3,
+        "non_ai_alternative": 2
+      },
+      "derived": [
+        "business_value",
+        "data_governance",
+        "non_ai_alternative",
+        "process_frequency"
+      ],
+      "model_scored": [
+        "adoption_risk",
+        "business_value",
+        "data_readiness",
+        "implementation_effort"
+      ],
+      "dropped_by_duplication": [],
+      "ignored_dimension_ids": [],
+      "unsupported_anti_patterns": []
+    },
+    {
+      "case_id": "B-16",
+      "error": null,
+      "latency_s": 4.13,
+      "timed_out": false,
+      "verdict": "no_go",
+      "weighted_total": 2.96,
+      "gates": [],
+      "requires_human_confirmation": false,
+      "retry_count": 0,
+      "scores": {
+        "business_value": 3,
+        "adoption_risk": 5,
+        "data_readiness": 3,
+        "process_frequency": 4,
+        "implementation_effort": 4,
+        "data_governance": 2,
+        "non_ai_alternative": 1
+      },
+      "derived": [
+        "business_value",
+        "data_governance",
+        "non_ai_alternative",
+        "process_frequency"
+      ],
+      "model_scored": [
+        "adoption_risk",
+        "business_value",
+        "data_readiness",
+        "implementation_effort"
+      ],
+      "dropped_by_duplication": [],
+      "ignored_dimension_ids": [],
+      "unsupported_anti_patterns": []
+    },
+    {
+      "case_id": "B-17",
+      "error": null,
+      "latency_s": 3.93,
+      "timed_out": false,
+      "verdict": "incomplete",
+      "weighted_total": null,
+      "gates": [],
+      "requires_human_confirmation": false,
+      "retry_count": 0,
+      "scores": {
+        "business_value": 2,
+        "adoption_risk": null,
+        "data_readiness": null,
+        "process_frequency": 2,
+        "implementation_effort": 3,
+        "data_governance": 2,
+        "non_ai_alternative": 1
+      },
+      "derived": [
+        "business_value",
+        "data_governance",
+        "non_ai_alternative",
+        "process_frequency"
+      ],
+      "model_scored": [
+        "adoption_risk",
+        "business_value",
+        "data_readiness",
+        "implementation_effort"
+      ],
+      "dropped_by_duplication": [],
+      "ignored_dimension_ids": [],
+      "unsupported_anti_patterns": []
+    },
+    {
+      "case_id": "B-18",
+      "error": null,
+      "latency_s": 4.06,
+      "timed_out": false,
+      "verdict": "incomplete",
+      "weighted_total": null,
+      "gates": [],
+      "requires_human_confirmation": false,
+      "retry_count": 0,
+      "scores": {
+        "business_value": 4,
+        "adoption_risk": null,
+        "data_readiness": null,
+        "process_frequency": 5,
+        "implementation_effort": 5,
+        "data_governance": 3,
+        "non_ai_alternative": 1
+      },
+      "derived": [
+        "business_value",
+        "data_governance",
+        "non_ai_alternative",
+        "process_frequency"
+      ],
+      "model_scored": [
+        "adoption_risk",
+        "business_value",
+        "data_readiness",
+        "implementation_effort"
+      ],
+      "dropped_by_duplication": [],
+      "ignored_dimension_ids": [],
+      "unsupported_anti_patterns": []
+    }
+  ]
+}

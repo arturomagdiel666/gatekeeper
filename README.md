@@ -48,6 +48,36 @@ scoring function returns **`Not-AI`**. The instrument, pointed at itself, says
 do not build this with AI — and the architecture the evidence supports is that
 the model finds and quotes evidence while the form and the tables decide.
 
+## The intake agent
+
+> **The model asks. The form and the tables decide.**
+
+That rule is not a preference — it is what the measurement above forced. So the
+agent interviews the requester and never scores anything: it picks the single
+question worth asking next, phrases it in their language, and pulls a value and a
+verbatim span out of the reply. `score_and_gate()` takes a `RequestIntake` and
+has no parameter a model-produced number could arrive through, and a test fails
+if one ever does.
+
+It asks gate-deciding questions first, because one answer can end the
+conversation. It stops when a gate fires, when no remaining question can change
+the verdict, when two answers in a row add nothing, or when the budget runs out —
+and it always says which. Every field it fills carries the turn and the words
+that filled it.
+
+One honest ceiling: `adoption_risk`, `data_readiness` and `implementation_effort`
+carry 0.45 of the rubric weight and no intake field supplies any of them, so with
+the model barred from scoring, **`go` is not reachable through the interview.**
+`no_go` and `not_ai` are, by gate, and so is `incomplete` naming exactly which
+dimensions no question can fix. Converting those three is what the measurement
+recommended and has not been done.
+
+```bash
+python scripts/demo_agent.py                    # offline, scripted, no model
+python scripts/demo_agent.py --scenario gate    # a gate ends it in one question
+python scripts/demo_agent.py --live --human     # answer it yourself
+```
+
 ## Run it
 
 Requires Python 3.12 and [Ollama](https://ollama.com) with `ollama pull
@@ -57,7 +87,7 @@ python3.12-venv` first.
 
 ```bash
 python3 -m venv .venv && source .venv/bin/activate && pip install -r requirements.txt
-pytest                  # 429 tests, no model, no network
+pytest                  # 450 tests, no model, no network
 streamlit run app.py    # the demo; the Triage tab has an offline checkbox
 ```
 
@@ -79,10 +109,12 @@ untested.
 | `assess.py`, `scoring.py`, `contracts.py`, `review.py` | The pipeline: one constrained call, then deterministic scoring, contract and review |
 | `provider.py`, `schemas.py`, `config.py` | Model layer, structured types, validated config loading |
 | `rubric.yaml`, `patterns.yaml`, `contracts.yaml`, `review_policy.yaml` | Everything that decides anything. See `docs/RUBRIC.md` |
-| `app.py` | Streamlit demo |
+| `agent.py`, `agent_tools.py` | The intake agent: the loop, and the deterministic tools it dispatches to |
+| `app.py` | Streamlit demo — triage, intake agent, review simulator |
 | `tools/` | The measurement instruments: chance-corrected agreement, bias shape |
 | `scripts/` | Corpus runners and the reference measurement harness |
 | `evals/` | Blind case corpus, scorer files, and every raw measurement output |
 | `evaluacion/` | The study write-ups, in Spanish and English. **This copy is the source of truth**; an older copy exists outside the repository and is no longer maintained |
 | `docs/DECISIONS.md` | ADR-001..033 — why it is shaped this way, with the measurement that forced each change |
-| `tests/` | 429 tests, all offline |
+| `runs/` | Saved interview transcripts, replayable |
+| `tests/` | 450 tests, all offline |

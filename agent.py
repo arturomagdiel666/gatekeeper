@@ -39,6 +39,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 import agent_tools as tools
 from agent_tools import ASKABLE_BY_NAME, CompletenessReport, FieldProvenance
+from assess import ProviderTimeout, assess_timeout_seconds, chat_with_timeout
 from provider import LLMProvider, parse_json_content
 from schemas import AntiPatternMatch, RequestIntake
 from scoring import Outcome, Verdict
@@ -464,6 +465,23 @@ def useful_fields(report: CompletenessReport, outcome: Outcome) -> list:
     ]
 
 
+def _call(provider: LLMProvider, messages: list[dict], schema: dict, temperature: float):
+    """One bounded model call, or ``None`` if the provider did not answer.
+
+    A demo somebody is sitting in front of must not hang on a slow turn. The
+    budget and the daemon-thread mechanism are `assess.py`'s, reused rather than
+    reimplemented — including its honest caveat: the abandoned call keeps running
+    and keeps occupying the model, so what the timeout buys is that the caller is
+    freed, not that the work stops.
+    """
+    try:
+        return chat_with_timeout(
+            provider, messages, schema, temperature, assess_timeout_seconds()
+        )
+    except ProviderTimeout:
+        return None
+
+
 def _decide(
     provider: LLMProvider,
     intake: RequestIntake,
@@ -471,10 +489,11 @@ def _decide(
     transcript: list[Turn],
     askable: list,
 ) -> dict:
-    response = provider.chat(
+    response = _call(
+        provider,
         _decide_messages(intake, report, transcript, askable),
-        temperature=0.2,
-        response_schema=DECIDE_SCHEMA,
+        DECIDE_SCHEMA,
+        0.2,
     )
     fallback = {
         "tool": "ask",
@@ -482,6 +501,8 @@ def _decide(
         "question": askable[0].prompt_hint,
         "why": "fallback: the model's turn was unusable",
     }
+    if response is None:
+        return fallback
     try:
         action = parse_json_content(response)
     except ValueError:
@@ -503,11 +524,11 @@ def _decide(
 
 
 def _extract(provider: LLMProvider, field_name: str, question: str, answer: str) -> dict:
-    response = provider.chat(
-        _extract_messages(field_name, question, answer),
-        temperature=0.0,
-        response_schema=EXTRACT_SCHEMA,
+    response = _call(
+        provider, _extract_messages(field_name, question, answer), EXTRACT_SCHEMA, 0.0
     )
+    if response is None:
+        return {"answered": False, "value": "", "span": ""}
     try:
         return parse_json_content(response)
     except ValueError:

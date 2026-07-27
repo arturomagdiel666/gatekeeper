@@ -54,6 +54,8 @@ __all__ = [
     "build_user_message",
     "assess_request",
     "assess_timeout_seconds",
+    "chat_with_timeout",
+    "ProviderTimeout",
     "MAX_RETRIES",
     "DEFAULT_TIMEOUT_SECONDS",
 ]
@@ -76,8 +78,13 @@ class AssessmentError(RuntimeError):
     """Raised when the model could not produce a valid assessment."""
 
 
-class _ProviderTimeout(RuntimeError):
-    """Internal: the provider did not answer within the budget."""
+class ProviderTimeout(RuntimeError):
+    """The provider did not answer within the budget.
+
+    Public because `agent.py` bounds its turns with the same mechanism. A helper
+    two modules depend on is part of the interface whether or not it is spelled
+    with an underscore.
+    """
 
 
 def assess_timeout_seconds() -> float:
@@ -109,7 +116,7 @@ def assess_timeout_seconds() -> float:
     return value
 
 
-def _chat_with_timeout(
+def chat_with_timeout(
     provider: LLMProvider,
     messages: list[dict],
     schema: dict,
@@ -130,7 +137,7 @@ def _chat_with_timeout(
       outlier into a 416-second hang for a script that had already moved on.
 
     Raises:
-        _ProviderTimeout: If the provider did not answer in time.
+        ProviderTimeout: If the provider did not answer in time.
     """
     outcome: dict = {}
 
@@ -146,7 +153,7 @@ def _chat_with_timeout(
     thread.start()
     thread.join(timeout)
     if thread.is_alive():
-        raise _ProviderTimeout(
+        raise ProviderTimeout(
             f"the provider did not answer within {timeout:g}s"
         )
     if "error" in outcome:
@@ -577,10 +584,10 @@ def assess_request(
     budget = timeout_seconds if timeout_seconds is not None else assess_timeout_seconds()
     for attempt in range(MAX_RETRIES + 1):
         try:
-            response = _chat_with_timeout(
+            response = chat_with_timeout(
                 provider, messages, schema, temperature, budget
             )
-        except _ProviderTimeout:
+        except ProviderTimeout:
             # Deliberately not retried: a call that ran past the budget once is
             # the pathological tail, and a second attempt only doubles the wait.
             logger.warning(

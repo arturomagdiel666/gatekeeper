@@ -69,7 +69,10 @@ from scoring import score as score_assessment  # noqa: E402
 
 CORPUS = PROJECT_ROOT / "evals" / "CASOS_CIEGOS_v2.md"
 SCORES_B = PROJECT_ROOT / "evals" / "scores_B_run5.yaml"
-SCORES_A = Path("/mnt/c/Claude/Projects/Gatekeeper/evaluacion/scores_A_run5.yaml")
+#: Assessor A's file was originally read from the author's local mount, which
+#: made this script fail on every clone. Both defaults are now repository-
+#: relative and both are overridable, matching `tools/bias_shape.py`.
+SCORES_A = PROJECT_ROOT / "evaluacion" / "scores_A_run5.yaml"
 
 DIMENSIONS = [d.id for d in RUBRIC.dimensions]
 
@@ -342,10 +345,14 @@ def _assessment_from_scores(case: dict) -> Assessment:
     )
 
 
-def build_reference(cases: list[Case]) -> Reference:
+def build_reference(
+    cases: list[Case],
+    scores_a: Path = SCORES_A,
+    scores_b: Path = SCORES_B,
+) -> Reference:
     """Agreed slots only. Disagreements are excluded, never reconciled."""
-    a_file = {c["case_id"]: c for c in yaml.safe_load(SCORES_A.read_text())}
-    b_file = {c["case_id"]: c for c in yaml.safe_load(SCORES_B.read_text())}
+    a_file = {c["case_id"]: c for c in yaml.safe_load(Path(scores_a).read_text())}
+    b_file = {c["case_id"]: c for c in yaml.safe_load(Path(scores_b).read_text())}
     if set(a_file) != set(b_file):
         raise CorpusError("the two scorer files cover different cases")
 
@@ -636,17 +643,20 @@ def main() -> int:
     parser.add_argument("--out", default=None, help="write the JSON artefact here")
     parser.add_argument("--limit", type=int, default=None, help="first N cases only")
     parser.add_argument("--provider", default=None)
+    parser.add_argument("--corpus", type=Path, default=CORPUS)
+    parser.add_argument("--scores-a", type=Path, default=SCORES_A)
+    parser.add_argument("--scores-b", type=Path, default=SCORES_B)
     args = parser.parse_args()
 
     print("Parsing the corpus …")
-    cases = parse_corpus()
+    cases = parse_corpus(args.corpus)
     print(f"  {len(cases)} cases parsed, no field defaulted")
 
     # The reference is always built from the WHOLE corpus, so that --limit can
     # shorten a smoke run without silently shrinking the reference it is measured
     # against. Only the assessment loop is limited.
     print("Building the reference from the two scorer files …")
-    reference = build_reference(cases)
+    reference = build_reference(cases, args.scores_a, args.scores_b)
     if args.limit:
         cases = cases[: args.limit]
     print(

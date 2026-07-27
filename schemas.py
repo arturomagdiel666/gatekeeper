@@ -400,6 +400,11 @@ class RequestIntake(BaseModel):
     #: nobody was asked, which returns its dimension to model scoring exactly as
     #: before — that is what keeps every figure measured under rubric v2.0.0
     #: reproducible from a corpus whose intakes do not carry these (ADR-035).
+    #: The metric's value today, when the requester states it. Read straight
+    #: into the Measurement Contract, which otherwise records the baseline as
+    #: unmeasured — a finding rather than a formality, but a finding worth not
+    #: having when the requester can simply say the number.
+    stated_baseline_value: float | None = None
     data_evidence: DataEvidence | None = None
     effort_evidence: EffortEvidence | None = None
     adoption_evidence: AdoptionEvidence | None = None

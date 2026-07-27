@@ -77,6 +77,10 @@ class Askable(BaseModel):
     feeds_dimension: str | None = None
     prompt_hint: str
     parser: str = "text"
+    #: True for a field no dimension needs but the Measurement Contract does.
+    #: Asked only when the verdict is heading for `go`, because on any other
+    #: verdict there is no contract and the question is a waste of a turn.
+    contract_field: bool = False
 
 
 #: The askable intake fields, most decisive first. Order is the tie-break the
@@ -164,6 +168,16 @@ ASKABLE_FIELDS: list[Askable] = [
             "somewhere new, and how many people would have to change what they do"
         ),
         parser="adoption_evidence",
+    ),
+    Askable(
+        name="stated_baseline_value",
+        contract_field=True,
+        prompt_hint=(
+            "the current value of the thing this is meant to improve, as a "
+            "number — what it is today, before anything is built. If nobody has "
+            "measured it, say so rather than estimating"
+        ),
+        parser="number",
     ),
     Askable(
         name="where_the_data_lives",
@@ -708,6 +722,12 @@ def draft_contract(
             for d in RUBRIC.dimensions
         ],
         anti_pattern_matches=[],
+        # The one number the contract needs that no dimension does. It comes
+        # from the intake, not from the model: `stated_baseline_value` is what
+        # the requester said the metric reads today, and an unstated baseline
+        # stays None so the contract records it as unmeasured rather than
+        # inventing one.
+        stated_baseline_value=intake.stated_baseline_value,
     )
     return issue_contract(
         outcome, assessment, intake, approval_date or date.today()

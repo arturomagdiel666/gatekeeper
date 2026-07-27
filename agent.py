@@ -556,13 +556,23 @@ def _stopping_reason(
     A fired gate comes first because further questions would cost them time for
     an answer already decided. Running out of budget comes last because it is
     the least informative thing that can happen.
+
+    **Reaching a verdict is checked last, not first, and that ordering is load-
+    bearing.** Once the three dimensions were converted in v3.0.0, a request
+    could clear the completeness budget with `adoption_risk` still unknown — its
+    0.17 fits inside the 0.25 the rubric allows — and the loop would stop and
+    approve without ever asking who had been consulted. That is an approval
+    issued while a question that could still change it went unasked. So a
+    decided verdict only ends the interview once no remaining field could
+    resolve a dimension that is still unknown. A fired gate is the exception,
+    and it is a real one: a gate cannot be outvoted by anything a later answer
+    could add, so continuing really would be spending the requester's time for
+    nothing.
     """
     firing = [g for g in outcome.triggered_gates if g.gate_id not in report.premature_gates]
     if firing:
         gate = firing[0]
         return StopReason.GATE_FIRED, f"{gate.gate_id} → {gate.verdict.value}: {gate.detail}"
-    if report.can_reach_verdict:
-        return StopReason.VERDICT_REACHED, f"{outcome.verdict.value} on the filled intake"
     if barren >= BARREN_ANSWER_LIMIT:
         return StopReason.NO_NEW_INFORMATION, (
             f"{barren} consecutive answers added nothing; unresolved: "
@@ -582,6 +592,11 @@ def _stopping_reason(
     # This is what keeps a request that genuinely cannot be completed from
     # collecting eight questions before admitting it.
     if not useful_fields(report, outcome):
+        if report.can_reach_verdict:
+            return StopReason.VERDICT_REACHED, (
+                f"{outcome.verdict.value} on the filled intake, with every "
+                "dimension an intake field can supply resolved"
+            )
         return StopReason.NO_NEW_INFORMATION, (
             "no remaining question can change the verdict; unresolved: "
             f"{', '.join(sorted(outcome.unknown_dimensions))} — no intake field "
@@ -597,12 +612,18 @@ def useful_fields(report: CompletenessReport, outcome: Outcome) -> list:
     is currently unknown. Everything else is a form field, and the interview is
     not a form: `who_does_this_today` is useful context on a submission and a
     wasted turn in a conversation, because no verdict moves when it is answered.
+
+    The one exception is a `contract_field` — a field no dimension needs but the
+    Measurement Contract does. It is asked only once the verdict is heading for
+    `go`, because on any other verdict no contract is issued and the question
+    buys nothing.
     """
     return [
         f
         for f in report.missing
         if (f.blocks_gate and f.blocks_gate in report.blocking_gates_reachable)
         or (f.feeds_dimension in outcome.unknown_dimensions)
+        or (f.contract_field and outcome.verdict is Verdict.GO)
     ]
 
 

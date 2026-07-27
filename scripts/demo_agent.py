@@ -172,9 +172,116 @@ GATE_SCRIPT: list[dict] = [
     {"answered": False, "value": "", "span": ""},
 ]
 
+#: The approval path, added in v3.0.0. `07_ticket_routing_classifier` — the
+#: exemplar the rubric scores as a strong `go`. Before the conversion this could
+#: not be reached at all: three dimensions had no intake field, carried 0.45 of
+#: the weight between them, and left every interview `incomplete`.
+GO_REQUEST = (
+    "Every ticket that comes into the service desk gets assigned to one of "
+    "fourteen resolver groups. Right now a first-line analyst reads each one and "
+    "picks the group. When they pick wrong the ticket bounces - it sits in the "
+    "wrong queue until someone notices, gets sent back, and starts again. About "
+    "one in five tickets bounces at least once, and a bounced ticket takes "
+    "roughly a day and a half longer to close than one that lands correctly the "
+    "first time.\n\n"
+    "We would like the description to be read automatically and the resolver "
+    "group suggested, with the analyst able to override it. The keyword rules we "
+    "set up years ago now cover maybe half of the tickets and they get worse "
+    "every time a team is renamed or a new service is added."
+)
+
+GO_ANSWERS: dict[str, str] = {
+    "business_owner": "Ana Ruiz, the Service Desk Manager, would own it.",
+    "existing_deterministic_artefacts": (
+        "We have the keyword routing rules. They route about half the tickets on "
+        "their own, but an analyst still reads and picks the group for the rest, "
+        "and they get worse every time a team is renamed."
+    ),
+    "data_sensitivity": (
+        "Ticket descriptions, so internal. Nothing personal or regulated in them."
+    ),
+    "times_per_period": (
+        "About 4,000 tickets a month, and each one is assigned separately."
+    ),
+    "minutes_per_instance": "Reading and assigning one takes about four minutes.",
+    "stated_baseline_value": (
+        "Today about 800 tickets a month bounce at least once, so that is the "
+        "number we would want to bring down."
+    ),
+    "data_evidence": (
+        "It is all in ServiceNow. We pulled a real sample last month and it was "
+        "clean. Every assignment and reassignment since 2021 is in the ticket "
+        "history, so for about two hundred thousand tickets we know which group "
+        "actually closed it — that is the right answer. And we have written down "
+        "and agreed what counts as a correct group."
+    ),
+    "effort_evidence": (
+        "Only ServiceNow, we would read from it and write the suggestion back. "
+        "Nothing to buy, the platform licence covers it. It is our own team's "
+        "call, nobody else has to approve it."
+    ),
+    "adoption_evidence": (
+        "The analysts asked for this themselves. Marta said it sits in the wrong "
+        "queue until someone notices, which is the whole problem. The suggestion "
+        "would appear on the same assignment screen they already use for every "
+        "ticket. There are four analysts on the triage rota."
+    ),
+    "prior_tool_for_these_users": (
+        "The last thing we built for this team was the keyword rules and they "
+        "still use them every day, so that was adopted."
+    ),
+}
+
+GO_SCRIPT: list[dict] = [
+    {"matches": []},
+    {"tool": "ask", "target_field": "business_owner",
+     "question": "Who would be accountable for this?", "why": "decides a gate"},
+    {"answered": True, "value": "Ana Ruiz", "span": "Ana Ruiz, the Service Desk Manager"},
+    {"tool": "ask", "target_field": "existing_deterministic_artefacts",
+     "question": "What already routes these tickets today, without AI?",
+     "why": "decides a gate"},
+    {"answered": True, "span": "an analyst still reads and picks the group for the rest",
+     "value": [{"name": "Keyword routing rules",
+                "what_it_does": "route about half the tickets; an analyst picks the group for the rest",
+                "completes_without_judgement": False}]},
+    {"tool": "ask", "target_field": "data_sensitivity",
+     "question": "How is the ticket data classified?", "why": "derives data_governance"},
+    {"answered": True, "value": "internal", "span": "Ticket descriptions, so internal"},
+    {"tool": "ask", "target_field": "times_per_period",
+     "question": "How many tickets get assigned, and over what period?",
+     "why": "derives process_frequency"},
+    {"answered": True, "value": {"times": 4000, "period": "month"},
+     "span": "About 4,000 tickets a month"},
+
+    {"tool": "ask", "target_field": "data_evidence",
+     "question": "Where does this data live, has anyone checked it, and do you have examples of a correct answer?",
+     "why": "derives data_readiness"},
+    {"answered": True, "span": "It is all in ServiceNow",
+     "value": {"systems": ["ServiceNow"], "sample_checked": "looked_usable",
+               "correct_examples": 200000, "quality_criteria_agreed": True}},
+    {"tool": "ask", "target_field": "effort_evidence",
+     "question": "What would have to be connected, bought, or approved?",
+     "why": "derives implementation_effort"},
+    {"answered": True, "span": "Only ServiceNow",
+     "value": {"systems_to_integrate": ["ServiceNow"], "procurement": "existing_licence",
+               "approving_teams": ["IT Service Desk"]}},
+    {"tool": "ask", "target_field": "adoption_evidence",
+     "question": "Who did you ask about this, and what did they say?",
+     "why": "derives adoption_risk"},
+    {"answered": True, "span": "The analysts asked for this themselves",
+     "value": {"users_consulted": "requested_it",
+               "user_quote": "it sits in the wrong queue until someone notices",
+               "workflow_fit": "existing_step", "people_who_must_change": 4}},
+    {"tool": "ask", "target_field": "stated_baseline_value",
+     "question": "What is that number today, before anything is built?",
+     "why": "the contract needs a baseline"},
+    {"answered": True, "value": 800, "span": "about 800 tickets a month bounce at least once"},
+]
+
 SCENARIOS = {
     "invoices": (REQUEST, SCRIPTED_ANSWERS, OFFLINE_SCRIPT),
     "gate": (GATE_REQUEST, GATE_ANSWERS, GATE_SCRIPT),
+    "go": (GO_REQUEST, GO_ANSWERS, GO_SCRIPT),
 }
 
 
@@ -188,7 +295,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--live", action="store_true", help="use the real provider")
     parser.add_argument("--human", action="store_true", help="answer the questions yourself")
-    parser.add_argument("--max-questions", type=int, default=8)
+    parser.add_argument("--max-questions", type=int, default=9)
     parser.add_argument(
         "--scenario", choices=sorted(SCENARIOS), default="invoices",
         help="invoices: the vague canonical case. gate: a request a gate ends early.",
@@ -257,7 +364,15 @@ def main() -> int:
         print(f"  {dim:24} {str(score):>4}  {mark}")
 
     if result.contract:
-        print("\nMEASUREMENT CONTRACT (draft): issued")
+        print("\nMEASUREMENT CONTRACT (draft)")
+        for key in (
+            "primary_metric_label", "measurement_method", "baseline_value",
+            "success_threshold", "review_date", "business_owner",
+            "decommission_trigger_ids", "instrumentation_plan",
+        ):
+            value = result.contract.get(key)
+            shown = str(value)
+            print(f"  {key:26} {shown[:78]}")
     path = save_transcript(result)
     print(f"\ntranscript → {path.relative_to(PROJECT_ROOT)}")
     return 0

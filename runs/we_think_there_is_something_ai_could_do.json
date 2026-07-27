@@ -25,7 +25,11 @@
         "what_it_does": "files invoices by supplier",
         "completes_without_judgement": false
       }
-    ]
+    ],
+    "stated_baseline_value": null,
+    "data_evidence": null,
+    "effort_evidence": null,
+    "adoption_evidence": null
   },
   "verdict": "incomplete",
   "outcome": {
@@ -65,7 +69,7 @@
     "explanation": "Verdict: INCOMPLETE — never_unknown: data_readiness must always carry a score (each is a gate condition, and a gate whose dimension is unknown cannot fire). No score was computed; the missing information is listed below.\n\nUnknown dimensions: adoption_risk, data_readiness, implementation_effort (0.45 of weight, budget 0.25)\n  Rule violated -> never_unknown: data_readiness must always carry a score (each is a gate condition, and a gate whose dimension is unknown cannot fire)"
   },
   "stop_reason": "no_new_information",
-  "stop_detail": "no remaining question can change the verdict; unresolved: adoption_risk, data_readiness, implementation_effort — no intake field supplies any of these",
+  "stop_detail": "2 consecutive answers added nothing; unresolved: adoption_risk, data_readiness, implementation_effort",
   "transcript": [
     {
       "n": 1,
@@ -126,6 +130,24 @@
         "question": "How many invoices are handled one by one, and over what period?"
       },
       "rejected": null
+    },
+    {
+      "n": 5,
+      "tool": "ask",
+      "target_field": "data_evidence",
+      "question": "How long does one invoice take somebody today?",
+      "answer": "I am not sure about that one, sorry.",
+      "recorded": null,
+      "rejected": "the span 'About 6 minutes each' does not appear in the requester's answer; copy their words rather than paraphrasing"
+    },
+    {
+      "n": 6,
+      "tool": "ask",
+      "target_field": "data_evidence",
+      "question": "Which systems hold this data?",
+      "answer": "I am not sure about that one, sorry.",
+      "recorded": null,
+      "rejected": "the span 'They arrive by email and end up in SAP' does not appear in the requester's answer; copy their words rather than paraphrasing"
     }
   ],
   "provenance": [

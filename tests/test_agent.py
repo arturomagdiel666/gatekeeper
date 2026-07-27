@@ -18,7 +18,16 @@ import agent
 import agent_tools as tools
 from agent import StopReason, run_interview
 from provider import MockProvider
-from schemas import DataSensitivity, PriorTool, RequestIntake
+from schemas import (
+    DataEvidence,
+    DataSensitivity,
+    EffortEvidence,
+    Period,
+    PriorTool,
+    Procurement,
+    RequestIntake,
+    SampleCheck,
+)
 from scoring import Verdict
 
 VAGUE = "We think there is something AI could do with our supplier invoices."
@@ -415,3 +424,60 @@ def test_an_empty_artefact_list_is_recorded_rather_than_refused_as_no_value():
     assert result.intake.existing_deterministic_artefacts == []
     outcome = tools.score_and_gate(result.intake)
     assert outcome.resolved_scores["non_ai_alternative"] == 1
+
+
+# ---------------------------------------------------------------------------
+# v3.0.0 — the interview reaches approval
+# ---------------------------------------------------------------------------
+
+
+def test_a_decided_verdict_does_not_end_the_interview_while_a_question_could_move_it():
+    """The ordering v3.0.0 forced.
+
+    `adoption_risk` weighs 0.17, which fits inside the 0.25 unknown-weight
+    budget — so a request could clear completeness with nobody having been asked
+    who was consulted, and the loop would stop and approve. An approval issued
+    while a question that could still change it went unasked is the one outcome
+    this product exists to prevent.
+    """
+    from agent_tools import assess_completeness, score_and_gate
+
+    intake = RequestIntake(
+        request_text=VAGUE,
+        business_owner="Ana Ruiz",
+        times_per_period=4000,
+        period=Period.MONTH,
+        data_sensitivity=DataSensitivity.INTERNAL,
+        existing_deterministic_artefacts=[],
+        data_evidence=DataEvidence(
+            systems=["ServiceNow"],
+            sample_checked=SampleCheck.LOOKED_USABLE,
+            correct_examples=200_000,
+            quality_criteria_agreed=True,
+        ),
+        effort_evidence=EffortEvidence(
+            systems_to_integrate=["ServiceNow"],
+            procurement=Procurement.EXISTING_LICENCE,
+            approving_teams=["Service Desk"],
+        ),
+    )
+    report = assess_completeness(intake, frozenset({"business_owner"}))
+    outcome = score_and_gate(intake)
+    assert outcome.verdict is not Verdict.INCOMPLETE, "completeness already passes"
+    assert "adoption_risk" in outcome.unknown_dimensions
+    assert agent._stopping_reason(report, outcome, [], 0, 8) is None, (
+        "the interview must keep going while adoption_evidence is still askable"
+    )
+
+
+def test_the_baseline_is_asked_for_only_when_a_contract_will_be_issued():
+    """A `contract_field` buys nothing on a verdict that issues no contract."""
+    from agent_tools import ASKABLE_BY_NAME, assess_completeness, score_and_gate
+
+    assert ASKABLE_BY_NAME["stated_baseline_value"].contract_field
+    intake = RequestIntake(request_text=VAGUE)
+    report = assess_completeness(intake)
+    outcome = score_and_gate(intake)
+    assert outcome.verdict is not Verdict.GO
+    offered = {f.name for f in agent.useful_fields(report, outcome)}
+    assert "stated_baseline_value" not in offered

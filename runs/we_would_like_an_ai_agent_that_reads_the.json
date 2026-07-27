@@ -14,7 +14,11 @@
     "prior_tool_for_these_users": "unknown",
     "where_the_data_lives": null,
     "data_sensitivity": "unknown",
-    "existing_deterministic_artefacts": null
+    "existing_deterministic_artefacts": null,
+    "stated_baseline_value": null,
+    "data_evidence": null,
+    "effort_evidence": null,
+    "adoption_evidence": null
   },
   "verdict": "no_go",
   "outcome": {

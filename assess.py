@@ -26,6 +26,7 @@ This module only assembles the prompt and moves data between them.
 
 from __future__ import annotations
 
+import copy
 import logging
 import os
 import threading
@@ -410,6 +411,14 @@ def build_response_schema(
 
     entry = schema["$defs"]["DimensionAssessment"]["properties"]
     entry["dimension_id"] = {"type": "string", "enum": dimension_ids}
+    #: One PINNED copy of the entry schema per dimension, in rubric order, so the
+    #: grammar itself decides which id sits in which position. See the block
+    #: comment on `prefixItems` below.
+    pinned_entries = []
+    for dimension_id in dimension_ids:
+        pinned = copy.deepcopy(schema["$defs"]["DimensionAssessment"])
+        pinned["properties"]["dimension_id"] = {"const": dimension_id}
+        pinned_entries.append(pinned)
 
     root = schema["properties"]
     root["archetype_id"] = {
@@ -427,8 +436,25 @@ def build_response_schema(
     }
     # Exactly one entry per dimension: fewer is an incomplete assessment the
     # model chose not to make, more is duplication the scorer would discard.
-    root["dimension_assessments"]["minItems"] = len(dimension_ids)
-    root["dimension_assessments"]["maxItems"] = len(dimension_ids)
+    slot = root["dimension_assessments"]
+    slot["minItems"] = len(dimension_ids)
+    slot["maxItems"] = len(dimension_ids)
+    # DISTINCTNESS BELONGS IN THE GRAMMAR (ADR-032). Count plus an enum is not
+    # enough: `qwen2.5:7b` satisfied both by emitting data_readiness twice and
+    # omitting implementation_effort, on 29 of 30 cases across two measurement
+    # passes, which made that dimension null everywhere and drove 15 of 22 verdict
+    # errors. `uniqueItems` would not have caught it either — two entries with the
+    # same id and different evidence are distinct items.
+    #
+    # `prefixItems` pins position i to `{"const": <dimension i>}`, so the decoder
+    # cannot emit any other id there. Measured, not assumed: told to put one id in
+    # every slot, the model emitted the pinned sequence instead.
+    slot["prefixItems"] = pinned_entries
+    # `items` MUST be removed rather than left as a fallback. Measured too: with
+    # both present, Ollama's converter honours `items` and ignores `prefixItems`,
+    # and the model duplicated freely again. The belt-and-braces version disables
+    # the belt. minItems == maxItems == len(prefixItems) already forbids extras.
+    slot.pop("items", None)
     return schema
 
 

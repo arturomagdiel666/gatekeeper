@@ -255,6 +255,18 @@ class Outcome(BaseModel):
     #: because the two answer different questions: that list is "the model was
     #: never asked", this one is "the model refused and the form covered it".
     fallback_derived_dimensions: list[str] = Field(default_factory=list)
+    #: Every rubric dimension's value AFTER the derivations ran, whether or not
+    #: the outcome turned out to be scorable — ``None`` where it is unknown.
+    #:
+    #: This exists because it was missing and it cost two invalid measurements
+    #: (ADR-032). ``contributions`` carries the same numbers but is EMPTY whenever
+    #: a case is gated or returns ``incomplete``; the merged ``Assessment`` carries
+    #: the model's answers plus the authoritative derivations but not the fallback
+    #: ones, which are applied on a private copy in :func:`score`. So on an
+    #: unscorable case the value a derivation computed was unrecoverable from the
+    #: result, and ``fallback_derived_dimensions`` named the dimension while
+    #: discarding its number. Anyone measuring this system reads this field.
+    resolved_scores: dict[str, int | None] = Field(default_factory=dict)
     #: Total rubric weight sitting on unknown dimensions — the unit the
     #: completeness budget is actually measured in.
     unknown_weight: float = 0.0
@@ -898,6 +910,14 @@ def score(
         unsupported_anti_patterns=unsupported,
         derived_dimensions=derived_dimensions,
         fallback_derived_dimensions=fallback_dimensions,
+        # Recorded for EVERY dimension, before the scorable/unscorable branch, so
+        # a derived value survives an `incomplete` (ADR-032).
+        resolved_scores={
+            dimension.id: (
+                indexed[dimension.id].score if dimension.id in indexed else None
+            )
+            for dimension in rubric.dimensions
+        },
         unknown_weight=unknown_weight,
         completeness_violation=completeness_violation,
         requires_human_confirmation=requires_confirmation,

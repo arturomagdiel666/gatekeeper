@@ -31,7 +31,7 @@ from schemas import (
     RequestIntake,
     banned_synonyms,
 )
-from scoring import Verdict, derive_scores
+from scoring import Verdict, derive_scores, score
 
 OLLAMA_HOST = os.environ.get("OLLAMA_HOST", "http://localhost:11434")
 
@@ -426,3 +426,124 @@ class TestTimeoutConfiguration:
     ):
         monkeypatch.setenv("ASSESS_TIMEOUT_SECONDS", bad)
         assert assess_timeout_seconds() == DEFAULT_TIMEOUT_SECONDS
+
+
+class TestDimensionIdDistinctnessIsInTheGrammar:
+    """ADR-032. The defect that invalidated the first product measurement.
+
+    `build_response_schema` pinned the COUNT of dimension_assessments and the
+    dimension_id enum, and nothing else. `qwen2.5:7b` satisfied both by emitting
+    data_readiness twice and omitting implementation_effort — on 29 of 30 cases,
+    in both measurement passes — which left that dimension null everywhere and
+    drove 15 of 22 verdict errors. This is ADR-019 one level down: a constraint
+    that can be moved into the grammar is not enforced by leaving it implicit.
+    """
+
+    def payload(self, schema: dict, **overrides) -> dict:
+        ids = [
+            entry["properties"]["dimension_id"]["const"]
+            for entry in schema["properties"]["dimension_assessments"]["prefixItems"]
+        ]
+        return {
+            "archetype_id": "classification",
+            "anti_pattern_matches": [],
+            "dimension_assessments": [
+                {
+                    "dimension_id": overrides.get(dimension_id, dimension_id),
+                    "score": 3,
+                    "evidence": "e",
+                    "confidence": "low",
+                }
+                for dimension_id in ids
+            ],
+        }
+
+    def test_each_position_is_pinned_to_one_dimension_by_const(self):
+        schema = build_response_schema()
+        slot = schema["properties"]["dimension_assessments"]
+        assert [e["properties"]["dimension_id"]["const"] for e in slot["prefixItems"]] == (
+            RUBRIC.dimension_ids
+        )
+        assert slot["minItems"] == slot["maxItems"] == len(RUBRIC.dimension_ids)
+
+    def test_items_is_absent_because_it_defeats_prefixitems(self):
+        """Measured, not assumed: with both keys present Ollama's converter honours
+        `items` and ignores `prefixItems`, and the model duplicated freely again."""
+        assert "items" not in build_response_schema()["properties"]["dimension_assessments"]
+
+    def test_a_conforming_payload_validates(self):
+        jsonschema = pytest.importorskip("jsonschema")
+        schema = build_response_schema()
+        jsonschema.validate(self.payload(schema), schema)
+
+    def test_a_duplicated_dimension_id_is_rejected(self):
+        """The exact shape the model produced 58 times across two passes."""
+        jsonschema = pytest.importorskip("jsonschema")
+        schema = build_response_schema()
+        duplicated = self.payload(schema, implementation_effort="data_readiness")
+        ids = [e["dimension_id"] for e in duplicated["dimension_assessments"]]
+        assert ids.count("data_readiness") == 2
+        assert "implementation_effort" not in ids
+        with pytest.raises(jsonschema.ValidationError):
+            jsonschema.validate(duplicated, schema)
+
+    def test_distinctness_survives_a_trimmed_prompt(self):
+        """Derived dimensions drop out of the schema; the rest stay pinned in order."""
+        omit = {"process_frequency", "data_governance"}
+        schema = build_response_schema(omit_dimensions=omit)
+        expected = [i for i in RUBRIC.dimension_ids if i not in omit]
+        slot = schema["properties"]["dimension_assessments"]
+        assert [
+            e["properties"]["dimension_id"]["const"] for e in slot["prefixItems"]
+        ] == expected
+        assert slot["minItems"] == slot["maxItems"] == len(expected)
+
+    def test_uniqueitems_would_not_have_caught_it(self):
+        """Recorded so the weaker fix is not proposed later.
+
+        Two entries with the same dimension_id and different evidence are
+        DISTINCT items, so `uniqueItems: true` accepts exactly the payload that
+        caused the defect.
+        """
+        jsonschema = pytest.importorskip("jsonschema")
+        weaker = {
+            "type": "array",
+            "uniqueItems": True,
+            "items": {"type": "object"},
+        }
+        jsonschema.validate(
+            [
+                {"dimension_id": "data_readiness", "evidence": "one"},
+                {"dimension_id": "data_readiness", "evidence": "two"},
+            ],
+            weaker,
+        )
+
+
+class TestDerivedValuesSurviveAnUnscorableOutcome:
+    """ADR-032: the API gap that cost two invalid measurement passes."""
+
+    def test_resolved_scores_carries_every_dimension(self):
+        example = load_example("ticket_handover_summaries")
+        outcome = score(example.reference_assessment, RUBRIC, PATTERNS, example.intake)
+        assert set(outcome.resolved_scores) == set(RUBRIC.dimension_ids)
+        for contribution in outcome.contributions:
+            assert (
+                outcome.resolved_scores[contribution.dimension_id]
+                == contribution.raw_score
+            )
+
+    def test_a_derived_value_is_readable_from_an_incomplete_outcome(self):
+        """`contributions` is empty here, and the derivation still ran."""
+        example = load_example("ticket_handover_summaries")
+        assessment = example.reference_assessment.model_copy(deep=True)
+        for entry in assessment.dimension_assessments:
+            if entry.dimension_id in {"adoption_risk", "implementation_effort"}:
+                entry.score = None
+        outcome = score(assessment, RUBRIC, PATTERNS, example.intake)
+        assert outcome.verdict is Verdict.INCOMPLETE
+        assert outcome.contributions == []
+        assert outcome.resolved_scores["process_frequency"] == 5
+        assert outcome.resolved_scores["data_governance"] == 2
+        assert outcome.resolved_scores["non_ai_alternative"] == 1
+        assert outcome.resolved_scores["adoption_risk"] is None

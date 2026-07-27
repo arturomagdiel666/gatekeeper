@@ -2508,3 +2508,85 @@ is reported as a confusion matrix with a stated cost ordering —
 `false go > false not_ai > false no_go > spurious incomplete` — and never
 collapsed to a scalar, because a scalar lets one severe error trade against two
 mild ones and read as progress.
+
+---
+
+## ADR-032 — Distinctness belongs in the grammar, and a derived value must survive an unscorable outcome
+
+**Date:** 2026-07-26 · **Status:** accepted · **Scope:** `assess.py` schema construction, one `Outcome` field
+**Cause:** the product measurement in `81fd155` did not measure the model
+
+### The defect
+
+`build_response_schema` pinned `dimension_assessments` to
+`minItems = maxItems = len(asked)` and pinned `dimension_id` to an enum. It did
+not require the entries to be **distinct**. `qwen2.5:7b` satisfied both
+constraints by emitting `data_readiness` twice and omitting
+`implementation_effort` — **on 29 of 30 cases, in both measurement passes.**
+`_index_assessments` dropped the duplicate into `ignored_dimension_ids` and the
+omitted dimension was simply unknown, so `implementation_effort` was null
+everywhere, its 0% match was structural rather than inaccuracy, and the resulting
+0.30 of unknown weight drove **15 of the 22 verdict errors**.
+
+This is **ADR-019 recurring one level down**. That ADR's finding was that a schema
+which does not demand the work does not get the work; this is a schema that does
+not demand *distinctness* and does not get it. A constraint that can be moved into
+the grammar is not enforced by leaving it implicit.
+
+### It went into the grammar, and the belt-and-braces version defeats the belt
+
+`uniqueItems: true` would **not** have caught this: two entries with the same
+`dimension_id` and different `evidence` are distinct items, so the weaker
+constraint accepts exactly the payload that caused the defect. A test records
+that, so the weaker fix is not proposed later.
+
+What works is `prefixItems`: position *i* is pinned to
+`{"const": <dimension i>}`, which the decoder cannot violate. Stronger than
+uniqueness — it also fixes the order the prompt already asks for.
+
+Both facts below were **measured against Ollama 0.32.1 with qwen2.5:7b**, not
+assumed:
+
+- Told to put one id in every slot, the model emitted the pinned sequence
+  instead. The converter honours `prefixItems` and `const`.
+- **With `items` present alongside `prefixItems`, the converter honours `items`
+  and ignores `prefixItems`**, and the model duplicated freely again. So `items`
+  had to be **removed**, not kept as a fallback. Leaving it in as insurance
+  silently disables the insurance. `minItems == maxItems == len(prefixItems)`
+  already forbids extras.
+
+No prose instruction was added, no retry path was needed, and nothing in
+`rubric.yaml`, `patterns.yaml` or the anchors was touched.
+
+### The second fix: `Outcome.resolved_scores`
+
+Reconstructing what the system scored took three sources and was wrong twice, and
+both errors produced plausible numbers. Reading `outcome.contributions` reported
+**deterministic lookups at an 8% match**, because contributions are empty whenever
+a case is gated or incomplete. Reading the merged `Assessment` reported
+`business_value` at **0%**, because its fallback derivation is applied inside
+`score()` on a private copy and never written back — `fallback_derived_dimensions`
+named the dimension and discarded the number.
+
+So on an unscorable case, the value a derivation computed was **unrecoverable from
+the result**. `Outcome.resolved_scores` now records every dimension's
+post-derivation value regardless of scorability. An 8% score on a deterministic
+lookup is precisely the shape of measurement artefact ADR-024 exists to catch, and
+it was caught by disbelieving the number rather than by any check in the code.
+
+### Registered predictions for the re-measurement
+
+Written before running it.
+
+| Prediction | Basis |
+|---|---|
+| `implementation_effort` will be scored on most cases rather than none | it was null only because the grammar let the model drop it |
+| Spurious incompletes will fall sharply from 15 | they were caused by 0.30 of unknown weight on the two dropped dimensions |
+| Model exact-match on the judged dimensions will rise from 1% but stay **below** the 76% human-human ceiling; above it, suspect the reference | the reference contains only slots the two scorers already agreed on, so it is the easy subset |
+| **Self-consistency will be the binding constraint on any accuracy figure** | two passes of the identical system already disagreed on 8 of 30 verdicts |
+
+The last one decides how the rest may be read. **Self-consistency is reported
+first, before any accuracy number**, because a system that disagrees with itself
+on eight verdicts cannot be said to agree with a reference to any finer resolution
+than that. The measurement is run **three times**, unchanged in every other
+respect, and nothing is tuned in response to what it shows.

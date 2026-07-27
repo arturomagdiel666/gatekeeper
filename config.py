@@ -33,7 +33,7 @@ rather than halfway through an assessment.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Annotated, Literal
+from typing import Annotated, ClassVar, Literal
 
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
@@ -48,6 +48,7 @@ __all__ = [
     "MagnitudeBand",
     "MagnitudeDenomination",
     "MagnitudeDerivation",
+    "ArtefactDerivation",
     "DimensionThresholdCondition",
     "AntiPatternCondition",
     "IntakeFieldCondition",
@@ -318,8 +319,76 @@ class MagnitudeDerivation(BaseModel):
         return None
 
 
+class ArtefactDerivation(BaseModel):
+    """Derive a score from what already exists, per the intake's artefact list.
+
+    The mechanism this rubric has evidence for: three dimensions resolved by
+    derivation agree at 97% between independent scorers, two resolved by anchors
+    alone at 72%, and the two carrying a procedure written in prose at 48%
+    (ADR-030). ``non_ai_alternative`` was the worst of them at 30% after three
+    prose repairs, so it is rebuilt as a lookup on a field.
+
+    **What is mechanical and what is not.** An empty list, a list with nothing
+    completing, and an absent field are settled here in code. Levels 3 to 5 need
+    part / most / all, and the three fields the intake asks for cannot separate
+    those without reading ``what_it_does`` — so ``coverage_rule`` states the test
+    and the reader applies it. That boundary is deliberate: the alternative was a
+    fourth field asking the requester what fraction their tool covers, which is
+    the adversarial question this design exists to avoid. It is also where the
+    residual disagreement is expected to live, exactly as it does for
+    ``business_value``.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    source: Literal["intake_artefacts"]
+    #: Score when the requester was asked and listed nothing.
+    empty: int
+    #: Score when things exist but none of them finish the work.
+    none_complete: int
+    #: Level per coverage band, applied by the reader via ``coverage_rule``.
+    coverage: dict[str, int]
+    coverage_rule: str
+
+    is_fallback: bool = False
+
+    #: Sentinel: the field was never answered, so the dimension is UNKNOWN. Not
+    #: the same as an empty list, which is an answer.
+    ABSENT: ClassVar[str] = "absent"
+
+    def derive(self, artefacts: list | None) -> tuple[int | None, str] | None:
+        """What to impose on this dimension, or ``None`` to leave it alone.
+
+        Returns ``(score, why)`` to impose — where ``score`` of ``None`` imposes
+        UNKNOWN — or ``None`` when the reader must apply ``coverage_rule``.
+        """
+        if artefacts is None:
+            return (
+                None,
+                "The intake does not say what already exists for this work, so "
+                "how much of it is already finished cannot be established. Not "
+                "estimated: ask the requester what they run today.",
+            )
+        if not artefacts:
+            return (
+                self.empty,
+                "Derived from the intake form: asked what already exists for "
+                f"this work, the requester listed nothing -> level {self.empty}.",
+            )
+        completing = [a for a in artefacts if a.completes_without_judgement]
+        if not completing:
+            listed = "; ".join(a.name for a in artefacts)
+            return (
+                self.none_complete,
+                f"Derived from the intake form: {len(artefacts)} thing(s) exist "
+                f"({listed}) and none of them finishes the work without somebody "
+                f"deciding something -> level {self.none_complete}.",
+            )
+        return None
+
+
 DimensionDerivation = Annotated[
-    VolumeDerivation | SensitivityDerivation | MagnitudeDerivation,
+    VolumeDerivation | SensitivityDerivation | MagnitudeDerivation | ArtefactDerivation,
     Field(discriminator="source"),
 ]
 
@@ -354,6 +423,12 @@ class Dimension(BaseModel):
     #: IS the anchor semantics.
     derivation: DimensionDerivation | None = None
     anchors: dict[int, str]
+    #: Reviewer guidance, deliberately NOT rendered into the assessment prompt —
+    #: the same role and the same reason as ``AntiPattern.notes``. It is where a
+    #: KIND of thing may be named without becoming a criterion: naming kinds in
+    #: the anchors is what let "a form field" score 5 on a dimension whose axis
+    #: asked for work finished without human judgement (ADR-030).
+    notes: str | None = None
 
 
 class VerdictBand(BaseModel):

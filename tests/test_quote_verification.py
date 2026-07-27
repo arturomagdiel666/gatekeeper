@@ -14,6 +14,7 @@ import yaml
 from config import PATTERNS, RUBRIC, RUBRIC_PATH, load_rubric
 from schemas import (
     DataSensitivity,
+    DeterministicArtefact,
     Period,
     AntiPatternMatch,
     Assessment,
@@ -34,6 +35,18 @@ INTAKE = RequestIntake(
     requesting_area="HR",
     business_owner="Marcos Pena",
     process_description="Answered by hand from PDFs.",
+    # non_ai_alternative is derived from this list (ADR-030). One COMPLETING
+    # entry means the derivation defers to the reader for levels 3-5, so each
+    # fixture's own non_ai_alternative score stands and these tests keep
+    # exercising what they were written for. The absent/empty/none-completing
+    # branches have their own tests.
+    existing_deterministic_artefacts=[
+        DeterministicArtefact(
+            name="A weekly report",
+            what_it_does="closes out some of these cases on its own",
+            completes_without_judgement=True,
+        )
+    ],
 )
 
 #: A verbatim Part B span from REQUEST: somebody has already said the licensed

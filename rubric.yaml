@@ -471,62 +471,56 @@ dimensions:
   - id: non_ai_alternative
     label: Strength of the non-AI alternative
     axis: >-
-      The SHARE OF INSTANCES that a non-AI solution — a rule, a query, a report,
-      a process fix, a form field, or a capability the company already licenses
-      — would handle END TO END, with no human judgement added. A deterministic
-      output that still needs a human judgement after it — a scorecard, a risk
-      questionnaire, a redline — has not finished the instance.
-    scoring_rule: >-
-      Put a percentage on it. Estimate what share of instances the deterministic
-      alternative would finish without anyone having to judge anything, and
-      score the level whose band contains that share. If the request states a
-      share — "about 60% are variations of the same twenty situations" — use the
-      stated number.
+      HOW MUCH OF THIS WORK IS ALREADY FINISHED TODAY by deterministic means.
     description: >-
-      This is the dimension that makes the Hub worth running. A strong non-AI
-      alternative is a reason not to build an agent, however attractive the
-      rest of the score. A raw score of 4 or more fires the
-      non_ai_alternative_suffices gate.
-
-      ONE RULE, NOT TWO. The levels are numeric bands on instances finished, and
-      that is the only test. Phase 4 added those bands and left a second rule
-      beside them — that an alternative relocating a judgement rather than
-      removing it does not count — and agreement fell 70% to 61%, with one
-      scorer flagging the 3/4 boundary 25 times and reporting that the two rules
-      "pull opposite ways". The relocation rule is deleted. What it was reaching
-      for is now a clause in the axis, stated as a property of the output rather
-      than of where the judgement moved to. See ADR-029.
-
-      Level 1 also used to demand that "rule-based attempts have been tried and
-      are known to fail" — proof that only exists once somebody has wasted the
-      effort, and which a maximally rule-immune request such as translation can
-      never satisfy. Prior failed attempts are supporting evidence for level 1
-      rather than a precondition of it. That fix is Phase 4's and it stands.
+      Work already finished without a model is work an agent would duplicate,
+      which is what makes this dimension worth having and why a raw 4 or more
+      fires the non_ai_alternative_suffices gate. The level is DERIVED from what
+      the requester says exists — not from what could be built, not from how
+      templatable the work looks. Three prose repairs took this dimension from
+      70% agreement to 61% to 30%; the body was deleted and rebuilt as a lookup
+      rather than edited a fourth time. See ADR-030.
     weight: 0.10
     direction: lower_is_better
+    # DETERMINISTIC DERIVATION from the intake's list of what already exists.
+    # An absent list is a refusal, not a zero: without knowing what runs today
+    # this cannot be assessed, and the dimension is in never_unknown, so the
+    # request comes back `incomplete`. Consistent with business_value.
+    derivation:
+      source: intake_artefacts
+      empty: 1
+      none_complete: 2
+      coverage:
+        part: 3
+        most: 4
+        all: 5
+      coverage_rule: >-
+        Read the completing entries' what_it_does against the work the request
+        describes. If together they describe that work with no qualification it
+        is `all`; if they describe it with a stated exception or remainder it is
+        `most`; if they name only a subset of it, it is `part`.
     anchors:
       1: >-
-        No instances. The input is unstructured or genuinely ambiguous, so no
-        deterministic rule can be written for it. Rule-based attempts already
-        tried and known to fail are supporting evidence here, not a requirement.
+        Nothing exists today that finishes any of this work.
       2: >-
-        Up to about a quarter of instances, under roughly 25%. A rules-based
-        approach finishes a minority outright; the rest turn on judgement rules
-        have not captured.
+        Things exist for this work and none of them finishes it — after each one
+        runs, somebody still has to decide something.
       3: >-
-        About a quarter to three-quarters of instances, roughly 25-75%. Rules, a
-        query or a report would finish about half of them end to end. An agent
-        would extend that coverage rather than create the capability.
+        Something that exists finishes part of this work on its own, as its own
+        description bounds it.
       4: >-
-        About three-quarters to nearly all instances, roughly 75-99%. A
-        well-written query, a report, a process change, or configuration of a
-        tool the company already owns finishes almost every instance on its own;
-        an agent would add convenience and pick up the tail.
+        Things that exist finish most of this work on their own, with a stated
+        exception or remainder left over.
       5: >-
-        Effectively every instance, about 99-100%. A deterministic rule, a
-        lookup, a form field, an upstream process fix, or an already-licensed
-        capability solves it completely — more cheaply, more predictably, and
-        with less to maintain.
+        Things that exist finish effectively all of this work on their own,
+        nothing in their description left qualified.
+    notes: >-
+      Reviewer guidance, not rendered into the prompt, and the only place a KIND
+      of thing may be named: a rule, a query, a report, a template, a validation,
+      a mapping, a configuration of a tool already owned. Use them to prompt a
+      requester whose list came back empty; never to score. A list of nothing is
+      a claim, and where the process description mentions tooling the list does
+      not, that gap is worth one question before the level stands.
 
 # =============================================================================
 # VERDICT BANDS

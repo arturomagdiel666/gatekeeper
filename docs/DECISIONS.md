@@ -2302,3 +2302,108 @@ capability nobody has switched on scores 1, not 5. The compensation argument is
 void; the two-part test now stands or falls on its own merits. This was not
 anticipated by either phase brief and is the kind of interaction only a
 cross-phase read catches.
+
+---
+
+### Commit 2 — the dimension deleted and rebuilt
+
+The body was **deleted and written fresh**, not edited. Three frames were laid
+over each other and every previous repair addressed the top one:
+
+1. Original anchors describing alternatives by **type** — a rule, a query, **a
+   form field**, a template.
+2. Phase 4's numeric bands describing **fraction of instances covered**.
+3. Phase 5's axis sentence describing **whether an instance finishes without
+   human judgement**.
+
+**The sediment is gone and a test asserts it.** Level 1's *"no deterministic rule
+can be written for it"* and level 5's *"a form field"* predate Phase 4, survived
+two repairs each, and are what made the dimension answer two questions at once —
+Scorer B hit the first (the zero band reachable by the number and contradicted by
+the prose), Scorer A hit the second (a capture-time dropdown scoring 5 on an axis
+demanding no human judgement). Neither string appears anywhere in the axis,
+`scoring_rule`, description or anchors.
+
+**Types now live in `notes`**, a new field on `Dimension` with the same role and
+the same reason as `AntiPattern.notes`: it is not rendered into the prompt, so a
+kind of thing can be named there without becoming a criterion. A rule, a query, a
+report, a template — useful for prompting a requester whose list came back
+suspiciously empty, never for scoring.
+
+The new body: `axis` is one line, the `derivation` maps the list to a level, five
+anchors restate those levels in artefact vocabulary, and no anchor names a type.
+**60 lines → 53.**
+
+### What is mechanical, and the one place it is not
+
+| Artefact list | Level | Settled by |
+|---|---|---|
+| Absent | `null` → `incomplete` | code |
+| Empty | 1 | code |
+| Entries, none completing | 2 | code |
+| ≥1 completing, part / most / all | 3 / 4 / 5 | **the reader, via `coverage_rule`** |
+
+Three of the five outcomes and the refusal are settled in code. Levels 3–5 need
+part / most / all, and **the three fields the intake asks for cannot separate
+those without reading `what_it_does`**. So `coverage_rule` states the test in two
+sentences — does the completing entries' own description cover the work
+unqualified, with a stated remainder, or only a named subset — and the reader
+applies it.
+
+**This is a deviation from the phase plan's acceptance criterion 4**, which asked
+that the dimension resolve by derivation whenever the list is present. It does not
+for the top three levels, and the alternative was a fourth per-entry field asking
+the requester what fraction their tool covers — **the adversarial question this
+whole design exists to avoid.** Between a derivation with a narrow reader-applied
+step and a fully mechanical one fed by a number the requester has an incentive to
+shade, the first is the better trade. It is also exactly where ADR-026's residual
+lives on `business_value`, and the phase's own interpretation table anticipates it:
+70–90% agreement means the entry point is the residual problem.
+
+Note what this means for the gate, which fires at ≥ 4: **the gating band is the
+reader-applied one.** If the re-run lands above 90% the coverage rule is doing the
+work; if it lands at 70–90% the gate is still resting on a judgement and
+`requires_human_confirmation` should stay where ADR-028 put it.
+
+### Exemplar results — no verdict changed, three reference scores now diverge
+
+| Exemplar | Verdict | Total | `non_ai_alternative` |
+|---|---|---|---|
+| `ticket_handover_summaries` | `go` | 4.13 → **4.23** | ref 2 → **1** derived (empty list) |
+| `hr_policy_questions` | `not_ai` | 3.17 → **3.47** | ref 4 → **1** derived (empty list) |
+| `ticket_volume_by_team` | `not_ai` | 2.74 | 5, reader-applied — unchanged |
+| `predict_laptop_failures` | `no_go` | 3.87 | 1 derived — matches its reference |
+| `contract_renewal_drafting` | `no_go` | 3.08 | 2 derived — matches its reference |
+| `something_with_the_invoices` | `incomplete` | — | ref 3 → **null**, field absent |
+| `ticket_routing_classifier` | `go` | 4.57 | 3, reader-applied — unchanged |
+
+`hr_policy_questions` is the interesting one. Its `non_ai_alternative` fell from 4
+to 1 and `non_ai_alternative_suffices` no longer fires — only
+`existing_capability_covers_it` does, which is its expected gate. **That is the
+construct working**: nothing deterministic finishes HR policy answering today, and
+the licensed-capability claim belongs to the anti-pattern gate rather than to this
+dimension.
+
+**The three divergent reference scores have not been re-authored.** The anchors'
+meaning changed in this commit, which is the ADR-027 situation where re-scoring
+fixtures to match a rule written in the same commit would make the reference set
+circular. It is reported instead, and the divergence is inert because the
+derivation is authoritative. Re-authoring them is a follow-up.
+
+### A cross-phase interaction, and a caveat on the control
+
+Recorded in Commit 1 and repeated here because it changes an earlier
+justification: **ADR-029's fallback argument for the two-part evidence test is
+void.** It held that a licence claim failing Part B was "not lost — it is scored
+on `non_ai_alternative`, which carries the already-licensed language at level 5".
+That language is gone, and the rebuilt dimension measures what is finished today,
+so a licensed capability nobody has switched on scores 1. The two-part test now
+stands on its own merits.
+
+And the third registered prediction — that untouched dimensions stay within ±7 —
+**is a weaker control than it looks**, for a reason worth stating before the
+numbers arrive. The prompt changed again this phase: `non_ai_alternative` is
+omitted from it whenever the derivation settles the level, so the prompt a scorer
+reads is shorter on some cases and not others. ADR-029's drift candidates included
+exactly that mechanism. If the untouched dimensions move again, prompt length
+remains a live explanation and this phase did not eliminate it.

@@ -37,6 +37,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from config import (
     AntiPatternCondition,
+    ArtefactDerivation,
     DimensionThresholdCondition,
     IntakeFieldCondition,
     MagnitudeDerivation,
@@ -343,10 +344,19 @@ def derive_scores(
     """
     if intake is None:
         return {}
-    derived: dict[str, tuple[int, str]] = {}
+    derived: dict[str, tuple[int | None, str]] = {}
     for dimension in rubric.dimensions:
         rule = dimension.derivation
         if rule is None or rule.is_fallback:
+            continue
+        if isinstance(rule, ArtefactDerivation):
+            # The only derivation that can impose UNKNOWN: an absent artefact
+            # list is a refusal, not a zero. It also declines to settle levels
+            # 3-5, which the reader takes from `coverage_rule` — so a `None`
+            # return here leaves the dimension in the prompt (ADR-030).
+            imposed = rule.derive(intake.existing_deterministic_artefacts)
+            if imposed is not None:
+                derived[dimension.id] = imposed
             continue
         if isinstance(rule, VolumeDerivation):
             source_value = intake.instances_per_year
@@ -424,7 +434,10 @@ def _apply_intake_derivations(
             dimension_id=dimension_id,
             score=score_value,
             evidence=why,
-            confidence=Confidence.HIGH,
+            # A derived LEVEL is a fact about the form and carries high
+            # confidence. A derived UNKNOWN is the absence of one, so it does not
+            # (ADR-030).
+            confidence=Confidence.HIGH if score_value is not None else Confidence.LOW,
         )
         derived.append(dimension_id)
     return derived

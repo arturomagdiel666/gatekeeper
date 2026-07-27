@@ -20,13 +20,14 @@ import yaml
 from config import RUBRIC_PATH, load_patterns, load_rubric
 from schemas import (
     AntiPatternMatch,
+    DeterministicArtefact,
     Assessment,
     Confidence,
     DimensionAssessment,
     Period,
     RequestIntake,
 )
-from scoring import Verdict, match_band, score
+from scoring import Verdict, derive_scores, match_band, score
 
 PATTERNS = load_patterns()
 RUBRIC = load_rubric()
@@ -43,6 +44,18 @@ OWNED = RequestIntake(
     requesting_area="Service Desk",
     business_owner="Ana Ruiz",
     process_description="Done by hand today.",
+    # non_ai_alternative is derived from this list (ADR-030). One COMPLETING
+    # entry means the derivation defers to the reader for levels 3-5, so each
+    # fixture's own non_ai_alternative score stands and these tests keep
+    # exercising what they were written for. The absent/empty/none-completing
+    # branches have their own tests.
+    existing_deterministic_artefacts=[
+        DeterministicArtefact(
+            name="A weekly report",
+            what_it_does="closes out some of these cases on its own",
+            completes_without_judgement=True,
+        )
+    ],
 )
 
 # SYNTHETIC ARITHMETIC FIXTURE — not a reference assessment of anything.
@@ -347,7 +360,7 @@ class TestBlockingGates:
             make_assessment(BEST_SCORES),
             RUBRIC,
             PATTERNS,
-            RequestIntake(request_text=f"A request. {QUOTABLE_PHRASE}", business_owner="   "),
+            OWNED.model_copy(update={"business_owner": "   "}),
         )
         assert outcome.verdict is Verdict.NO_GO
         assert outcome.triggered_gate_ids == ["no_named_business_owner"]
@@ -385,7 +398,7 @@ class TestBlockingGates:
             ),
             RUBRIC,
             PATTERNS,
-            RequestIntake(request_text=f"A request. {QUOTABLE_PHRASE}", business_owner=""),
+            OWNED.model_copy(update={"business_owner": ""}),
         )
         assert outcome.verdict is Verdict.NOT_AI
         assert outcome.triggered_gate_ids == [
@@ -919,3 +932,107 @@ class TestBusinessValueAnchorsMeasureOnlyMagnitude:
         ]
         assert all(d.otherwise == 5 for d in derivation.denominations)
         assert derivation.currency_code == "USD"
+
+
+class TestNonAiAlternativeIsDerivedFromWhatExists:
+    """ADR-030, acceptance criterion 4.
+
+    Three prose repairs took this dimension 70% -> 61% -> 30% between two
+    independent scorers. The measured partition across three runs is that
+    dimensions derived from an intake field agree at 97% and dimensions carrying
+    a prose procedure at 48%, so the body was deleted and the level now comes
+    from a list of what already exists.
+    """
+
+    def intake(self, artefacts) -> RequestIntake:
+        return OWNED.model_copy(update={"existing_deterministic_artefacts": artefacts})
+
+    def artefact(self, completes: bool, name="A weekly report") -> DeterministicArtefact:
+        return DeterministicArtefact(
+            name=name,
+            what_it_does="closes out some of these cases",
+            completes_without_judgement=completes,
+        )
+
+    def non_ai_of(self, outcome):
+        return next(
+            c for c in outcome.contributions if c.dimension_id == "non_ai_alternative"
+        )
+
+    def test_an_empty_list_derives_level_one(self):
+        """Asked, and nothing exists. A strong and reproducible signal."""
+        outcome = score(make_assessment(ARITHMETIC_SCORES), RUBRIC, PATTERNS,
+                        self.intake([]))
+        entry = self.non_ai_of(outcome)
+        assert entry.raw_score == 1
+        assert "listed nothing" in entry.evidence
+        assert "non_ai_alternative" in outcome.derived_dimensions
+
+    def test_things_that_exist_but_finish_nothing_derive_level_two(self):
+        outcome = score(
+            make_assessment(ARITHMETIC_SCORES),
+            RUBRIC,
+            PATTERNS,
+            self.intake([self.artefact(False, "Summary template")]),
+        )
+        entry = self.non_ai_of(outcome)
+        assert entry.raw_score == 2
+        assert "Summary template" in entry.evidence
+        assert "none of them finishes the work" in entry.evidence
+
+    def test_the_derived_level_overrides_whatever_was_assessed(self):
+        """Authoritative, like the other two intake derivations."""
+        assessment = make_assessment({**ARITHMETIC_SCORES, "non_ai_alternative": 5})
+        outcome = score(assessment, RUBRIC, PATTERNS, self.intake([]))
+        assert self.non_ai_of(outcome).raw_score == 1, "the form wins, not the model"
+        assert outcome.triggered_gates == [], "and so the gate does not fire"
+
+    def test_a_completing_entry_leaves_the_level_to_the_reader(self):
+        """Levels 3-5 need part / most / all, which the three fields cannot
+        separate without reading what_it_does. The coverage_rule states the test
+        and the reader applies it — the deliberate boundary of this derivation."""
+        assessment = make_assessment({**ARITHMETIC_SCORES, "non_ai_alternative": 4})
+        outcome = score(assessment, RUBRIC, PATTERNS, self.intake([self.artefact(True)]))
+        assert self.non_ai_of(outcome).raw_score == 4
+        assert "non_ai_alternative" not in outcome.derived_dimensions
+        assert outcome.triggered_gate_ids == ["non_ai_alternative_suffices"]
+
+    def test_an_absent_list_is_refused_rather_than_estimated(self):
+        """Acceptance criterion 4's second half, and the refusal branch."""
+        outcome = score(
+            make_assessment(ARITHMETIC_SCORES), RUBRIC, PATTERNS, self.intake(None)
+        )
+        assert outcome.unknown_dimensions == ["non_ai_alternative"]
+        assert outcome.verdict is Verdict.INCOMPLETE
+        assert "never_unknown" in outcome.completeness_violation
+        assert outcome.weighted_total is None
+
+    def test_the_refusal_says_what_is_missing_and_asks_for_it(self):
+        """An unknown dimension has no contribution row, so the reason has to be
+        carried on the derivation itself or it is lost."""
+        derived = derive_scores(RUBRIC, self.intake(None))
+        score_value, why = derived["non_ai_alternative"]
+        assert score_value is None
+        assert "does not say what already exists" in why
+        assert "Not estimated" in why
+        assert "ask the requester what they run today" in why
+
+    def test_the_gate_cannot_fire_on_a_refusal(self):
+        """An unknown is not evidence, so a refusal must not gate — it returns
+        `incomplete` instead, which is recoverable."""
+        outcome = score(
+            make_assessment({**ARITHMETIC_SCORES, "non_ai_alternative": 5}),
+            RUBRIC,
+            PATTERNS,
+            self.intake(None),
+        )
+        assert "non_ai_alternative_suffices" not in outcome.triggered_gate_ids
+        assert outcome.verdict is Verdict.INCOMPLETE
+
+    def test_an_empty_list_and_an_absent_list_are_not_the_same_answer(self):
+        empty = score(make_assessment(ARITHMETIC_SCORES), RUBRIC, PATTERNS,
+                      self.intake([]))
+        absent = score(make_assessment(ARITHMETIC_SCORES), RUBRIC, PATTERNS,
+                       self.intake(None))
+        assert empty.verdict is not Verdict.INCOMPLETE
+        assert absent.verdict is Verdict.INCOMPLETE

@@ -16,6 +16,7 @@ from contracts import (
     load_contracts_config,
 )
 from schemas import (
+    DeterministicArtefact,
     AntiPatternMatch,
     Assessment,
     Confidence,
@@ -34,6 +35,18 @@ OWNED = RequestIntake(
     request_text=f"A request. {QUOTABLE_PHRASE}",
     requesting_area="Service Desk",
     business_owner="Ana Ruiz",
+    # non_ai_alternative is derived from this list (ADR-030). One COMPLETING
+    # entry means the derivation defers to the reader for levels 3-5, so each
+    # fixture's own non_ai_alternative score stands and these tests keep
+    # exercising what they were written for. The absent/empty/none-completing
+    # branches have their own tests.
+    existing_deterministic_artefacts=[
+        DeterministicArtefact(
+            name="A weekly report",
+            what_it_does="closes out some of these cases on its own",
+            completes_without_judgement=True,
+        )
+    ],
 )
 
 GO_SCORES = {

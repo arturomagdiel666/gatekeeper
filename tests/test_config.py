@@ -396,76 +396,31 @@ class TestPatternsValidationFailures:
             write_patterns(tmp_path, patterns_data)
 
 
-class TestNonAiAlternativeHasAnOperationalBoundary:
-    """ADR-027 / 2A: the repair with the most verdict leverage in the rubric.
+class TestNonAiAlternativeIsDerivedNotJudged:
+    """ADR-030: the dimension was deleted and rebuilt as a lookup on a field.
 
-    All six verdict disagreements in the agreement study trace to this
-    dimension: four as gate flips across the 3/4 line, two as band flips on
-    totals it weights. The old boundary was "roughly half the cases" against
-    "most of it", which supplied no test at all.
+    This class replaces TestNonAiAlternativeHasAnOperationalBoundary, which
+    asserted the numeric coverage bands, the coarse-output sentence and the
+    level-1 evidence wording. All three were prose, all three are gone, and the
+    dimension went 70% -> 61% -> 30% across the three runs that carried them.
     """
 
     DIMENSION = RUBRIC.dimension_by_id("non_ai_alternative")
 
-    #: The bands as the anchors now state them, lower bound inclusive. Written
-    #: out here so that rewording an anchor without rewording this table fails.
-    BANDS = ((1, 0), (2, 0), (3, 25), (4, 75), (5, 99))
-
-    def level_for(self, percentage: float) -> int:
-        """The level whose band contains a share of instances finished."""
-        return max(level for level, lower in self.BANDS if percentage >= lower)
-
-    def test_the_anchors_state_their_numeric_bounds(self):
-        anchors = self.DIMENSION.anchors
-        assert "25%" in anchors[2]
-        assert "25-75%" in anchors[3]
-        assert "75-99%" in anchors[4]
-        assert "99-100%" in anchors[5]
-
-    def test_a_stated_sixty_percent_lands_in_level_three(self):
-        """B-09 states exactly 60% and used to sit in the gap between two words."""
-        assert self.level_for(60) == 3
-
-    def test_the_gated_boundary_is_seventy_five_percent(self):
-        """The gate fires at raw >= 4, so this number decides not_ai verdicts."""
-        gate = next(
-            g for g in RUBRIC.blocking_gates if g.id == "non_ai_alternative_suffices"
-        )
-        threshold = next(
-            c.threshold
-            for c in gate.any_of
-            if getattr(c, "dimension", None) == "non_ai_alternative"
-        )
-        assert threshold == 4
-        assert self.level_for(74) == 3, "just under the line does not gate"
-        assert self.level_for(75) == threshold, "the line itself gates"
-
-    def test_the_bands_tile_zero_to_one_hundred_without_a_gap(self):
-        for percentage in range(0, 101):
-            assert 1 <= self.level_for(percentage) <= 5
-
-    def test_level_one_no_longer_demands_a_failed_attempt_as_proof(self):
-        """A rule-immune request — translation — can never satisfy that test.
-
-        Nobody attempts rules for machine translation, so requiring evidence of
-        a failed attempt made the most rule-immune requests in the corpus
-        unable to reach the level that describes them.
-        """
-        level_one = " ".join(self.DIMENSION.anchors[1].split())
-        assert "supporting evidence here, not a requirement" in level_one
-        assert "attempts have been tried and are known to fail" not in level_one
-
-    def test_the_axis_counts_instances_finished_rather_than_help_given(self):
+    def test_the_axis_is_one_line_about_work_already_finished(self):
         axis = " ".join(self.DIMENSION.axis.split())
-        assert "SHARE OF INSTANCES" in axis
-        assert "END TO END" in axis
+        assert axis == (
+            "HOW MUCH OF THIS WORK IS ALREADY FINISHED TODAY by deterministic "
+            "means."
+        )
 
-    def test_the_relocation_rule_is_gone_from_all_three_places(self):
-        """ADR-029, acceptance criterion 2.
+    def test_the_sediment_is_gone(self):
+        """Acceptance criterion 2, and the two strings are named for a reason.
 
-        Phase 4 added numeric bands and left the "moves a judgement upstream"
-        rule beside them. Two rules, no precedence, 70% -> 61%. These are the
-        assertions that used to require the deleted rule to be present, inverted.
+        Neither was added by Phase 4 or Phase 5 — level 1's "no deterministic
+        rule can be written for it" and level 5's "a form field" predate both,
+        survived two repairs each, and are what made the dimension answer two
+        questions at once. If either comes back, the cycle repeated.
         """
         surfaces = {
             "axis": self.DIMENSION.axis,
@@ -475,24 +430,51 @@ class TestNonAiAlternativeHasAnOperationalBoundary:
         }
         for where, text in surfaces.items():
             normalized = " ".join((text or "").split()).lower()
-            for deleted in (
-                "improves every instance but finishes none",
-                "helps with every instance while finishing none",
-                "partial help on every instance is not coverage",
-                "moves a judgement rather than removing it",
-            ):
-                # The description may NAME the deleted rule while recording that
-                # it was deleted; it may not state it as a rule to apply.
-                if where == "description" and "deleted" in normalized:
-                    continue
-                assert deleted not in normalized, (where, deleted)
+            assert "no deterministic rule can be written" not in normalized, where
+            assert "a form field" not in normalized, where
 
-    def test_a_coarse_deterministic_output_resolves_in_the_axis(self):
-        """The case Scorer A could not settle, now settled in one sentence."""
-        axis = " ".join(self.DIMENSION.axis.split())
-        assert "has not finished the instance" in axis
-        for example in ("scorecard", "risk questionnaire", "redline"):
-            assert example in axis, example
+    def test_no_anchor_names_a_type_of_alternative(self):
+        """Acceptance criterion 3 — layer 1 of the three frames, removed.
+
+        Types are legitimate reviewer knowledge and they live in `notes`, which
+        is not rendered into the prompt and cannot become a criterion.
+        """
+        types = ("rule", "query", "report", "form field", "template", "dashboard")
+        for level, text in self.DIMENSION.anchors.items():
+            lowered = " ".join(text.split()).lower()
+            for kind in types:
+                assert kind not in lowered, (level, kind)
+        assert self.DIMENSION.notes is not None
+        assert "a rule, a query, a report, a template" in " ".join(
+            self.DIMENSION.notes.split()
+        )
+
+    def test_the_notes_are_not_rendered_into_the_prompt(self):
+        from assess import build_system_prompt
+
+        assert "never to score" not in build_system_prompt()
+
+    def test_the_derivation_reads_the_artefact_list(self):
+        derivation = self.DIMENSION.derivation
+        assert derivation.source == "intake_artefacts"
+        assert (derivation.empty, derivation.none_complete) == (1, 2)
+        assert derivation.coverage == {"part": 3, "most": 4, "all": 5}
+        assert derivation.is_fallback is False
+
+    def test_the_coverage_rule_is_two_sentences_and_names_the_field_it_reads(self):
+        """If it needs a paragraph it has become a prose procedure again."""
+        rule = " ".join(self.DIMENSION.derivation.coverage_rule.split())
+        assert rule.count(".") <= 2, rule
+        assert "what_it_does" in rule
+        for band in ("part", "most", "all"):
+            assert f"`{band}`" in rule
+
+    def test_every_anchor_describes_what_exists_rather_than_what_could(self):
+        for level, text in self.DIMENSION.anchors.items():
+            lowered = " ".join(text.split()).lower()
+            assert "exist" in lowered, level
+            for speculative in ("would ", "could ", "well-written"):
+                assert speculative not in lowered, (level, speculative)
 
 
 class TestDataReadinessCombinesTwoSubAssessments:
@@ -580,11 +562,11 @@ class TestTheRewrittenRulesReachTheModel:
     """An anchor nobody sends is a note to self. Only `axis`, `scoring_rule` and
     the anchors are rendered — `description` is documentation."""
 
-    def test_the_prompt_carries_all_three_repairs(self):
+    def test_the_prompt_carries_the_rules_that_reach_the_model(self):
         from assess import build_system_prompt
 
         prompt = " ".join(build_system_prompt().split())
-        assert "SHARE OF INSTANCES" in prompt
+        assert "ALREADY FINISHED TODAY by deterministic means" in prompt
         assert "LOWER of the two" in prompt
         assert "one unit of work the agent would handle end to end, once" in prompt
         assert "Never estimate a magnitude the request does not state" in prompt

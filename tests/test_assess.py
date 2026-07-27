@@ -24,6 +24,7 @@ from config import PATTERNS, RUBRIC
 from examples import load_example, load_examples
 from provider import ChatResponse, LLMProvider, MockProvider, OllamaProvider
 from schemas import (
+    DeterministicArtefact,
     Assessment,
     DataSensitivity,
     Period,
@@ -238,6 +239,17 @@ class TestDerivedDimensionsAreNotAsked:
                 "times_per_period": None,
                 "period": None,
                 "data_sensitivity": DataSensitivity.UNKNOWN,
+                # A COMPLETING entry, so non_ai_alternative's derivation defers to
+                # the reader and the dimension stays in the prompt. With an empty
+                # or an absent list it would be derived too — correctly — and
+                # these tests are about the other two fields (ADR-030).
+                "existing_deterministic_artefacts": [
+                    DeterministicArtefact(
+                        name="A weekly report",
+                        what_it_does="closes out some of these cases on its own",
+                        completes_without_judgement=True,
+                    )
+                ],
                 **fields,
             }
         )
@@ -294,6 +306,9 @@ class TestDerivedDimensionsAreNotAsked:
         assert len(trimmed.dimension_assessments) == 5
         scored = {e.dimension_id for e in result.assessment.dimension_assessments}
         assert scored == set(RUBRIC.dimension_ids)
+        # non_ai_alternative is NOT derived here: this helper supplies a
+        # completing artefact entry, so its derivation defers to the reader and
+        # the dimension stays in the prompt (ADR-030).
         assert result.derived_dimensions == ["data_governance", "process_frequency"]
         assert set(result.model_scored_dimensions) == set(RUBRIC.dimension_ids) - {
             "data_governance", "process_frequency"
@@ -381,7 +396,14 @@ class TestTimeout:
             SlowProvider(delay=5.0),
             timeout_seconds=0.2,
         )
-        assert result.derived_dimensions == ["data_governance", "process_frequency"]
+        # non_ai_alternative joins the derived set: exemplar 01 lists nothing that
+        # exists today, and an empty list is an answer rather than a blank
+        # (ADR-030).
+        assert result.derived_dimensions == [
+            "data_governance",
+            "non_ai_alternative",
+            "process_frequency",
+        ]
 
 
 class TestTimeoutConfiguration:

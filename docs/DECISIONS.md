@@ -2878,3 +2878,36 @@ the form with an adversarial incentive, since it asks them to price the
 alternative to their own request on the dimension that gates it. So a request
 whose artefacts complete part of the work still needs a human reader. That is the
 honest boundary of this programme and it is left standing.
+
+### ADR-035 addendum — what the live run of the approval path showed
+
+The offline scripted run reaches `go` at 4.49 with all seven dimensions derived
+and a contract carrying a measured baseline. The live 7B reached `go` at 3.74,
+and the three ways it fell short are worth more than the success.
+
+**Three unbounded corners of the grammar had to be closed first,** and each cost
+a hung or broken run before it was found: arrays with no `maxItems` (the model
+kept generating systems), and strings with no `maxLength` (the model kept
+writing). Both matter more than they look, because a timeout frees the *caller*
+and not the work — so one runaway generation keeps occupying the model and every
+later call in the interview queues behind it. **That is the third and fourth time
+in three phases that an unconstrained corner of a grammar has cost a measurable
+failure**, after ADR-032 and ADR-034. The lesson keeps arriving by way of a
+broken run rather than a review.
+
+**The 7B extracted the adoption evidence backwards.** Given "The analysts asked
+for this themselves. Marta said it sits in the wrong queue until someone
+notices", it recorded `users_consulted: nobody` and an empty quote — deriving
+`adoption_risk = 5` where the truth is 1. The hardest field to convert is also
+the hardest to extract, and the two failures compound.
+
+**And the request was approved anyway, at 3.74.** A live model producing the
+worst possible adoption reading did not stop the verdict, because
+`adoption_risk` has no gate. `docs/RELOCATION.md` §4 predicted exactly this from
+a constructed example; the live run produced it by accident on the reference
+`go` exemplar within an hour. That is the strongest argument available for
+gating the dimension, and it is still the owner's decision rather than this
+phase's.
+
+Two barren answers on the baseline then ended the interview, so the live contract
+records its baseline as unmeasured. Nothing was tuned in response to any of this.

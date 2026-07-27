@@ -143,7 +143,7 @@
     {
       "n": 6,
       "tool": "ask",
-      "target_field": "data_evidence",
+      "target_field": "effort_evidence",
       "question": "Which systems hold this data?",
       "answer": "I am not sure about that one, sorry.",
       "recorded": null,

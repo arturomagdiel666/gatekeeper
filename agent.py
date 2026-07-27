@@ -124,13 +124,19 @@ class InterviewResult(BaseModel):
 # The two constrained calls
 # ---------------------------------------------------------------------------
 
+#: `maxLength` for the same reason `maxItems` exists below: an unbounded string
+#: in a grammar has no reason to end, and an abandoned generation is not merely
+#: slow. The timeout frees the CALLER, not the work — `assess.py` says so plainly
+#: — so a runaway turn keeps occupying the model and every later call queues
+#: behind it. One unbounded field can stall a whole interview, which is what a
+#: live run spent several minutes demonstrating.
 DECIDE_SCHEMA: dict = {
     "type": "object",
     "properties": {
         "tool": {"type": "string", "enum": ["ask", "find_anti_patterns", "finish"]},
-        "target_field": {"type": "string"},
-        "question": {"type": "string"},
-        "why": {"type": "string"},
+        "target_field": {"type": "string", "maxLength": 64},
+        "question": {"type": "string", "maxLength": 400},
+        "why": {"type": "string", "maxLength": 200},
     },
     "required": ["tool", "target_field", "question", "why"],
 }
@@ -152,7 +158,7 @@ DECIDE_SCHEMA: dict = {
 #: grammar said when the list of systems could end. Twelve is far above any real
 #: answer and finite, which is the only property that matters here.
 VALUE_SCHEMAS: dict[str, dict] = {
-    "text": {"type": "string"},
+    "text": {"type": "string", "maxLength": 400},
     "number": {"type": "number"},
     "data_sensitivity": {
         "type": "string",
@@ -259,7 +265,7 @@ def extract_schema_for(field_name: str) -> dict:
         "type": "object",
         "properties": {
             "value": VALUE_SCHEMAS.get(parser, VALUE_SCHEMAS["text"]),
-            "span": {"type": "string"},
+            "span": {"type": "string", "maxLength": 600},
             "answered": {"type": "boolean"},
         },
         "required": ["value", "span", "answered"],

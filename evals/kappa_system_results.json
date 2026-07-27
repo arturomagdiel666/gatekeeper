@@ -1,0 +1,2206 @@
+{
+  "seed": 20260727,
+  "resamples": 2000,
+  "resampling_unit": "cases",
+  "reference": {
+    "slots": 174,
+    "excluded": 25,
+    "both_null": 11,
+    "verdicts": 28
+  },
+  "models": {
+    "qwen2.5:7b": {
+      "accuracy": {
+        "per_dimension": [
+          {
+            "label": "process_frequency",
+            "offered": 72,
+            "n": 72,
+            "dropped": 0,
+            "refusal_rate": 0.0,
+            "exact": 1.0,
+            "within1": 1.0,
+            "kappa": 1.0,
+            "kappa_w": 1.0,
+            "kappa_w_ci": [
+              1.0,
+              1.0
+            ],
+            "reference_marginals": {
+              "1": 6,
+              "2": 15,
+              "3": 21,
+              "4": 12,
+              "5": 18
+            },
+            "system_marginals": {
+              "1": 6,
+              "2": 15,
+              "3": 21,
+              "4": 12,
+              "5": 18
+            }
+          },
+          {
+            "label": "data_governance",
+            "offered": 81,
+            "n": 76,
+            "dropped": 5,
+            "refusal_rate": 0.06172839506172839,
+            "exact": 0.9868421052631579,
+            "within1": 0.9868421052631579,
+            "kappa": 0.969268095430651,
+            "kappa_w": 0.9424678274034826,
+            "kappa_w_ci": [
+              0.7757009345794388,
+              1.0
+            ],
+            "reference_marginals": {
+              "2": 18,
+              "3": 55,
+              "4": 3
+            },
+            "system_marginals": {
+              "1": 1,
+              "2": 18,
+              "3": 54,
+              "4": 3
+            }
+          },
+          {
+            "label": "non_ai_alternative",
+            "offered": 90,
+            "n": 87,
+            "dropped": 3,
+            "refusal_rate": 0.03333333333333333,
+            "exact": 0.9080459770114943,
+            "within1": 0.9195402298850575,
+            "kappa": 0.826865671641791,
+            "kappa_w": 0.6963350785340311,
+            "kappa_w_ci": [
+              0.4945125887669465,
+              0.9340175953079182
+            ],
+            "reference_marginals": {
+              "1": 51,
+              "2": 27,
+              "3": 3,
+              "5": 6
+            },
+            "system_marginals": {
+              "1": 54,
+              "2": 29,
+              "3": 4
+            }
+          },
+          {
+            "label": "business_value",
+            "offered": 75,
+            "n": 72,
+            "dropped": 3,
+            "refusal_rate": 0.04,
+            "exact": 0.875,
+            "within1": 0.9583333333333334,
+            "kappa": 0.8337182448036952,
+            "kappa_w": 0.860058309037901,
+            "kappa_w_ci": [
+              0.6707317073170732,
+              1.0
+            ],
+            "reference_marginals": {
+              "1": 6,
+              "2": 24,
+              "3": 24,
+              "4": 15,
+              "5": 3
+            },
+            "system_marginals": {
+              "1": 12,
+              "2": 21,
+              "3": 18,
+              "4": 18,
+              "5": 3
+            }
+          },
+          {
+            "label": "implementation_effort",
+            "offered": 63,
+            "n": 30,
+            "dropped": 33,
+            "refusal_rate": 0.5238095238095238,
+            "exact": 0.16666666666666666,
+            "within1": 0.6,
+            "kappa": -0.10456553755522832,
+            "kappa_w": -0.12576064908722132,
+            "kappa_w_ci": [
+              -0.24191063174114014,
+              0.01639344262295052
+            ],
+            "reference_marginals": {
+              "2": 13,
+              "3": 14,
+              "4": 3
+            },
+            "system_marginals": {
+              "1": 3,
+              "2": 8,
+              "3": 6,
+              "4": 11,
+              "5": 2
+            }
+          },
+          {
+            "label": "data_readiness",
+            "offered": 66,
+            "n": 28,
+            "dropped": 38,
+            "refusal_rate": 0.5757575757575758,
+            "exact": 0.17857142857142858,
+            "within1": 0.6071428571428571,
+            "kappa": -0.0769230769230769,
+            "kappa_w": 0.022641509433962367,
+            "kappa_w_ci": [
+              -0.20615384615384616,
+              0.24353448275862075
+            ],
+            "reference_marginals": {
+              "1": 1,
+              "2": 2,
+              "3": 16,
+              "4": 5,
+              "5": 4
+            },
+            "system_marginals": {
+              "1": 4,
+              "2": 6,
+              "3": 8,
+              "4": 2,
+              "5": 8
+            }
+          },
+          {
+            "label": "adoption_risk",
+            "offered": 75,
+            "n": 20,
+            "dropped": 55,
+            "refusal_rate": 0.7333333333333333,
+            "exact": 0.05,
+            "within1": 0.5,
+            "kappa": -0.05555555555555556,
+            "kappa_w": -0.14379084967320244,
+            "kappa_w_ci": [
+              -0.3749999999999999,
+              0.15026833631484793
+            ],
+            "reference_marginals": {
+              "2": 8,
+              "4": 12
+            },
+            "system_marginals": {
+              "1": 4,
+              "2": 5,
+              "3": 5,
+              "5": 6
+            }
+          }
+        ],
+        "per_dimension_mechanism": [
+          {
+            "label": "process_frequency \u00b7 derived",
+            "offered": 72,
+            "n": 72,
+            "dropped": 0,
+            "refusal_rate": 0.0,
+            "exact": 1.0,
+            "within1": 1.0,
+            "kappa": 1.0,
+            "kappa_w": 1.0,
+            "kappa_w_ci": [
+              1.0,
+              1.0
+            ],
+            "reference_marginals": {
+              "1": 6,
+              "2": 15,
+              "3": 21,
+              "4": 12,
+              "5": 18
+            },
+            "system_marginals": {
+              "1": 6,
+              "2": 15,
+              "3": 21,
+              "4": 12,
+              "5": 18
+            }
+          },
+          {
+            "label": "data_governance \u00b7 derived",
+            "offered": 75,
+            "n": 75,
+            "dropped": 0,
+            "refusal_rate": 0.0,
+            "exact": 1.0,
+            "within1": 1.0,
+            "kappa": 1.0,
+            "kappa_w": 1.0,
+            "kappa_w_ci": [
+              1.0,
+              1.0
+            ],
+            "reference_marginals": {
+              "2": 18,
+              "3": 54,
+              "4": 3
+            },
+            "system_marginals": {
+              "2": 18,
+              "3": 54,
+              "4": 3
+            }
+          },
+          {
+            "label": "data_governance \u00b7 judged",
+            "offered": 6,
+            "n": 1,
+            "dropped": 5,
+            "refusal_rate": 0.8333333333333334,
+            "exact": 0.0,
+            "within1": 0.0,
+            "kappa": 0.0,
+            "kappa_w": 0.0,
+            "kappa_w_ci": "undefined",
+            "reference_marginals": {
+              "3": 1
+            },
+            "system_marginals": {
+              "1": 1
+            }
+          },
+          {
+            "label": "non_ai_alternative \u00b7 derived",
+            "offered": 78,
+            "n": 78,
+            "dropped": 0,
+            "refusal_rate": 0.0,
+            "exact": 1.0,
+            "within1": 1.0,
+            "kappa": 1.0,
+            "kappa_w": 1.0,
+            "kappa_w_ci": [
+              1.0,
+              1.0
+            ],
+            "reference_marginals": {
+              "1": 51,
+              "2": 27
+            },
+            "system_marginals": {
+              "1": 51,
+              "2": 27
+            }
+          },
+          {
+            "label": "non_ai_alternative \u00b7 judged",
+            "offered": 12,
+            "n": 9,
+            "dropped": 3,
+            "refusal_rate": 0.25,
+            "exact": 0.1111111111111111,
+            "within1": 0.2222222222222222,
+            "kappa": -0.043478260869565216,
+            "kappa_w": 0.0,
+            "kappa_w_ci": [
+              0.0,
+              2.3373116307898026e-16
+            ],
+            "reference_marginals": {
+              "3": 3,
+              "5": 6
+            },
+            "system_marginals": {
+              "1": 3,
+              "2": 2,
+              "3": 4
+            }
+          },
+          {
+            "label": "business_value \u00b7 derived",
+            "offered": 72,
+            "n": 72,
+            "dropped": 0,
+            "refusal_rate": 0.0,
+            "exact": 0.875,
+            "within1": 0.9583333333333334,
+            "kappa": 0.8337182448036952,
+            "kappa_w": 0.860058309037901,
+            "kappa_w_ci": [
+              0.6707317073170732,
+              1.0
+            ],
+            "reference_marginals": {
+              "1": 6,
+              "2": 24,
+              "3": 24,
+              "4": 15,
+              "5": 3
+            },
+            "system_marginals": {
+              "1": 12,
+              "2": 21,
+              "3": 18,
+              "4": 18,
+              "5": 3
+            }
+          },
+          {
+            "label": "business_value \u00b7 judged",
+            "offered": 3,
+            "n": 0,
+            "dropped": 3,
+            "refusal_rate": 1.0,
+            "exact": null,
+            "within1": null,
+            "kappa": "undefined",
+            "kappa_w": "undefined",
+            "kappa_w_ci": "undefined",
+            "reference_marginals": {},
+            "system_marginals": {}
+          },
+          {
+            "label": "implementation_effort \u00b7 judged",
+            "offered": 63,
+            "n": 30,
+            "dropped": 33,
+            "refusal_rate": 0.5238095238095238,
+            "exact": 0.16666666666666666,
+            "within1": 0.6,
+            "kappa": -0.10456553755522832,
+            "kappa_w": -0.12576064908722132,
+            "kappa_w_ci": [
+              -0.24191063174114014,
+              0.01639344262295052
+            ],
+            "reference_marginals": {
+              "2": 13,
+              "3": 14,
+              "4": 3
+            },
+            "system_marginals": {
+              "1": 3,
+              "2": 8,
+              "3": 6,
+              "4": 11,
+              "5": 2
+            }
+          },
+          {
+            "label": "data_readiness \u00b7 judged",
+            "offered": 66,
+            "n": 28,
+            "dropped": 38,
+            "refusal_rate": 0.5757575757575758,
+            "exact": 0.17857142857142858,
+            "within1": 0.6071428571428571,
+            "kappa": -0.0769230769230769,
+            "kappa_w": 0.022641509433962367,
+            "kappa_w_ci": [
+              -0.20615384615384616,
+              0.24353448275862075
+            ],
+            "reference_marginals": {
+              "1": 1,
+              "2": 2,
+              "3": 16,
+              "4": 5,
+              "5": 4
+            },
+            "system_marginals": {
+              "1": 4,
+              "2": 6,
+              "3": 8,
+              "4": 2,
+              "5": 8
+            }
+          },
+          {
+            "label": "adoption_risk \u00b7 judged",
+            "offered": 75,
+            "n": 20,
+            "dropped": 55,
+            "refusal_rate": 0.7333333333333333,
+            "exact": 0.05,
+            "within1": 0.5,
+            "kappa": -0.05555555555555556,
+            "kappa_w": -0.14379084967320244,
+            "kappa_w_ci": [
+              -0.3749999999999999,
+              0.15026833631484793
+            ],
+            "reference_marginals": {
+              "2": 8,
+              "4": 12
+            },
+            "system_marginals": {
+              "1": 4,
+              "2": 5,
+              "3": 5,
+              "5": 6
+            }
+          }
+        ],
+        "pooled": [
+          {
+            "label": "derived",
+            "offered": 297,
+            "n": 297,
+            "dropped": 0,
+            "refusal_rate": 0.0,
+            "exact": 0.9696969696969697,
+            "within1": 0.98989898989899,
+            "kappa": 0.9597560975609757,
+            "kappa_w": 0.9681467181467183,
+            "kappa_w_ci": [
+              0.9230917131320899,
+              1.0
+            ],
+            "reference_marginals": {
+              "1": 63,
+              "2": 84,
+              "3": 99,
+              "4": 30,
+              "5": 21
+            },
+            "system_marginals": {
+              "1": 69,
+              "2": 81,
+              "3": 93,
+              "4": 33,
+              "5": 21
+            }
+          },
+          {
+            "label": "judged",
+            "offered": 225,
+            "n": 88,
+            "dropped": 137,
+            "refusal_rate": 0.6088888888888889,
+            "exact": 0.13636363636363635,
+            "within1": 0.5340909090909091,
+            "kappa": -0.10655195234943743,
+            "kappa_w": -0.11381642512077304,
+            "kappa_w_ci": [
+              -0.22083748753738788,
+              0.009101941747572959
+            ],
+            "reference_marginals": {
+              "1": 1,
+              "2": 23,
+              "3": 34,
+              "4": 20,
+              "5": 10
+            },
+            "system_marginals": {
+              "1": 15,
+              "2": 21,
+              "3": 23,
+              "4": 13,
+              "5": 16
+            }
+          }
+        ],
+        "per_pass": [
+          {
+            "label": "pass 1 \u00b7 derived",
+            "offered": 99,
+            "n": 99,
+            "dropped": 0,
+            "refusal_rate": 0.0,
+            "exact": 0.9696969696969697,
+            "within1": 0.98989898989899,
+            "kappa": 0.9597560975609757,
+            "kappa_w": 0.9681467181467183,
+            "kappa_w_ci": [
+              0.9230917131320899,
+              1.0
+            ],
+            "reference_marginals": {
+              "1": 21,
+              "2": 28,
+              "3": 33,
+              "4": 10,
+              "5": 7
+            },
+            "system_marginals": {
+              "1": 23,
+              "2": 27,
+              "3": 31,
+              "4": 11,
+              "5": 7
+            }
+          },
+          {
+            "label": "pass 1 \u00b7 judged",
+            "offered": 75,
+            "n": 33,
+            "dropped": 42,
+            "refusal_rate": 0.56,
+            "exact": 0.15151515151515152,
+            "within1": 0.5757575757575758,
+            "kappa": -0.09090909090909088,
+            "kappa_w": -0.1272605492297387,
+            "kappa_w_ci": [
+              -0.26647564469914026,
+              0.03431952662721908
+            ],
+            "reference_marginals": {
+              "2": 10,
+              "3": 13,
+              "4": 5,
+              "5": 5
+            },
+            "system_marginals": {
+              "1": 8,
+              "2": 9,
+              "3": 9,
+              "4": 3,
+              "5": 4
+            }
+          },
+          {
+            "label": "pass 2 \u00b7 derived",
+            "offered": 99,
+            "n": 99,
+            "dropped": 0,
+            "refusal_rate": 0.0,
+            "exact": 0.9696969696969697,
+            "within1": 0.98989898989899,
+            "kappa": 0.9597560975609757,
+            "kappa_w": 0.9681467181467183,
+            "kappa_w_ci": [
+              0.9230917131320899,
+              1.0
+            ],
+            "reference_marginals": {
+              "1": 21,
+              "2": 28,
+              "3": 33,
+              "4": 10,
+              "5": 7
+            },
+            "system_marginals": {
+              "1": 23,
+              "2": 27,
+              "3": 31,
+              "4": 11,
+              "5": 7
+            }
+          },
+          {
+            "label": "pass 2 \u00b7 judged",
+            "offered": 75,
+            "n": 33,
+            "dropped": 42,
+            "refusal_rate": 0.56,
+            "exact": 0.06060606060606061,
+            "within1": 0.48484848484848486,
+            "kappa": -0.21640903686087987,
+            "kappa_w": -0.18939929328621907,
+            "kappa_w_ci": [
+              -0.33975481611208436,
+              0.008385744234800586
+            ],
+            "reference_marginals": {
+              "1": 1,
+              "2": 8,
+              "3": 11,
+              "4": 9,
+              "5": 4
+            },
+            "system_marginals": {
+              "1": 3,
+              "2": 8,
+              "3": 9,
+              "4": 6,
+              "5": 7
+            }
+          },
+          {
+            "label": "pass 3 \u00b7 derived",
+            "offered": 99,
+            "n": 99,
+            "dropped": 0,
+            "refusal_rate": 0.0,
+            "exact": 0.9696969696969697,
+            "within1": 0.98989898989899,
+            "kappa": 0.9597560975609757,
+            "kappa_w": 0.9681467181467183,
+            "kappa_w_ci": [
+              0.9230917131320899,
+              1.0
+            ],
+            "reference_marginals": {
+              "1": 21,
+              "2": 28,
+              "3": 33,
+              "4": 10,
+              "5": 7
+            },
+            "system_marginals": {
+              "1": 23,
+              "2": 27,
+              "3": 31,
+              "4": 11,
+              "5": 7
+            }
+          },
+          {
+            "label": "pass 3 \u00b7 judged",
+            "offered": 75,
+            "n": 22,
+            "dropped": 53,
+            "refusal_rate": 0.7066666666666667,
+            "exact": 0.22727272727272727,
+            "within1": 0.5454545454545454,
+            "kappa": 0.02857142857142858,
+            "kappa_w": 0.006230529595015721,
+            "kappa_w_ci": [
+              -0.1942857142857139,
+              0.2532467532467534
+            ],
+            "reference_marginals": {
+              "2": 5,
+              "3": 10,
+              "4": 6,
+              "5": 1
+            },
+            "system_marginals": {
+              "1": 4,
+              "2": 4,
+              "3": 5,
+              "4": 4,
+              "5": 5
+            }
+          }
+        ]
+      },
+      "alpha": {
+        "derived": {
+          "two_coder": [
+            {
+              "pass": 1,
+              "units_offered": 99,
+              "units_used": 99,
+              "alpha_ordinal": 0.9733756552452795
+            },
+            {
+              "pass": 2,
+              "units_offered": 99,
+              "units_used": 99,
+              "alpha_ordinal": 0.9733756552452795
+            },
+            {
+              "pass": 3,
+              "units_offered": 99,
+              "units_used": 99,
+              "alpha_ordinal": 0.9733756552452795
+            }
+          ],
+          "four_coder": {
+            "units_offered": 99,
+            "units_used": 99,
+            "alpha_ordinal": 0.9867592313606487
+          }
+        },
+        "judged": {
+          "two_coder": [
+            {
+              "pass": 1,
+              "units_offered": 75,
+              "units_used": 33,
+              "alpha_ordinal": -0.24182199121804548
+            },
+            {
+              "pass": 2,
+              "units_offered": 75,
+              "units_used": 33,
+              "alpha_ordinal": -0.12293033427054056
+            },
+            {
+              "pass": 3,
+              "units_offered": 75,
+              "units_used": 22,
+              "alpha_ordinal": 0.06093643198906362
+            }
+          ],
+          "four_coder": {
+            "units_offered": 75,
+            "units_used": 50,
+            "alpha_ordinal": 0.06515594782488987
+          }
+        }
+      },
+      "self": {
+        "derived": {
+          "pairwise": [
+            {
+              "label": "pass 1-2",
+              "offered": 99,
+              "n": 99,
+              "dropped": 0,
+              "refusal_rate": 0.0,
+              "exact": 1.0,
+              "within1": 1.0,
+              "kappa": 1.0,
+              "kappa_w": 1.0,
+              "kappa_w_ci": [
+                1.0,
+                1.0
+              ],
+              "reference_marginals": {
+                "1": 23,
+                "2": 27,
+                "3": 31,
+                "4": 11,
+                "5": 7
+              },
+              "system_marginals": {
+                "1": 23,
+                "2": 27,
+                "3": 31,
+                "4": 11,
+                "5": 7
+              }
+            },
+            {
+              "label": "pass 1-3",
+              "offered": 99,
+              "n": 99,
+              "dropped": 0,
+              "refusal_rate": 0.0,
+              "exact": 1.0,
+              "within1": 1.0,
+              "kappa": 1.0,
+              "kappa_w": 1.0,
+              "kappa_w_ci": [
+                1.0,
+                1.0
+              ],
+              "reference_marginals": {
+                "1": 23,
+                "2": 27,
+                "3": 31,
+                "4": 11,
+                "5": 7
+              },
+              "system_marginals": {
+                "1": 23,
+                "2": 27,
+                "3": 31,
+                "4": 11,
+                "5": 7
+              }
+            },
+            {
+              "label": "pass 2-3",
+              "offered": 99,
+              "n": 99,
+              "dropped": 0,
+              "refusal_rate": 0.0,
+              "exact": 1.0,
+              "within1": 1.0,
+              "kappa": 1.0,
+              "kappa_w": 1.0,
+              "kappa_w_ci": [
+                1.0,
+                1.0
+              ],
+              "reference_marginals": {
+                "1": 23,
+                "2": 27,
+                "3": 31,
+                "4": 11,
+                "5": 7
+              },
+              "system_marginals": {
+                "1": 23,
+                "2": 27,
+                "3": 31,
+                "4": 11,
+                "5": 7
+              }
+            }
+          ],
+          "mean_kappa_w": 1.0,
+          "range_kappa_w": [
+            1.0,
+            1.0
+          ],
+          "alpha_ordinal": 1.0,
+          "alpha_units_offered": 99,
+          "alpha_units_used": 99
+        },
+        "judged": {
+          "pairwise": [
+            {
+              "label": "pass 1-2",
+              "offered": 111,
+              "n": 32,
+              "dropped": 79,
+              "refusal_rate": 0.7117117117117117,
+              "exact": 0.46875,
+              "within1": 0.78125,
+              "kappa": 0.3250620347394541,
+              "kappa_w": 0.4542974079126876,
+              "kappa_w_ci": [
+                0.17107942973523416,
+                0.6800501882057716
+              ],
+              "reference_marginals": {
+                "1": 7,
+                "2": 11,
+                "3": 8,
+                "4": 3,
+                "5": 3
+              },
+              "system_marginals": {
+                "1": 4,
+                "2": 7,
+                "3": 10,
+                "4": 6,
+                "5": 5
+              }
+            },
+            {
+              "label": "pass 1-3",
+              "offered": 111,
+              "n": 17,
+              "dropped": 94,
+              "refusal_rate": 0.8468468468468469,
+              "exact": 0.35294117647058826,
+              "within1": 0.8235294117647058,
+              "kappa": 0.15384615384615385,
+              "kappa_w": 0.2570694087403599,
+              "kappa_w_ci": [
+                -0.264516129032258,
+                0.6122448979591839
+              ],
+              "reference_marginals": {
+                "1": 4,
+                "2": 5,
+                "3": 4,
+                "4": 2,
+                "5": 2
+              },
+              "system_marginals": {
+                "1": 4,
+                "2": 6,
+                "3": 4,
+                "4": 2,
+                "5": 1
+              }
+            },
+            {
+              "label": "pass 2-3",
+              "offered": 111,
+              "n": 16,
+              "dropped": 95,
+              "refusal_rate": 0.8558558558558559,
+              "exact": 0.4375,
+              "within1": 0.75,
+              "kappa": 0.29064039408866993,
+              "kappa_w": 0.391304347826087,
+              "kappa_w_ci": [
+                0.0,
+                0.7343749999999999
+              ],
+              "reference_marginals": {
+                "1": 1,
+                "2": 5,
+                "3": 6,
+                "4": 2,
+                "5": 2
+              },
+              "system_marginals": {
+                "1": 4,
+                "2": 3,
+                "3": 4,
+                "4": 2,
+                "5": 3
+              }
+            }
+          ],
+          "mean_kappa_w": 0.3675570548263782,
+          "range_kappa_w": [
+            0.2570694087403599,
+            0.4542974079126876
+          ],
+          "alpha_ordinal": 0.4359459245263878,
+          "alpha_units_offered": 111,
+          "alpha_units_used": 45
+        },
+        "all": {
+          "pairwise": [
+            {
+              "label": "pass 1-2",
+              "offered": 210,
+              "n": 131,
+              "dropped": 79,
+              "refusal_rate": 0.3761904761904762,
+              "exact": 0.8702290076335878,
+              "within1": 0.9465648854961832,
+              "kappa": 0.8300259502366051,
+              "kappa_w": 0.8553636885571698,
+              "kappa_w_ci": [
+                0.76056338028169,
+                0.9349887753699545
+              ],
+              "reference_marginals": {
+                "1": 30,
+                "2": 38,
+                "3": 39,
+                "4": 14,
+                "5": 10
+              },
+              "system_marginals": {
+                "1": 27,
+                "2": 34,
+                "3": 41,
+                "4": 17,
+                "5": 12
+              }
+            },
+            {
+              "label": "pass 1-3",
+              "offered": 210,
+              "n": 116,
+              "dropped": 94,
+              "refusal_rate": 0.44761904761904764,
+              "exact": 0.9051724137931034,
+              "within1": 0.9741379310344828,
+              "kappa": 0.8749632533072024,
+              "kappa_w": 0.8868097807369992,
+              "kappa_w_ci": [
+                0.7873806728265865,
+                0.9657005129472839
+              ],
+              "reference_marginals": {
+                "1": 27,
+                "2": 32,
+                "3": 35,
+                "4": 13,
+                "5": 9
+              },
+              "system_marginals": {
+                "1": 27,
+                "2": 33,
+                "3": 35,
+                "4": 13,
+                "5": 8
+              }
+            },
+            {
+              "label": "pass 2-3",
+              "offered": 210,
+              "n": 115,
+              "dropped": 95,
+              "refusal_rate": 0.4523809523809524,
+              "exact": 0.9217391304347826,
+              "within1": 0.9652173913043478,
+              "kappa": 0.8971479678028421,
+              "kappa_w": 0.9071939128429789,
+              "kappa_w_ci": [
+                0.8125674800259125,
+                0.979612970034302
+              ],
+              "reference_marginals": {
+                "1": 24,
+                "2": 32,
+                "3": 37,
+                "4": 13,
+                "5": 9
+              },
+              "system_marginals": {
+                "1": 27,
+                "2": 30,
+                "3": 35,
+                "4": 13,
+                "5": 10
+              }
+            }
+          ],
+          "mean_kappa_w": 0.8831224607123827,
+          "range_kappa_w": [
+            0.8553636885571698,
+            0.9071939128429789
+          ],
+          "alpha_ordinal": 0.8563341748414514,
+          "alpha_units_offered": 210,
+          "alpha_units_used": 144
+        }
+      },
+      "verdict": {
+        "n": 84,
+        "dropped": 0,
+        "exact": 0.2976190476190476,
+        "kappa": 0.11278195488721804,
+        "confusion": {
+          "go": {
+            "go": 3,
+            "no_go": 6,
+            "not_ai": 0,
+            "incomplete": 15
+          },
+          "no_go": {
+            "go": 0,
+            "no_go": 13,
+            "not_ai": 3,
+            "incomplete": 20
+          },
+          "not_ai": {
+            "go": 1,
+            "no_go": 7,
+            "not_ai": 4,
+            "incomplete": 6
+          },
+          "incomplete": {
+            "go": 0,
+            "no_go": 1,
+            "not_ai": 0,
+            "incomplete": 5
+          }
+        },
+        "reference_marginals": {
+          "go": 24,
+          "no_go": 36,
+          "not_ai": 18,
+          "incomplete": 6
+        },
+        "system_marginals": {
+          "go": 4,
+          "no_go": 27,
+          "not_ai": 7,
+          "incomplete": 46
+        },
+        "self_consistency_kappa": [
+          {
+            "pair": "1-2",
+            "n": 30,
+            "exact": 0.7666666666666667,
+            "kappa": 0.6037735849056605
+          },
+          {
+            "pair": "1-3",
+            "n": 30,
+            "exact": 0.6333333333333333,
+            "kappa": 0.4086021505376344
+          },
+          {
+            "pair": "2-3",
+            "n": 30,
+            "exact": 0.6,
+            "kappa": 0.34782608695652173
+          }
+        ]
+      },
+      "drift": {
+        "count": 0,
+        "slots": []
+      }
+    },
+    "qwen2.5:14b": {
+      "accuracy": {
+        "per_dimension": [
+          {
+            "label": "process_frequency",
+            "offered": 72,
+            "n": 72,
+            "dropped": 0,
+            "refusal_rate": 0.0,
+            "exact": 1.0,
+            "within1": 1.0,
+            "kappa": 1.0,
+            "kappa_w": 1.0,
+            "kappa_w_ci": [
+              1.0,
+              1.0
+            ],
+            "reference_marginals": {
+              "1": 6,
+              "2": 15,
+              "3": 21,
+              "4": 12,
+              "5": 18
+            },
+            "system_marginals": {
+              "1": 6,
+              "2": 15,
+              "3": 21,
+              "4": 12,
+              "5": 18
+            }
+          },
+          {
+            "label": "data_governance",
+            "offered": 81,
+            "n": 80,
+            "dropped": 1,
+            "refusal_rate": 0.012345679012345678,
+            "exact": 0.95,
+            "within1": 1.0,
+            "kappa": 0.8836363636363636,
+            "kappa_w": 0.888501742160279,
+            "kappa_w_ci": [
+              0.6384439359267733,
+              1.0
+            ],
+            "reference_marginals": {
+              "2": 18,
+              "3": 59,
+              "4": 3
+            },
+            "system_marginals": {
+              "2": 22,
+              "3": 55,
+              "4": 3
+            }
+          },
+          {
+            "label": "non_ai_alternative",
+            "offered": 90,
+            "n": 90,
+            "dropped": 0,
+            "refusal_rate": 0.0,
+            "exact": 0.8666666666666667,
+            "within1": 0.9,
+            "kappa": 0.7534246575342466,
+            "kappa_w": 0.5984455958549222,
+            "kappa_w_ci": [
+              0.3524229074889872,
+              0.9278846153846156
+            ],
+            "reference_marginals": {
+              "1": 51,
+              "2": 27,
+              "3": 3,
+              "5": 9
+            },
+            "system_marginals": {
+              "1": 57,
+              "2": 30,
+              "3": 1,
+              "4": 2
+            }
+          },
+          {
+            "label": "business_value",
+            "offered": 75,
+            "n": 75,
+            "dropped": 0,
+            "refusal_rate": 0.0,
+            "exact": 0.88,
+            "within1": 0.96,
+            "kappa": 0.8404255319148937,
+            "kappa_w": 0.8666666666666665,
+            "kappa_w_ci": [
+              0.6913580246913582,
+              1.0
+            ],
+            "reference_marginals": {
+              "1": 6,
+              "2": 24,
+              "3": 24,
+              "4": 18,
+              "5": 3
+            },
+            "system_marginals": {
+              "1": 12,
+              "2": 21,
+              "3": 18,
+              "4": 21,
+              "5": 3
+            }
+          },
+          {
+            "label": "implementation_effort",
+            "offered": 63,
+            "n": 63,
+            "dropped": 0,
+            "refusal_rate": 0.0,
+            "exact": 0.36507936507936506,
+            "within1": 0.7936507936507936,
+            "kappa": 0.07590759075907592,
+            "kappa_w": 0.06326034063260377,
+            "kappa_w_ci": [
+              -0.02941176470588238,
+              0.19230769230769282
+            ],
+            "reference_marginals": {
+              "2": 27,
+              "3": 30,
+              "4": 6
+            },
+            "system_marginals": {
+              "1": 18,
+              "2": 36,
+              "3": 9
+            }
+          },
+          {
+            "label": "data_readiness",
+            "offered": 66,
+            "n": 64,
+            "dropped": 2,
+            "refusal_rate": 0.030303030303030304,
+            "exact": 0.203125,
+            "within1": 0.71875,
+            "kappa": -0.0659699542782495,
+            "kappa_w": 0.08993082244427364,
+            "kappa_w_ci": [
+              -0.04259850905218326,
+              0.20346320346320346
+            ],
+            "reference_marginals": {
+              "1": 3,
+              "2": 4,
+              "3": 27,
+              "4": 24,
+              "5": 6
+            },
+            "system_marginals": {
+              "1": 14,
+              "2": 14,
+              "3": 24,
+              "4": 12
+            }
+          },
+          {
+            "label": "adoption_risk",
+            "offered": 75,
+            "n": 75,
+            "dropped": 0,
+            "refusal_rate": 0.0,
+            "exact": 0.18666666666666668,
+            "within1": 0.5333333333333333,
+            "kappa": -0.07243319268635728,
+            "kappa_w": -0.09204368174727018,
+            "kappa_w_ci": [
+              -0.20614035087719332,
+              -0.014352746342809855
+            ],
+            "reference_marginals": {
+              "2": 42,
+              "4": 33
+            },
+            "system_marginals": {
+              "1": 35,
+              "2": 30,
+              "3": 7,
+              "4": 3
+            }
+          }
+        ],
+        "per_dimension_mechanism": [
+          {
+            "label": "process_frequency \u00b7 derived",
+            "offered": 72,
+            "n": 72,
+            "dropped": 0,
+            "refusal_rate": 0.0,
+            "exact": 1.0,
+            "within1": 1.0,
+            "kappa": 1.0,
+            "kappa_w": 1.0,
+            "kappa_w_ci": [
+              1.0,
+              1.0
+            ],
+            "reference_marginals": {
+              "1": 6,
+              "2": 15,
+              "3": 21,
+              "4": 12,
+              "5": 18
+            },
+            "system_marginals": {
+              "1": 6,
+              "2": 15,
+              "3": 21,
+              "4": 12,
+              "5": 18
+            }
+          },
+          {
+            "label": "data_governance \u00b7 derived",
+            "offered": 75,
+            "n": 75,
+            "dropped": 0,
+            "refusal_rate": 0.0,
+            "exact": 1.0,
+            "within1": 1.0,
+            "kappa": 1.0,
+            "kappa_w": 1.0,
+            "kappa_w_ci": [
+              1.0,
+              1.0
+            ],
+            "reference_marginals": {
+              "2": 18,
+              "3": 54,
+              "4": 3
+            },
+            "system_marginals": {
+              "2": 18,
+              "3": 54,
+              "4": 3
+            }
+          },
+          {
+            "label": "data_governance \u00b7 judged",
+            "offered": 6,
+            "n": 5,
+            "dropped": 1,
+            "refusal_rate": 0.16666666666666666,
+            "exact": 0.2,
+            "within1": 1.0,
+            "kappa": 0.0,
+            "kappa_w": 0.0,
+            "kappa_w_ci": [
+              0.0,
+              0.0
+            ],
+            "reference_marginals": {
+              "3": 5
+            },
+            "system_marginals": {
+              "2": 4,
+              "3": 1
+            }
+          },
+          {
+            "label": "non_ai_alternative \u00b7 derived",
+            "offered": 78,
+            "n": 78,
+            "dropped": 0,
+            "refusal_rate": 0.0,
+            "exact": 1.0,
+            "within1": 1.0,
+            "kappa": 1.0,
+            "kappa_w": 1.0,
+            "kappa_w_ci": [
+              1.0,
+              1.0
+            ],
+            "reference_marginals": {
+              "1": 51,
+              "2": 27
+            },
+            "system_marginals": {
+              "1": 51,
+              "2": 27
+            }
+          },
+          {
+            "label": "non_ai_alternative \u00b7 judged",
+            "offered": 12,
+            "n": 12,
+            "dropped": 0,
+            "refusal_rate": 0.0,
+            "exact": 0.0,
+            "within1": 0.25,
+            "kappa": -0.02127659574468085,
+            "kappa_w": 0.03125000000000005,
+            "kappa_w_ci": [
+              0.0,
+              0.15000000000000002
+            ],
+            "reference_marginals": {
+              "3": 3,
+              "5": 9
+            },
+            "system_marginals": {
+              "1": 6,
+              "2": 3,
+              "3": 1,
+              "4": 2
+            }
+          },
+          {
+            "label": "business_value \u00b7 derived",
+            "offered": 72,
+            "n": 72,
+            "dropped": 0,
+            "refusal_rate": 0.0,
+            "exact": 0.875,
+            "within1": 0.9583333333333334,
+            "kappa": 0.8337182448036952,
+            "kappa_w": 0.860058309037901,
+            "kappa_w_ci": [
+              0.6707317073170732,
+              1.0
+            ],
+            "reference_marginals": {
+              "1": 6,
+              "2": 24,
+              "3": 24,
+              "4": 15,
+              "5": 3
+            },
+            "system_marginals": {
+              "1": 12,
+              "2": 21,
+              "3": 18,
+              "4": 18,
+              "5": 3
+            }
+          },
+          {
+            "label": "business_value \u00b7 judged",
+            "offered": 3,
+            "n": 3,
+            "dropped": 0,
+            "refusal_rate": 0.0,
+            "exact": 1.0,
+            "within1": 1.0,
+            "kappa": "undefined",
+            "kappa_w": "undefined",
+            "kappa_w_ci": "undefined",
+            "reference_marginals": {
+              "4": 3
+            },
+            "system_marginals": {
+              "4": 3
+            }
+          },
+          {
+            "label": "implementation_effort \u00b7 judged",
+            "offered": 63,
+            "n": 63,
+            "dropped": 0,
+            "refusal_rate": 0.0,
+            "exact": 0.36507936507936506,
+            "within1": 0.7936507936507936,
+            "kappa": 0.07590759075907592,
+            "kappa_w": 0.06326034063260377,
+            "kappa_w_ci": [
+              -0.02941176470588238,
+              0.19230769230769282
+            ],
+            "reference_marginals": {
+              "2": 27,
+              "3": 30,
+              "4": 6
+            },
+            "system_marginals": {
+              "1": 18,
+              "2": 36,
+              "3": 9
+            }
+          },
+          {
+            "label": "data_readiness \u00b7 judged",
+            "offered": 66,
+            "n": 64,
+            "dropped": 2,
+            "refusal_rate": 0.030303030303030304,
+            "exact": 0.203125,
+            "within1": 0.71875,
+            "kappa": -0.0659699542782495,
+            "kappa_w": 0.08993082244427364,
+            "kappa_w_ci": [
+              -0.04259850905218326,
+              0.20346320346320346
+            ],
+            "reference_marginals": {
+              "1": 3,
+              "2": 4,
+              "3": 27,
+              "4": 24,
+              "5": 6
+            },
+            "system_marginals": {
+              "1": 14,
+              "2": 14,
+              "3": 24,
+              "4": 12
+            }
+          },
+          {
+            "label": "adoption_risk \u00b7 judged",
+            "offered": 75,
+            "n": 75,
+            "dropped": 0,
+            "refusal_rate": 0.0,
+            "exact": 0.18666666666666668,
+            "within1": 0.5333333333333333,
+            "kappa": -0.07243319268635728,
+            "kappa_w": -0.09204368174727018,
+            "kappa_w_ci": [
+              -0.20614035087719332,
+              -0.014352746342809855
+            ],
+            "reference_marginals": {
+              "2": 42,
+              "4": 33
+            },
+            "system_marginals": {
+              "1": 35,
+              "2": 30,
+              "3": 7,
+              "4": 3
+            }
+          }
+        ],
+        "pooled": [
+          {
+            "label": "derived",
+            "offered": 297,
+            "n": 297,
+            "dropped": 0,
+            "refusal_rate": 0.0,
+            "exact": 0.9696969696969697,
+            "within1": 0.98989898989899,
+            "kappa": 0.9597560975609757,
+            "kappa_w": 0.9681467181467183,
+            "kappa_w_ci": [
+              0.9230917131320899,
+              1.0
+            ],
+            "reference_marginals": {
+              "1": 63,
+              "2": 84,
+              "3": 99,
+              "4": 30,
+              "5": 21
+            },
+            "system_marginals": {
+              "1": 69,
+              "2": 81,
+              "3": 93,
+              "4": 33,
+              "5": 21
+            }
+          },
+          {
+            "label": "judged",
+            "offered": 225,
+            "n": 222,
+            "dropped": 3,
+            "refusal_rate": 0.013333333333333334,
+            "exact": 0.24324324324324326,
+            "within1": 0.6621621621621622,
+            "kappa": 0.03538175046554935,
+            "kappa_w": 0.08573815989734083,
+            "kappa_w_ci": [
+              0.01264559068219623,
+              0.17203622763934562
+            ],
+            "reference_marginals": {
+              "1": 3,
+              "2": 73,
+              "3": 65,
+              "4": 66,
+              "5": 15
+            },
+            "system_marginals": {
+              "1": 73,
+              "2": 87,
+              "3": 42,
+              "4": 20
+            }
+          }
+        ],
+        "per_pass": [
+          {
+            "label": "pass 1 \u00b7 derived",
+            "offered": 99,
+            "n": 99,
+            "dropped": 0,
+            "refusal_rate": 0.0,
+            "exact": 0.9696969696969697,
+            "within1": 0.98989898989899,
+            "kappa": 0.9597560975609757,
+            "kappa_w": 0.9681467181467183,
+            "kappa_w_ci": [
+              0.9230917131320899,
+              1.0
+            ],
+            "reference_marginals": {
+              "1": 21,
+              "2": 28,
+              "3": 33,
+              "4": 10,
+              "5": 7
+            },
+            "system_marginals": {
+              "1": 23,
+              "2": 27,
+              "3": 31,
+              "4": 11,
+              "5": 7
+            }
+          },
+          {
+            "label": "pass 1 \u00b7 judged",
+            "offered": 75,
+            "n": 73,
+            "dropped": 2,
+            "refusal_rate": 0.02666666666666667,
+            "exact": 0.2602739726027397,
+            "within1": 0.6712328767123288,
+            "kappa": 0.059861674218936324,
+            "kappa_w": 0.09976444506027471,
+            "kappa_w_ci": [
+              0.008615845663981861,
+              0.20659453889747556
+            ],
+            "reference_marginals": {
+              "1": 1,
+              "2": 24,
+              "3": 21,
+              "4": 22,
+              "5": 5
+            },
+            "system_marginals": {
+              "1": 24,
+              "2": 25,
+              "3": 16,
+              "4": 8
+            }
+          },
+          {
+            "label": "pass 2 \u00b7 derived",
+            "offered": 99,
+            "n": 99,
+            "dropped": 0,
+            "refusal_rate": 0.0,
+            "exact": 0.9696969696969697,
+            "within1": 0.98989898989899,
+            "kappa": 0.9597560975609757,
+            "kappa_w": 0.9681467181467183,
+            "kappa_w_ci": [
+              0.9230917131320899,
+              1.0
+            ],
+            "reference_marginals": {
+              "1": 21,
+              "2": 28,
+              "3": 33,
+              "4": 10,
+              "5": 7
+            },
+            "system_marginals": {
+              "1": 23,
+              "2": 27,
+              "3": 31,
+              "4": 11,
+              "5": 7
+            }
+          },
+          {
+            "label": "pass 2 \u00b7 judged",
+            "offered": 75,
+            "n": 75,
+            "dropped": 0,
+            "refusal_rate": 0.0,
+            "exact": 0.28,
+            "within1": 0.68,
+            "kappa": 0.07088781830695116,
+            "kappa_w": 0.10964385754301745,
+            "kappa_w_ci": [
+              0.026972353337828606,
+              0.2150537634408605
+            ],
+            "reference_marginals": {
+              "1": 1,
+              "2": 25,
+              "3": 22,
+              "4": 22,
+              "5": 5
+            },
+            "system_marginals": {
+              "1": 23,
+              "2": 33,
+              "3": 14,
+              "4": 5
+            }
+          },
+          {
+            "label": "pass 3 \u00b7 derived",
+            "offered": 99,
+            "n": 99,
+            "dropped": 0,
+            "refusal_rate": 0.0,
+            "exact": 0.9696969696969697,
+            "within1": 0.98989898989899,
+            "kappa": 0.9597560975609757,
+            "kappa_w": 0.9681467181467183,
+            "kappa_w_ci": [
+              0.9230917131320899,
+              1.0
+            ],
+            "reference_marginals": {
+              "1": 21,
+              "2": 28,
+              "3": 33,
+              "4": 10,
+              "5": 7
+            },
+            "system_marginals": {
+              "1": 23,
+              "2": 27,
+              "3": 31,
+              "4": 11,
+              "5": 7
+            }
+          },
+          {
+            "label": "pass 3 \u00b7 judged",
+            "offered": 75,
+            "n": 74,
+            "dropped": 1,
+            "refusal_rate": 0.013333333333333334,
+            "exact": 0.1891891891891892,
+            "within1": 0.6351351351351351,
+            "kappa": -0.023985239852398532,
+            "kappa_w": 0.048793284365162705,
+            "kappa_w_ci": [
+              -0.03532748839608015,
+              0.14401858304297346
+            ],
+            "reference_marginals": {
+              "1": 1,
+              "2": 24,
+              "3": 22,
+              "4": 22,
+              "5": 5
+            },
+            "system_marginals": {
+              "1": 26,
+              "2": 29,
+              "3": 12,
+              "4": 7
+            }
+          }
+        ]
+      },
+      "alpha": {
+        "derived": {
+          "two_coder": [
+            {
+              "pass": 1,
+              "units_offered": 99,
+              "units_used": 99,
+              "alpha_ordinal": 0.9733756552452795
+            },
+            {
+              "pass": 2,
+              "units_offered": 99,
+              "units_used": 99,
+              "alpha_ordinal": 0.9733756552452795
+            },
+            {
+              "pass": 3,
+              "units_offered": 99,
+              "units_used": 99,
+              "alpha_ordinal": 0.9733756552452795
+            }
+          ],
+          "four_coder": {
+            "units_offered": 99,
+            "units_used": 99,
+            "alpha_ordinal": 0.9867592313606487
+          }
+        },
+        "judged": {
+          "two_coder": [
+            {
+              "pass": 1,
+              "units_offered": 75,
+              "units_used": 73,
+              "alpha_ordinal": -0.05380814857622518
+            },
+            {
+              "pass": 2,
+              "units_offered": 75,
+              "units_used": 75,
+              "alpha_ordinal": -0.07665142599045027
+            },
+            {
+              "pass": 3,
+              "units_offered": 75,
+              "units_used": 74,
+              "alpha_ordinal": -0.12270949166919598
+            }
+          ],
+          "four_coder": {
+            "units_offered": 75,
+            "units_used": 75,
+            "alpha_ordinal": 0.18382702126994055
+          }
+        }
+      },
+      "self": {
+        "derived": {
+          "pairwise": [
+            {
+              "label": "pass 1-2",
+              "offered": 99,
+              "n": 99,
+              "dropped": 0,
+              "refusal_rate": 0.0,
+              "exact": 1.0,
+              "within1": 1.0,
+              "kappa": 1.0,
+              "kappa_w": 1.0,
+              "kappa_w_ci": [
+                1.0,
+                1.0
+              ],
+              "reference_marginals": {
+                "1": 23,
+                "2": 27,
+                "3": 31,
+                "4": 11,
+                "5": 7
+              },
+              "system_marginals": {
+                "1": 23,
+                "2": 27,
+                "3": 31,
+                "4": 11,
+                "5": 7
+              }
+            },
+            {
+              "label": "pass 1-3",
+              "offered": 99,
+              "n": 99,
+              "dropped": 0,
+              "refusal_rate": 0.0,
+              "exact": 1.0,
+              "within1": 1.0,
+              "kappa": 1.0,
+              "kappa_w": 1.0,
+              "kappa_w_ci": [
+                1.0,
+                1.0
+              ],
+              "reference_marginals": {
+                "1": 23,
+                "2": 27,
+                "3": 31,
+                "4": 11,
+                "5": 7
+              },
+              "system_marginals": {
+                "1": 23,
+                "2": 27,
+                "3": 31,
+                "4": 11,
+                "5": 7
+              }
+            },
+            {
+              "label": "pass 2-3",
+              "offered": 99,
+              "n": 99,
+              "dropped": 0,
+              "refusal_rate": 0.0,
+              "exact": 1.0,
+              "within1": 1.0,
+              "kappa": 1.0,
+              "kappa_w": 1.0,
+              "kappa_w_ci": [
+                1.0,
+                1.0
+              ],
+              "reference_marginals": {
+                "1": 23,
+                "2": 27,
+                "3": 31,
+                "4": 11,
+                "5": 7
+              },
+              "system_marginals": {
+                "1": 23,
+                "2": 27,
+                "3": 31,
+                "4": 11,
+                "5": 7
+              }
+            }
+          ],
+          "mean_kappa_w": 1.0,
+          "range_kappa_w": [
+            1.0,
+            1.0
+          ],
+          "alpha_ordinal": 1.0,
+          "alpha_units_offered": 99,
+          "alpha_units_used": 99
+        },
+        "judged": {
+          "pairwise": [
+            {
+              "label": "pass 1-2",
+              "offered": 111,
+              "n": 93,
+              "dropped": 18,
+              "refusal_rate": 0.16216216216216217,
+              "exact": 0.5698924731182796,
+              "within1": 0.8817204301075269,
+              "kappa": 0.37278705108750637,
+              "kappa_w": 0.4023281193161152,
+              "kappa_w_ci": [
+                0.1519681116093671,
+                0.6276132404181187
+              ],
+              "reference_marginals": {
+                "1": 27,
+                "2": 36,
+                "3": 21,
+                "4": 9
+              },
+              "system_marginals": {
+                "1": 25,
+                "2": 45,
+                "3": 18,
+                "4": 5
+              }
+            },
+            {
+              "label": "pass 1-3",
+              "offered": 111,
+              "n": 92,
+              "dropped": 19,
+              "refusal_rate": 0.17117117117117117,
+              "exact": 0.41304347826086957,
+              "within1": 0.8152173913043478,
+              "kappa": 0.1545268890401634,
+              "kappa_w": 0.2262497038616439,
+              "kappa_w_ci": [
+                -0.014545454545454525,
+                0.43125875525315194
+              ],
+              "reference_marginals": {
+                "1": 26,
+                "2": 36,
+                "3": 21,
+                "4": 9
+              },
+              "system_marginals": {
+                "1": 31,
+                "2": 39,
+                "3": 15,
+                "4": 7
+              }
+            },
+            {
+              "label": "pass 2-3",
+              "offered": 111,
+              "n": 94,
+              "dropped": 17,
+              "refusal_rate": 0.15315315315315314,
+              "exact": 0.574468085106383,
+              "within1": 0.9361702127659575,
+              "kappa": 0.3678547410894419,
+              "kappa_w": 0.46827348745696,
+              "kappa_w_ci": [
+                0.2373386295928504,
+                0.6479217603911981
+              ],
+              "reference_marginals": {
+                "1": 25,
+                "2": 45,
+                "3": 19,
+                "4": 5
+              },
+              "system_marginals": {
+                "1": 31,
+                "2": 39,
+                "3": 17,
+                "4": 7
+              }
+            }
+          ],
+          "mean_kappa_w": 0.36561710354490634,
+          "range_kappa_w": [
+            0.2262497038616439,
+            0.46827348745696
+          ],
+          "alpha_ordinal": 0.3564269628753859,
+          "alpha_units_offered": 111,
+          "alpha_units_used": 95
+        },
+        "all": {
+          "pairwise": [
+            {
+              "label": "pass 1-2",
+              "offered": 210,
+              "n": 192,
+              "dropped": 18,
+              "refusal_rate": 0.08571428571428572,
+              "exact": 0.7916666666666666,
+              "within1": 0.9427083333333334,
+              "kappa": 0.7156713931361297,
+              "kappa_w": 0.7610145608266793,
+              "kappa_w_ci": [
+                0.6572144894959796,
+                0.8534268728788467
+              ],
+              "reference_marginals": {
+                "1": 50,
+                "2": 63,
+                "3": 52,
+                "4": 20,
+                "5": 7
+              },
+              "system_marginals": {
+                "1": 48,
+                "2": 72,
+                "3": 49,
+                "4": 16,
+                "5": 7
+              }
+            },
+            {
+              "label": "pass 1-3",
+              "offered": 210,
+              "n": 191,
+              "dropped": 19,
+              "refusal_rate": 0.09047619047619047,
+              "exact": 0.7172774869109948,
+              "within1": 0.9109947643979057,
+              "kappa": 0.6162375353475219,
+              "kappa_w": 0.6844150706290291,
+              "kappa_w_ci": [
+                0.5936883629191324,
+                0.7644218062997042
+              ],
+              "reference_marginals": {
+                "1": 49,
+                "2": 63,
+                "3": 52,
+                "4": 20,
+                "5": 7
+              },
+              "system_marginals": {
+                "1": 54,
+                "2": 66,
+                "3": 46,
+                "4": 18,
+                "5": 7
+              }
+            },
+            {
+              "label": "pass 2-3",
+              "offered": 210,
+              "n": 193,
+              "dropped": 17,
+              "refusal_rate": 0.08095238095238096,
+              "exact": 0.7927461139896373,
+              "within1": 0.9689119170984456,
+              "kappa": 0.7158421672555949,
+              "kappa_w": 0.7922788956481048,
+              "kappa_w_ci": [
+                0.7137403500834206,
+                0.8583052145404073
+              ],
+              "reference_marginals": {
+                "1": 48,
+                "2": 72,
+                "3": 50,
+                "4": 16,
+                "5": 7
+              },
+              "system_marginals": {
+                "1": 54,
+                "2": 66,
+                "3": 48,
+                "4": 18,
+                "5": 7
+              }
+            }
+          ],
+          "mean_kappa_w": 0.7459028423679377,
+          "range_kappa_w": [
+            0.6844150706290291,
+            0.7922788956481048
+          ],
+          "alpha_ordinal": 0.756003758006164,
+          "alpha_units_offered": 210,
+          "alpha_units_used": 194
+        }
+      },
+      "verdict": {
+        "n": 84,
+        "dropped": 0,
+        "exact": 0.6190476190476191,
+        "kappa": 0.42710997442455245,
+        "confusion": {
+          "go": {
+            "go": 13,
+            "no_go": 5,
+            "not_ai": 6,
+            "incomplete": 0
+          },
+          "no_go": {
+            "go": 5,
+            "no_go": 28,
+            "not_ai": 0,
+            "incomplete": 3
+          },
+          "not_ai": {
+            "go": 2,
+            "no_go": 7,
+            "not_ai": 9,
+            "incomplete": 0
+          },
+          "incomplete": {
+            "go": 0,
+            "no_go": 4,
+            "not_ai": 0,
+            "incomplete": 2
+          }
+        },
+        "reference_marginals": {
+          "go": 24,
+          "no_go": 36,
+          "not_ai": 18,
+          "incomplete": 6
+        },
+        "system_marginals": {
+          "go": 20,
+          "no_go": 44,
+          "not_ai": 15,
+          "incomplete": 5
+        },
+        "self_consistency_kappa": [
+          {
+            "pair": "1-2",
+            "n": 30,
+            "exact": 0.8333333333333334,
+            "kappa": 0.7391304347826089
+          },
+          {
+            "pair": "1-3",
+            "n": 30,
+            "exact": 0.8666666666666667,
+            "kappa": 0.7864768683274022
+          },
+          {
+            "pair": "2-3",
+            "n": 30,
+            "exact": 0.8333333333333334,
+            "kappa": 0.7282608695652175
+          }
+        ]
+      },
+      "drift": {
+        "count": 0,
+        "slots": []
+      }
+    }
+  }
+}

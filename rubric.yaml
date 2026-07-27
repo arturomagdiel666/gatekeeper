@@ -44,7 +44,7 @@
 #   agree on. Keep levels mutually exclusive.
 # =============================================================================
 
-version: "2.0.0"
+version: "3.0.0"
 
 # The integer scale every dimension is scored on. Normalization of
 # `lower_is_better` dimensions derives from these two numbers.
@@ -221,6 +221,67 @@ dimensions:
       it works.
     weight: 0.17
     direction: lower_is_better
+    # DETERMINISTIC DERIVATION from `adoption_evidence` and the intake's
+    # `prior_tool_for_these_users`. v3.0.0. The hardest of the three to convert
+    # and the one most likely to smuggle a judgement through, which is why its
+    # central field is settled by a quote rather than by a self-description.
+    #
+    # RESOLUTION RULES.
+    #
+    #   R1. A user counts as CONSULTED only if the requester can quote something
+    #       one of the intended users said about this work, word for word, in
+    #       `user_quote`. Without a quote, `consulted` and `requested_it` are
+    #       both recorded as `told_not_asked`, whatever the requester believes
+    #       about how collaborative the process was. This is the same two-part
+    #       evidence test that took the anti-pattern checks from 0% agreement to
+    #       full agreement (ADR-029): a claim about the world, made checkable by
+    #       requiring the sentence it rests on.
+    #       An INTENDED USER is somebody whose own work the agent would change.
+    #       Their manager is not one unless they also do the work.
+    #   R8. `workflow_fit` is answered about where the OUTPUT arrives.
+    #       `existing_step` — it appears in a screen, tool or meeting the user
+    #       already opens, at the cadence they already open it. If they must
+    #       open something new, or open the same thing more often, it is
+    #       `new_step`. `replaces_chosen_way` applies only when the current way
+    #       of working was chosen by these users themselves rather than assigned
+    #       to them.
+    #   R9. `people_who_must_change` counts people whose own actions change.
+    #       Somebody who receives a report that looks different does not count.
+    #       Somebody who must start or stop doing something does.
+    #
+    # The worst signal governs. Anchor 4 reads "not consulted, OR requires a new
+    # workflow, OR a previous tool was quietly abandoned" — any one is enough,
+    # so a maximum agrees with the anchors and an average would not.
+    #
+    # ON THE HEADCOUNT BAND. The anchors do not grade by number of people, and
+    # this derivation does not invent a scale for them: it only refuses to let a
+    # very large change score better than 3, because anchor 3 already says
+    # adoption then "depends on a manager asking people to use it" — which is
+    # what a change reaching hundreds of people is, whatever else is true of it.
+    derivation:
+      source: intake_adoption_evidence
+      by_consultation:
+        requested_it: 1     # the intended users asked for this themselves
+        consulted: 2        # asked and supportive, quote on file
+        told_not_asked: 4   # anchor 4: the intended users were not consulted
+        nobody: 5           # not consulted and not told
+      by_workflow_fit:
+        existing_step: 1
+        existing_step_modified: 2
+        new_step: 3
+        replaces_chosen_way: 5
+      by_prior_tool:
+        adopted: 1
+        none: 2             # no previous tool: no evidence, and no reassurance
+        abandoned: 4        # anchor 4: quietly abandoned
+        # `unknown` is deliberately absent. The absence of a fact about a
+        # previous tool is not evidence that adoption will go badly.
+      by_people_changing:
+        "<=20": 1
+        "<=100": 2
+        more: 3
+      people_changing_order: ["<=20", "<=100", "more"]
+      unquoted_consultation_level: told_not_asked
     anchors:
       1: >-
         The intended users asked for this themselves. It sits inside a workflow
@@ -300,6 +361,57 @@ dimensions:
       data_governance and by implementation_effort.
     weight: 0.15
     direction: higher_is_better
+    # DETERMINISTIC DERIVATION from `data_evidence`. v3.0.0.
+    #
+    # RESOLUTION RULES. Written before the table, because a lookup over an
+    # ambiguous field is a judgement with a number stapled to it. Each rule
+    # exists because two requesters looking at the same situation could
+    # otherwise answer differently.
+    #
+    #   R2. `systems` lists the systems the data is IN TODAY. A system it would
+    #       be copied to does not count. A shared drive, a mailbox and a paper
+    #       tray each count as one system. If the data is only in people's heads
+    #       or on paper nobody has digitized, the list is EMPTY — that is an
+    #       answer, not a blank.
+    #   R3. `sample_checked` reports what happened, not how good the data is.
+    #       `not_looked` — nobody has opened real records. `looked_problems` — a
+    #       person opened real records and reported at least one of: missing
+    #       fields, duplicates, formats that disagree, or records they could not
+    #       interpret. `looked_usable` — a person opened real records and
+    #       reported none of those. An opinion formed without opening the data
+    #       is `not_looked`.
+    #   R4. `quality_criteria_agreed` is true only if a WRITTEN statement of what
+    #       makes an output correct exists and the people who would apply it have
+    #       agreed to it. An intention to write one is false. A criterion one
+    #       person holds in their head is false.
+    #   R4b. `correct_examples` counts examples that EXIST NOW and that somebody
+    #       would defend as correct. Records that could be labelled are not
+    #       examples; they are the labelling project the anchors call a level 2.
+    derivation:
+      source: intake_data_evidence
+      # AVAILABILITY by how many systems hold the data (R2).
+      availability_by_systems:
+        "<=0": 1      # nowhere retrievable: heads, paper, or not collected
+        "<=1": 5      # centralized in one system
+        "<=2": 4      # two systems, a plausible join
+        more: 2       # scattered across three or more, nobody has joined them
+      availability_order: ["<=0", "<=1", "<=2", "more"]
+      # ...capped by whether anyone has actually looked (R3). Unchecked quality
+      # is anchor 3 however tidy the storage is.
+      availability_by_sample:
+        not_looked: 3
+        looked_problems: 3
+        looked_usable: 5
+      # EVALUABILITY by how many examples of a correct output exist (R4b).
+      evaluability_by_examples:
+        "<=0": 1      # no outcome variable and no reference set
+        "<=19": 3     # material exists; no settled way to judge an output yet
+        more: 4       # enough to judge against
+      evaluability_order: ["<=0", "<=19", "more"]
+      # Agreed written criteria are what turn examples into a settled way to
+      # judge (R4). They raise the level by one, capped at 5.
+      evaluability_criteria_bonus: 1
+      evaluability_max: 5
     anchors:
       1: >-
         AVAILABILITY — the data does not exist in retrievable form: it is in
@@ -397,6 +509,47 @@ dimensions:
       level 4, not a level 1.
     weight: 0.13
     direction: lower_is_better
+    # DETERMINISTIC DERIVATION from `effort_evidence`. v3.0.0.
+    #
+    # RESOLUTION RULES.
+    #
+    #   R5. `systems_to_integrate` counts a system only if CODE must read from
+    #       or write to it. A system a person exports a file from by hand is a
+    #       manual step, not an integration — it belongs in the process
+    #       description. Reading and writing the same system is one integration.
+    #   R6. `approving_teams` counts a team only if it can STOP this by
+    #       withholding approval. A team that is informed, consulted, or merely
+    #       affected does not count. Count the team that owns each system in R5
+    #       only if its sign-off is required.
+    #   R7. `procurement` is what must be bought BEFORE this can run.
+    #       `existing_licence` means the capability is already paid for. Ordered
+    #       by how far the purchase sits outside this team's control: a licence
+    #       added to a contract that exists is a form; a new vendor is a
+    #       negotiation, which the anchors put at level 5.
+    #
+    # The worst of the three governs. The anchors are disjunctive — "several
+    # integrations, OR a new platform component, OR retraining a whole team" is
+    # already a 4 — so a maximum agrees with them and an average would not.
+    derivation:
+      source: intake_effort_evidence
+      by_integrations:
+        "<=1": 1      # one integration against an API that exists, or none
+        "<=2": 2      # a couple of integrations, minor plumbing
+        "<=3": 3      # a new pipeline plus a workflow change
+        "<=5": 4      # several system integrations
+        more: 5       # touching this many systems is a year's work
+      integrations_order: ["<=1", "<=2", "<=3", "<=5", "more"]
+      by_procurement:
+        none: 1
+        existing_licence: 1
+        new_licence_existing_vendor: 3
+        new_vendor: 5
+      by_approving_teams:
+        "<=1": 1      # one team affected
+        "<=3": 3      # two or three teams to coordinate
+        "<=5": 4      # coordination is now the project
+        more: 5       # blocked on organisational agreement
+      approving_teams_order: ["<=1", "<=3", "<=5", "more"]
     anchors:
       1: >-
         Days to two weeks. Configuration of a platform already licensed, or one

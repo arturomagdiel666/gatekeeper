@@ -43,6 +43,13 @@ __all__ = [
     "Confidence",
     "AntiPatternMatch",
     "DeterministicArtefact",
+    "DataEvidence",
+    "EffortEvidence",
+    "AdoptionEvidence",
+    "SampleCheck",
+    "Procurement",
+    "UserConsultation",
+    "WorkflowFit",
     "RequestIntake",
     "Period",
     "PriorTool",
@@ -127,6 +134,59 @@ class PriorTool(str, Enum):
     UNKNOWN = "unknown"
 
 
+class SampleCheck(str, Enum):
+    """Whether anyone has opened a real sample of the data and said what they saw.
+
+    Not "is the data good" — that is the judgement this replaces. It asks what
+    happened: did somebody look, and did they report a problem. R3 in
+    ``rubric.yaml`` settles the boundary between the last two.
+    """
+
+    NOT_LOOKED = "not_looked"
+    LOOKED_USABLE = "looked_usable"
+    LOOKED_PROBLEMS = "looked_problems"
+
+
+class Procurement(str, Enum):
+    """What has to be bought before this can run.
+
+    Ordered by how far outside the team's control the purchase sits, which is
+    what the effort anchors actually grade — a licence bought off an existing
+    contract is a form, a new vendor is a negotiation.
+    """
+
+    NONE = "none"
+    EXISTING_LICENCE = "existing_licence"
+    NEW_LICENCE_EXISTING_VENDOR = "new_licence_existing_vendor"
+    NEW_VENDOR = "new_vendor"
+
+
+class UserConsultation(str, Enum):
+    """How far the intended users were involved.
+
+    The boundary between `TOLD_NOT_ASKED` and `CONSULTED` is forced by evidence,
+    not by the requester's sense of how collaborative they were: R1 in
+    ``rubric.yaml`` says a user counts as consulted only if the requester can
+    quote something one of them said about this work. No quote, no consultation.
+    That is the same two-part evidence test that took the anti-pattern checks
+    from 0% agreement to full agreement (ADR-029).
+    """
+
+    NOBODY = "nobody"
+    TOLD_NOT_ASKED = "told_not_asked"
+    CONSULTED = "consulted"
+    REQUESTED_IT = "requested_it"
+
+
+class WorkflowFit(str, Enum):
+    """Where the output lands relative to what people already do."""
+
+    EXISTING_STEP = "existing_step"
+    EXISTING_STEP_MODIFIED = "existing_step_modified"
+    NEW_STEP = "new_step"
+    REPLACES_CHOSEN_WAY = "replaces_chosen_way"
+
+
 class DataSensitivity(str, Enum):
     """Classification of the data the agent would process."""
 
@@ -169,6 +229,91 @@ class DeterministicArtefact(BaseModel):
     name: str
     what_it_does: str
     completes_without_judgement: bool
+
+
+class DataEvidence(BaseModel):
+    """What is known about the data, as facts rather than as a readiness opinion.
+
+    Feeds ``data_readiness``, which scores ``min(availability, evaluability)``.
+    Both halves are computed from the counts and enums here; the numbered rules
+    that settle what each one means live in ``rubric.yaml`` beside the anchors,
+    because they ARE the anchor semantics (ADR-035).
+
+    Attributes:
+        systems: The named systems the data lives in **today**. An empty list is
+            a real answer meaning it is not in any system — in people's heads,
+            on paper, or not collected. The count is what the derivation reads;
+            the names are what makes it auditable. R2 settles what counts.
+        sample_checked: Whether anyone has opened a real sample and said what
+            they found.
+        correct_examples: How many existing examples of a correct output there
+            are. For a predictive request these are labelled outcomes; for a
+            generative one, outputs somebody has agreed are good. Zero is a real
+            answer and the common one.
+        quality_criteria_agreed: Whether a written statement of what makes an
+            output correct exists and has been agreed. R4 forbids counting an
+            intention to write one.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    systems: list[str]
+    sample_checked: SampleCheck
+    correct_examples: int = Field(ge=0)
+    quality_criteria_agreed: bool
+
+
+class EffortEvidence(BaseModel):
+    """What has to be built, bought and approved, counted rather than estimated.
+
+    Feeds ``implementation_effort``. The three inputs are scored separately and
+    the **worst** governs, because the anchors are disjunctive: "several system
+    integrations, OR a new platform component, OR retraining a whole team" is
+    already a level 4 whichever one of them is true.
+
+    Attributes:
+        systems_to_integrate: The systems code must read from or write to. R5
+            excludes a system a human exports a file from — that is a manual
+            step, not an integration.
+        procurement: What must be bought before this can run.
+        approving_teams: The teams that can block this by withholding approval.
+            R6 excludes teams that are merely informed.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    systems_to_integrate: list[str]
+    procurement: Procurement
+    approving_teams: list[str]
+
+
+class AdoptionEvidence(BaseModel):
+    """What is known about the people who would have to change, and what they said.
+
+    Feeds ``adoption_risk``, the dimension most likely to smuggle a judgement
+    through — which is why its central field is settled by a quote rather than by
+    a self-assessment. ``prior_tool_for_these_users`` is read from the intake
+    alongside this, since it was already there and is the single most informative
+    fact about adoption.
+
+    Attributes:
+        users_consulted: How far the intended users were involved.
+        user_quote: Something one of the intended users said about this work,
+            copied word for word. R1 makes this load-bearing: without it the
+            consultation level is capped at `told_not_asked` however the
+            requester describes it.
+        workflow_fit: Where the output lands relative to what people already do.
+        people_who_must_change: How many distinct people must change what they
+            actually do. R8 excludes people who merely receive a different-
+            looking report.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    users_consulted: UserConsultation
+    user_quote: str | None = None
+    workflow_fit: WorkflowFit
+    people_who_must_change: int = Field(ge=0)
 
 
 class RequestIntake(BaseModel):
@@ -251,6 +396,13 @@ class RequestIntake(BaseModel):
     #: ``None`` and ``[]`` mean different things here and the derivation reads
     #: both: None is "not asked", [] is "asked, nothing exists".
     existing_deterministic_artefacts: list[DeterministicArtefact] | None = None
+    #: The three dimensions no field used to supply. Each is ``None`` when
+    #: nobody was asked, which returns its dimension to model scoring exactly as
+    #: before — that is what keeps every figure measured under rubric v2.0.0
+    #: reproducible from a corpus whose intakes do not carry these (ADR-035).
+    data_evidence: DataEvidence | None = None
+    effort_evidence: EffortEvidence | None = None
+    adoption_evidence: AdoptionEvidence | None = None
 
     @property
     def instances_per_year(self) -> float | None:

@@ -173,6 +173,73 @@ VALUE_SCHEMAS: dict[str, dict] = {
             "required": ["name", "what_it_does", "completes_without_judgement"],
         },
     },
+    # The three converted in v3.0.0. Every one of them is structured, so every
+    # one of them is in the grammar — the lesson ADR-034 paid for.
+    "data_evidence": {
+        "type": "object",
+        "properties": {
+            "systems": {"type": "array", "items": {"type": "string"}},
+            "sample_checked": {
+                "type": "string",
+                "enum": ["not_looked", "looked_usable", "looked_problems"],
+            },
+            "correct_examples": {"type": "integer", "minimum": 0},
+            "quality_criteria_agreed": {"type": "boolean"},
+        },
+        "required": [
+            "systems",
+            "sample_checked",
+            "correct_examples",
+            "quality_criteria_agreed",
+        ],
+    },
+    "effort_evidence": {
+        "type": "object",
+        "properties": {
+            "systems_to_integrate": {"type": "array", "items": {"type": "string"}},
+            "procurement": {
+                "type": "string",
+                "enum": [
+                    "none",
+                    "existing_licence",
+                    "new_licence_existing_vendor",
+                    "new_vendor",
+                ],
+            },
+            "approving_teams": {"type": "array", "items": {"type": "string"}},
+        },
+        "required": ["systems_to_integrate", "procurement", "approving_teams"],
+    },
+    "adoption_evidence": {
+        "type": "object",
+        "properties": {
+            "users_consulted": {
+                "type": "string",
+                "enum": ["nobody", "told_not_asked", "consulted", "requested_it"],
+            },
+            # Deliberately NOT nullable in the grammar: the model is told to
+            # leave it empty when there is no quote, and `record_field` demotes
+            # the consultation level when it is. A schema that let the field
+            # vanish would make "no quote" and "forgot the key" the same event.
+            "user_quote": {"type": "string"},
+            "workflow_fit": {
+                "type": "string",
+                "enum": [
+                    "existing_step",
+                    "existing_step_modified",
+                    "new_step",
+                    "replaces_chosen_way",
+                ],
+            },
+            "people_who_must_change": {"type": "integer", "minimum": 0},
+        },
+        "required": [
+            "users_consulted",
+            "user_quote",
+            "workflow_fit",
+            "people_who_must_change",
+        ],
+    },
 }
 
 
@@ -254,6 +321,31 @@ def _extract_messages(field_name: str, question: str, answer: str) -> list[dict]
         "data_sensitivity": "the classification they described",
         "prior_tool": "what became of the last tool for these users",
         "number": "the number of minutes",
+        "data_evidence": (
+            "systems: the systems the data is in TODAY — an empty list if it is "
+            "only in people's heads or on paper. sample_checked: looked_usable "
+            "only if somebody opened real records and reported no problems; "
+            "not_looked if the opinion was formed without opening the data. "
+            "correct_examples: examples that EXIST NOW, not records that could "
+            "be labelled one day. quality_criteria_agreed: true only if a "
+            "WRITTEN statement of what makes an output correct has been agreed"
+        ),
+        "effort_evidence": (
+            "systems_to_integrate: only systems CODE must read from or write to "
+            "— a file a person exports by hand is not one. approving_teams: only "
+            "teams that could STOP this by withholding approval, not teams that "
+            "are merely informed. procurement: what must be bought first"
+        ),
+        "adoption_evidence": (
+            "users_consulted: how far the people whose OWN WORK would change "
+            "were involved. user_quote: something one of THEM said about this "
+            "work, word for word — leave it empty if you have none, and never "
+            "invent one; without it the consultation level is demoted. "
+            "workflow_fit: existing_step only if the output arrives somewhere "
+            "they already open, at the cadence they already open it. "
+            "people_who_must_change: people whose own actions change, not people "
+            "who receive a different-looking report"
+        ),
     }.get(field.parser, "the value in their own words, trimmed")
     return [
         {

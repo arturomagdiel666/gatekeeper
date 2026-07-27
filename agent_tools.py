@@ -33,12 +33,15 @@ from config import PATTERNS, RUBRIC
 from contracts import ContractResult, issue_contract
 from provider import LLMProvider, parse_json_content
 from schemas import (
+    AdoptionEvidence,
     AntiPatternMatch,
     Assessment,
+    DataEvidence,
     Confidence,
     DataSensitivity,
     DeterministicArtefact,
     DimensionAssessment,
+    EffortEvidence,
     Period,
     PriorTool,
     RequestIntake,
@@ -128,6 +131,39 @@ ASKABLE_FIELDS: list[Askable] = [
             "how many minutes one instance of this task takes a person today"
         ),
         parser="number",
+    ),
+    Askable(
+        name="data_evidence",
+        feeds_dimension="data_readiness",
+        prompt_hint=(
+            "four things about the data: which systems it is in TODAY (an empty "
+            "list if it is only in people's heads or on paper), whether anyone "
+            "has opened real records and what they found, how many examples of a "
+            "correct output already exist, and whether a written statement of "
+            "what makes an output correct has been agreed"
+        ),
+        parser="data_evidence",
+    ),
+    Askable(
+        name="effort_evidence",
+        feeds_dimension="implementation_effort",
+        prompt_hint=(
+            "three counts: which systems code would have to read from or write "
+            "to, whether anything must be bought first, and which teams could "
+            "stop this by withholding approval"
+        ),
+        parser="effort_evidence",
+    ),
+    Askable(
+        name="adoption_evidence",
+        feeds_dimension="adoption_risk",
+        prompt_hint=(
+            "who among the people whose own work would change was actually "
+            "asked about this and something one of them said in their own words, "
+            "whether the output would arrive somewhere they already look or "
+            "somewhere new, and how many people would have to change what they do"
+        ),
+        parser="adoption_evidence",
     ),
     Askable(
         name="where_the_data_lives",
@@ -322,6 +358,17 @@ def _coerce(field: Askable, value: Any) -> Any:
             return json.loads(stripped) if stripped.startswith(opener) else None
         return text
 
+    if field.parser in ("data_evidence", "effort_evidence", "adoption_evidence"):
+        model = {
+            "data_evidence": DataEvidence,
+            "effort_evidence": EffortEvidence,
+            "adoption_evidence": AdoptionEvidence,
+        }[field.parser]
+        payload = parsed(value, "{")
+        if not isinstance(payload, dict):
+            raise ValueError(f"expected an object with the fields {model.__name__} needs")
+        return model.model_validate(payload)
+
     if field.parser == "artefacts":
         # `[]` is a real answer meaning nothing exists, so emptiness is checked
         # after parsing rather than as a blanket "no value" guard (ADR-030).
@@ -406,6 +453,14 @@ def record_field(
     except (ValueError, ValidationError, KeyError, TypeError) as exc:
         return RecordResult(accepted=False, reason=str(exc), intake=intake)
 
+    # R1 has to bite here or it does not bite at all. A user quote the requester
+    # did not actually say in this answer is held to the same standard as a
+    # fabricated anti-pattern quote and a fabricated span: it is dropped, which
+    # demotes the consultation level rather than silently crediting it.
+    if isinstance(coerced, AdoptionEvidence) and coerced.user_quote:
+        if not quote_is_supported(coerced.user_quote, answer):
+            coerced = coerced.model_copy(update={"user_quote": None})
+
     data = intake.model_dump()
     if field.parser == "volume":
         data["times_per_period"], data["period"] = coerced
@@ -413,6 +468,13 @@ def record_field(
     elif field.parser == "artefacts":
         data[name] = [a.model_dump() for a in coerced]
         shown = f"{len(coerced)} artefact(s)"
+    elif field.parser.endswith("_evidence"):
+        data[name] = coerced.model_dump()
+        shown = "; ".join(
+            f"{k}={len(v) if isinstance(v, list) else v}"
+            for k, v in coerced.model_dump(mode="json").items()
+            if k != "user_quote"
+        )
     else:
         data[name] = coerced
         shown = str(getattr(coerced, "value", coerced))

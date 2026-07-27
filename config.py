@@ -387,8 +387,199 @@ class ArtefactDerivation(BaseModel):
         return None
 
 
+def _band(value: int, bands: dict[str, int], order: list[str]) -> int:
+    """Pick the score for a count, from bands declared as ``"<=n"`` keys.
+
+    Bands are read in the order the rubric declares them and the first whose
+    bound the value satisfies wins, with the final key ``"more"`` catching the
+    rest. Written out rather than expressed as a comparison chain so that adding
+    a band to `rubric.yaml` needs no code change — the thresholds are rubric
+    semantics and belong beside the anchors.
+    """
+    for key in order:
+        if key == "more":
+            return bands[key]
+        if value <= int(key.lstrip("<=")):
+            return bands[key]
+    return bands["more"]  # pragma: no cover - `order` always ends in `more`
+
+
+class ReadinessDerivation(BaseModel):
+    """Derive ``data_readiness`` from stated facts about the data.
+
+    Keeps the dimension's existing structure — the score is
+    ``min(availability, evaluability)`` — and supplies both inputs from the form
+    rather than asking a model to judge them. The two halves stay separate here
+    for the same reason they are separate in the anchors: the agreement study
+    found the dimension answering two questions with one number, and the
+    ambiguity was verdict-changing because level 1 fires ``no_usable_data``.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    source: Literal["intake_data_evidence"]
+    #: Availability by how many systems hold the data. `"<=0"` is the empty list.
+    availability_by_systems: dict[str, int]
+    availability_order: list[str]
+    #: Availability ceiling imposed by whether anyone looked at a real sample.
+    availability_by_sample: dict[str, int]
+    #: Evaluability by how many examples of a correct output exist.
+    evaluability_by_examples: dict[str, int]
+    evaluability_order: list[str]
+    #: How much agreed written criteria raise evaluability, and its ceiling.
+    evaluability_criteria_bonus: int
+    evaluability_max: int
+
+    is_fallback: bool = False
+
+    def derive(self, evidence) -> tuple[int, str] | None:
+        """``(score, why)`` for this evidence, or ``None`` if nobody was asked."""
+        if evidence is None:
+            return None
+        systems = len(evidence.systems)
+        availability = _band(
+            systems, self.availability_by_systems, self.availability_order
+        )
+        ceiling = self.availability_by_sample[evidence.sample_checked.value]
+        availability = min(availability, ceiling)
+
+        evaluability = _band(
+            evidence.correct_examples,
+            self.evaluability_by_examples,
+            self.evaluability_order,
+        )
+        if evidence.quality_criteria_agreed:
+            evaluability = min(
+                evaluability + self.evaluability_criteria_bonus, self.evaluability_max
+            )
+        score = min(availability, evaluability)
+        where = ", ".join(evidence.systems) if evidence.systems else "no system"
+        return (
+            score,
+            "Derived from the intake form. AVAILABILITY "
+            f"{availability}: data in {systems} system(s) ({where}), sample "
+            f"{evidence.sample_checked.value}. EVALUABILITY {evaluability}: "
+            f"{evidence.correct_examples} example(s) of a correct output, "
+            f"agreed quality criteria {'yes' if evidence.quality_criteria_agreed else 'no'}"
+            f". Score is the lower of the two -> level {score}.",
+        )
+
+
+class EffortDerivation(BaseModel):
+    """Derive ``implementation_effort`` from counts of what must be built and bought.
+
+    The three inputs are scored separately and the **worst** governs, because the
+    anchors are disjunctive: "several system integrations, OR a new platform
+    component, OR retraining a whole team" is level 4 whichever is true. Taking
+    the maximum is what makes the derivation agree with the anchors instead of
+    quietly averaging a blocker away.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    source: Literal["intake_effort_evidence"]
+    by_integrations: dict[str, int]
+    integrations_order: list[str]
+    by_procurement: dict[str, int]
+    by_approving_teams: dict[str, int]
+    approving_teams_order: list[str]
+
+    is_fallback: bool = False
+
+    def derive(self, evidence) -> tuple[int, str] | None:
+        """``(score, why)`` for this evidence, or ``None`` if nobody was asked."""
+        if evidence is None:
+            return None
+        integrations = _band(
+            len(evidence.systems_to_integrate),
+            self.by_integrations,
+            self.integrations_order,
+        )
+        procurement = self.by_procurement[evidence.procurement.value]
+        approvals = _band(
+            len(evidence.approving_teams),
+            self.by_approving_teams,
+            self.approving_teams_order,
+        )
+        score = max(integrations, procurement, approvals)
+        return (
+            score,
+            "Derived from the intake form. "
+            f"{len(evidence.systems_to_integrate)} integration(s) -> {integrations}; "
+            f"procurement {evidence.procurement.value} -> {procurement}; "
+            f"{len(evidence.approving_teams)} approving team(s) -> {approvals}. "
+            f"The worst governs, because the anchors are disjunctive -> level {score}.",
+        )
+
+
+class AdoptionDerivation(BaseModel):
+    """Derive ``adoption_risk`` from what the users said and what must change.
+
+    The worst of the four signals governs, for the same disjunctive reason as
+    effort: anchor 4 reads "not consulted, OR requires a new workflow, OR a
+    previous tool was quietly abandoned", so any one of them is enough.
+
+    ``prior_tool_for_these_users`` is read from the intake rather than from the
+    evidence object because it was already there, and ``unknown`` contributes
+    nothing — the absence of a fact about a previous tool is not evidence that
+    adoption will go badly.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    source: Literal["intake_adoption_evidence"]
+    by_consultation: dict[str, int]
+    by_workflow_fit: dict[str, int]
+    by_prior_tool: dict[str, int]
+    by_people_changing: dict[str, int]
+    people_changing_order: list[str]
+    #: The level a claimed consultation falls back to when no quote supports it.
+    unquoted_consultation_level: str
+
+    is_fallback: bool = False
+
+    def derive(self, evidence, prior_tool: str | None) -> tuple[int, str] | None:
+        """``(score, why)`` for this evidence, or ``None`` if nobody was asked."""
+        if evidence is None:
+            return None
+        claimed = evidence.users_consulted.value
+        # R1: consultation is established by a quote, not by describing oneself
+        # as collaborative. Without one the claim drops to the level that means
+        # "these people have been told about it".
+        quoted = bool(evidence.user_quote and evidence.user_quote.strip())
+        effective = claimed
+        demoted = ""
+        if claimed in ("consulted", "requested_it") and not quoted:
+            effective = self.unquoted_consultation_level
+            demoted = f" (claimed {claimed}, demoted: no quote from a user)"
+        signals = {
+            "consultation": self.by_consultation[effective],
+            "workflow fit": self.by_workflow_fit[evidence.workflow_fit.value],
+            "people changing": _band(
+                evidence.people_who_must_change,
+                self.by_people_changing,
+                self.people_changing_order,
+            ),
+        }
+        if prior_tool and prior_tool in self.by_prior_tool:
+            signals["prior tool"] = self.by_prior_tool[prior_tool]
+        score = max(signals.values())
+        detail = "; ".join(f"{name} -> {value}" for name, value in signals.items())
+        return (
+            score,
+            f"Derived from the intake form. {detail}{demoted}. The worst "
+            f"governs, because the anchors are disjunctive -> level {score}.",
+        )
+
+
 DimensionDerivation = Annotated[
-    VolumeDerivation | SensitivityDerivation | MagnitudeDerivation | ArtefactDerivation,
+    VolumeDerivation
+    | SensitivityDerivation
+    | MagnitudeDerivation
+    | ArtefactDerivation
+    | ReadinessDerivation
+    | EffortDerivation
+    | AdoptionDerivation,
     Field(discriminator="source"),
 ]
 

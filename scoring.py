@@ -36,12 +36,15 @@ from enum import Enum
 from pydantic import BaseModel, ConfigDict, Field
 
 from config import (
+    AdoptionDerivation,
     AntiPatternCondition,
     ArtefactDerivation,
     DimensionThresholdCondition,
+    EffortDerivation,
     IntakeFieldCondition,
     MagnitudeDerivation,
     Patterns,
+    ReadinessDerivation,
     Rubric,
     SensitivityDerivation,
     VolumeDerivation,
@@ -369,6 +372,23 @@ def derive_scores(
             imposed = rule.derive(intake.existing_deterministic_artefacts)
             if imposed is not None:
                 derived[dimension.id] = imposed
+            continue
+        if isinstance(rule, (ReadinessDerivation, EffortDerivation, AdoptionDerivation)):
+            # The three converted in v3.0.0. Each returns None when its evidence
+            # object is absent, which returns the dimension to model scoring —
+            # and is what keeps a v2.0.0 corpus, whose intakes carry none of
+            # these, scoring exactly as it did (ADR-035).
+            if isinstance(rule, AdoptionDerivation):
+                computed = rule.derive(
+                    intake.adoption_evidence,
+                    getattr(intake.prior_tool_for_these_users, "value", None),
+                )
+            elif isinstance(rule, ReadinessDerivation):
+                computed = rule.derive(intake.data_evidence)
+            else:
+                computed = rule.derive(intake.effort_evidence)
+            if computed is not None:
+                derived[dimension.id] = computed
             continue
         if isinstance(rule, VolumeDerivation):
             source_value = intake.instances_per_year

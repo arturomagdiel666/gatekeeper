@@ -1,145 +1,86 @@
 # Gatekeeper
 
-**The intake gate of a lifecycle governance model for an internal IT AI Agent
-Hub.** A business area asks the Hub to build an AI agent. Gatekeeper triages the
-request against a rubric and returns **Go / No-Go / Not-AI / Incomplete** — and
-when it approves, it issues a **Measurement Contract** defining what success
-means and when the agent will be reviewed against it.
+Gatekeeper triages incoming requests for AI agents against a rubric, returns
+**Go / No-Go / Not-AI / Incomplete**, and — when it approves — issues a
+Measurement Contract defining what failure would look like and when the agent
+will be reviewed against it.
 
-> An agent may only be approved together with the definition of its own failure.
+## The problem
 
-That second half is the point. A `go` with no pre-agreed success criteria makes
-retirement a political argument; a `go` with a contract makes it a scheduled,
-unemotional event. `review.py` later evaluates the running agent against that
-contract and recommends **continue / adjust / retire / insufficient telemetry**.
+Requests for AI arrive already shaped as solutions: not "invoice reconciliation
+takes three people four days" but "we want an AI agent for invoices". They get
+approved on enthusiasm, because there is no cheap way to tell a business owner
+no and no agreed definition of failure to point at later. Nothing is ever
+retired, because retirement requires an argument nobody wants to have. The queue
+grows, capacity does not, and the worst-founded request is often the loudest.
 
-It runs local-first on an open model via [Ollama](https://ollama.com) (default
-`qwen2.5:7b`), with a hosted-API fallback selectable by an env var.
+## What it does
 
-## Status and honest caveats
+Structured intake states the facts a decision needs. Seven rubric dimensions,
+each scored 1–5 on a single stated axis. Blocking gates evaluated before the
+weighted bands, because a prohibition cannot be expressed as a weight.
+`Incomplete` names which fields are missing rather than guessing them. On `Go`,
+a Measurement Contract fixes the success metric, the instrumentation and the
+review date, and `review.py` later judges the running agent against it with no
+model involved.
 
-The **scoring, contract and review engines are complete, deterministic and
-fully tested** (274 tests, all offline). The **model front-end is measured and
-imperfect**: on live `qwen2.5:7b`, 2 of the 6 reference examples produce the
-verdict a human assessor would give. The failure modes are characterised in
-`docs/DECISIONS.md` (ADR-019) with the raw run in `evals/`. Read that before
-demoing this to anyone.
+## What the measurement showed
 
-## Setup
+The system was scored against a reference built from two independent assessors,
+keeping only slots where they agreed, across three passes each on two model
+sizes.
+
+**Rubric slots computed from a stated intake field reach κw = 0.97 against the
+reference and are identical across a doubling of model size.** Slots scored by
+the model reach **κ ≈ 0.04 — chance** — while reproducing their own answers at
+**κw = 0.37.** The model is not noisy. It is reproducibly wrong: it holds a
+stable position that is not the rubric's, so lowering its temperature would
+change nothing.
+
+**The displacement's direction belongs to the model, not the rubric.** On
+`implementation_effort` the median signed error is **+1 on the 7B and −1 on the
+14B**, on the same cases. Tripling the parameter count moved model-scored
+self-consistency from 33% to 34%, and produced seven false approvals where the
+smaller model had one — because it stopped refusing.
+
+Applying the tool's own `non_ai_alternative` criterion to Gatekeeper's own
+scoring function returns **`Not-AI`**. The instrument, pointed at itself, says
+do not build this with AI — and the architecture the evidence supports is that
+the model finds and quotes evidence while the form and the tables decide.
+
+## Run it
+
+Requires Python 3.12 and [Ollama](https://ollama.com) with `ollama pull
+qwen2.5:7b`. The test suite needs neither.
 
 ```bash
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-cp .env.example .env
+python3 -m venv .venv && source .venv/bin/activate && pip install -r requirements.txt
+pytest                  # 429 tests, no model, no network
+streamlit run app.py    # the demo; the Triage tab has an offline checkbox
 ```
 
-| Variable | Default | Purpose |
-|---|---|---|
-| `LLM_PROVIDER` | `ollama` | Backend: `ollama`, `openai`, or `mock` |
-| `OLLAMA_MODEL` | `qwen2.5:7b` | Local model tag |
-| `OLLAMA_HOST` | `http://localhost:11434` | Ollama server URL |
-| `OPENAI_API_KEY` | — | Only when `LLM_PROVIDER=openai` |
-| `OPENAI_MODEL` | `gpt-4o-mini` | Fallback model |
+## What is honest about it
 
-`openai` is not installed by default; `pip install openai` only if you need it.
+Thirty synthetic cases, written by one author. **Both assessors were language
+models, not humans**, so "inter-rater agreement" here means agreement between
+two model sessions given the same rubric — a weaker claim than the term usually
+carries. Reliability is measured across six runs; **validity is not measured at
+all.** The accurate dimensions depend on intake fields a requester fills in, and
+the two assessors would have filled 8 and 11 of those 30 fields differently from
+how they are stated. Whether the rubric measures anything worth measuring is
+untested.
 
-## Running it
+## Repository map
 
-```bash
-streamlit run app.py                  # the demo: triage tab + review simulator
-python scripts/run_examples.py        # all six examples through the live model
-python scripts/smoke_provider.py      # is the provider reachable?
-pytest                                # 274 tests, no model needed
-```
-
-The Triage tab has an **offline checkbox** that scores an example's
-hand-authored assessment with no provider at all — the demo survives a dead
-Ollama, and it is how the UI is tested.
-
-## What the rubric measures
-
-Seven dimensions, each scored 1–5, each measuring **exactly one axis** (stated
-in `rubric.yaml` above its anchors):
-
-| Dimension | Axis | Direction | Weight |
-|---|---|---|---|
-| `business_value` | Magnitude of the benefit, annualized | higher | 0.22 |
-| `adoption_risk` | Likelihood users will not change how they work | lower | 0.17 |
-| `data_readiness` | Data exists, is obtainable, output is judgeable | higher | 0.15 |
-| `process_frequency` | Instance volume per year | higher | 0.13 |
-| `implementation_effort` | Total cost to production | lower | 0.13 |
-| `data_governance` | Whether the data may be processed at all | lower | 0.10 |
-| `non_ai_alternative` | How completely a non-AI solution suffices | lower | 0.10 |
-
-A `lower is better` score is flipped (`6 - raw`) before weighting, so 5 always
-means "good". Totals ≥ **3.5** are `go`.
-
-`adoption_risk` is deliberately second-heaviest: internal tools fail because
-nobody changes their behaviour, not because the technology fails.
-`data_governance` and `non_ai_alternative` carry the lowest weights **because
-both are gated at their extremes** — their weight only expresses the
-non-extreme gradient. Don't raise them without removing their gates.
-
-### Blocking gates override the bands
-
-A weighted sum cannot express a prohibition: every dimension in an average is
-compensable, so a weight fair to an ordinary request is too small to stop an
-extreme one. Categorical conditions are gates, evaluated before the bands:
-
-| Gate | Fires when | Forces | Precedence |
-|---|---|---|---|
-| `existing_capability_covers_it` | anti-pattern `existing_licensed_capability` | `not_ai` | 10 |
-| `non_ai_alternative_suffices` | `non_ai_alternative` ≥ 4, or another hard-block anti-pattern | `not_ai` | 20 |
-| `no_named_business_owner` | intake `business_owner` empty | `no_go` | 30 |
-| `no_usable_data` | `data_readiness` ≤ 1 | `no_go` | 40 |
-| `unacceptable_data_governance` | `data_governance` ≥ 5 | `no_go` | 50 |
-
-With every other dimension at its best, `data_readiness = 1` totals 4.40 and
-`data_governance = 5` totals 4.60 — both inside the `go` band, both stopped by
-a gate. A gate never fires on a dimension left unknown, and can never force a
-`go`.
-
-Dimensions the request does not establish are recorded as unknown, never
-guessed. More than one unknown returns `incomplete` naming exactly what is
-missing — which is what replaces the clarifying questions a conversational
-interview would have asked.
-
-## Tuning it without writing code
-
-Everything that decides anything is YAML:
-
-| File | Controls |
+| Path | Contents |
 |---|---|
-| `rubric.yaml` | Dimensions, anchors, weights, bands, blocking gates |
-| `patterns.yaml` | Archetypes and anti-patterns, including which hard-block |
-| `contracts.yaml` | Candidate metrics, review horizons, instrumentation, triggers |
-| `review_policy.yaml` | Thresholds, each trigger's recommendation, next-review intervals |
-
-The **assessment prompt is generated from `rubric.yaml` and `patterns.yaml`**,
-anchors included verbatim — so tuning the rubric tunes the prompt, and there is
-no second copy to drift. Anchors matter more than weights: they are what make
-two assessors score the same request the same way. Keep them observable
-("about one quarter, two or three teams") not vague ("medium effort").
-
-Config is validated at import time and a broken file fails immediately. Run
-`pytest` after editing — the suite checks every invariant and includes
-hand-computed worked examples that catch an accidental weight change.
-
-## How it fits together
-
-| File | Role |
-|---|---|
-| `provider.py` | Generic LLM layer: Ollama / OpenAI / mock, tool calls and constrained JSON |
-| `config.py` | Loads and validates the rubric and patterns |
-| `schemas.py` | Intake, the model's structured output, and the contract |
-| `assess.py` | One constrained call → parse → score → contract |
-| `scoring.py` | Pure deterministic scoring: gates → completeness → bands |
-| `contracts.py` | Deterministic Measurement Contract assembly |
-| `review.py` | Pure review policy — **no LLM anywhere** |
-| `examples/` | Six reference exemplars, anchor-faithful |
-| `docs/DECISIONS.md` | ADR-001..019: why it is shaped this way, with the measurements |
-
-The model scores dimensions and cites evidence. It never computes a total and
-never picks a verdict — that is what makes a Gatekeeper decision defensible
-when someone asks "why No-Go?".
+| `assess.py`, `scoring.py`, `contracts.py`, `review.py` | The pipeline: one constrained call, then deterministic scoring, contract and review |
+| `provider.py`, `schemas.py`, `config.py` | Model layer, structured types, validated config loading |
+| `rubric.yaml`, `patterns.yaml`, `contracts.yaml`, `review_policy.yaml` | Everything that decides anything. See `docs/RUBRIC.md` |
+| `app.py` | Streamlit demo |
+| `tools/` | The measurement instruments: chance-corrected agreement, bias shape |
+| `scripts/` | Corpus runners and the reference measurement harness |
+| `evals/` | Blind case corpus, scorer files, and every raw measurement output |
+| `evaluacion/` | The study write-ups, in Spanish and English. **This copy is the source of truth**; an older copy exists outside the repository and is no longer maintained |
+| `docs/DECISIONS.md` | ADR-001..033 — why it is shaped this way, with the measurement that forced each change |
+| `tests/` | 429 tests, all offline |

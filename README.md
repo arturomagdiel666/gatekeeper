@@ -51,7 +51,9 @@ the model finds and quotes evidence while the form and the tables decide.
 ## Run it
 
 Requires Python 3.12 and [Ollama](https://ollama.com) with `ollama pull
-qwen2.5:7b`. The test suite needs neither.
+qwen2.5:7b`. The test suite needs neither. On Debian and Ubuntu the first
+command fails unless `python3.12-venv` is installed — `apt install
+python3.12-venv` first.
 
 ```bash
 python3 -m venv .venv && source .venv/bin/activate && pip install -r requirements.txt

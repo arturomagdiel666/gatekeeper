@@ -2407,3 +2407,104 @@ omitted from it whenever the derivation settles the level, so the prompt a score
 reads is shorter on some cases and not others. ADR-029's drift candidates included
 exactly that mechanism. If the untouched dimensions move again, prompt length
 remains a live explanation and this phase did not eliminate it.
+
+---
+
+## ADR-031 — Measuring the system against the reference
+
+**Date:** 2026-07-26 · **Status:** accepted · **Scope:** one new script; no production file touched
+**Reference:** `evals/scores_B_run5.yaml` + `evaluacion/scores_A_run5.yaml`, agreed slots only
+**Evidence for the design:** `evaluacion/12_five_runs.md`
+
+Five runs measured scorer against scorer. **The product has never been measured.**
+The corpus now carries every intake field the engine reads, so this is finally
+executable.
+
+### Registered predictions, before the code
+
+**(a) — as briefed, and it is wrong; the corrected version is registered instead.**
+
+The brief asks me to state that the model now scores only three dimensions —
+`adoption_risk`, `data_readiness`, `implementation_effort` — because the other
+four derive from intake fields and the model never sees them. **That is not what
+the code does**, and registering it uncorrected would misattribute every
+`business_value` error to a derivation that never ran. Read from `assess.py` and
+`scoring.py` before writing the measurement:
+
+- `derive_scores()` skips any derivation with `is_fallback`, and
+  `business_value`'s `MagnitudeDerivation` is exactly that. **`business_value` is
+  always put to the model**, in every case; the derivation only fills it when the
+  model returns null. It is model-scored with a computed safety net, not derived.
+- `non_ai_alternative`'s `ArtefactDerivation` returns a level for `absent`,
+  `empty` and `none_complete` — but returns `None` on the coverage branch, which
+  leaves the dimension in the prompt. On the four v2 cases with a completing
+  artefact, **the model scores it.**
+- `process_frequency` and `data_governance` are omitted only where their intake
+  field is populated. Six v2 cases have a blank frequency field and five a blank
+  classification, so on those the model scores them too.
+
+So the corrected statement, which is the one being tested: **the model scores
+four dimensions on most cases** — the three judged ones plus `business_value` —
+**and up to seven on the sparse ones.** Two dimensions are fully removed from the
+model's work only where the requester filled the field. That is still the main
+finding of the rubric work and it still has not been written down anywhere; it is
+just less clean than briefed.
+
+**(b) Model exact-match on the three judged dimensions will not much exceed 76%,
+and if it does, suspect the reference.** The human-human figure on those three is
+68 of 90. There is a bias worth naming in advance: **the reference contains only
+slots where the two scorers already agreed**, so the model is being graded on the
+subset of the corpus that is easiest to score. That biases model accuracy
+upward relative to any full-corpus measure. A model result far above 76% is more
+likely to be an artefact of that selection than a capability.
+
+**(c) Verdict accuracy will be bounded by those dimensions plus the anti-pattern
+matching.** The two scorers' anti-pattern matches already differ on six of thirty
+cases — A-08, A-11, B-03, B-12, B-16, B-18 — so the anti-pattern arm is a second
+uncontrolled input to the verdict, not just the dimension scores.
+
+**(d) Median latency about 5 s, with a bimodal tail.** ADR-023 measured five of
+six requests at roughly 5 s and one at 416 s, against a 30 s timeout. Expected
+timeout rate on 30 cases: **0 to 5 (0–17%)**, with 1–2 the central guess.
+Timeouts are an infrastructure outcome and are counted as their own class, never
+as a wrong verdict.
+
+### The reference, and what it costs
+
+A slot enters the reference **only where both scorers recorded the same score.**
+Disagreements are excluded — not averaged, not adjudicated. Built before the run:
+
+| Dimension | In reference | Excluded (disagreed) | Both refused |
+|---|---|---|---|
+| `business_value` | 25 | 0 | 5 |
+| `adoption_risk` | 25 | 5 | 0 |
+| `data_readiness` | 22 | 8 | 0 |
+| `process_frequency` | 24 | 1 | 5 |
+| `implementation_effort` | 21 | 9 | 0 |
+| `data_governance` | 27 | 2 | 1 |
+| `non_ai_alternative` | 30 | 0 | 0 |
+| **Total** | **174** | **25** | **11** |
+
+**Twenty-five slots have no right answer** because the study never reconciled
+them, and that is the honest cost of the design. Note where they are: 22 of the
+25 are in the three judged dimensions. The model is therefore graded most
+thinly exactly where it does the most work.
+
+The eleven both-refused slots are reported separately. A null is not a score, so
+they cannot enter a match count — but whether the engine also refuses there is
+worth knowing, and it is a property of the derivations rather than of the model.
+
+**Verdicts** are computed by running the production scorer over each scorer's
+slot values with the real intake, so gates, completeness and bands all come from
+`scoring.py` rather than from anything this script reimplements. A verdict enters
+the reference where both scorers' computed verdicts agree.
+
+### Rules for this phase
+
+Nothing in `rubric.yaml`, `patterns.yaml`, `scoring.py`, `assess.py` or any other
+production file is touched. **Nothing is tuned in response to the result.** If the
+number is bad, that is the result, and ADR-024's rule holds: the verdict outcome
+is reported as a confusion matrix with a stated cost ordering —
+`false go > false not_ai > false no_go > spurious incomplete` — and never
+collapsed to a scalar, because a scalar lets one severe error trade against two
+mild ones and read as progress.

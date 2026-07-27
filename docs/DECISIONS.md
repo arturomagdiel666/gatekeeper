@@ -2590,3 +2590,128 @@ first, before any accuracy number**, because a system that disagrees with itself
 on eight verdicts cannot be said to agree with a reference to any finer resolution
 than that. The measurement is run **three times**, unchanged in every other
 respect, and nothing is tuned in response to what it shows.
+
+---
+
+## ADR-033 — The same measurement with a larger model, to try to refute the mechanism finding
+
+**Date:** 2026-07-26 · **Status:** accepted · **Scope:** one measurement run; no code, no config
+**Refutes or confirms:** the claim in ADR-032's re-measurement that computation reproduces and judgement does not
+
+### Why this run exists
+
+The 7B result gives **5% exact and 33% slot-level self-consistency on
+model-scored dimensions against 97% and 95% on derived ones**, and that contrast
+is about to be written up as a general claim about mechanism. **A cheap
+measurement could refute it.** If a larger model scores well on the same three
+dimensions, the finding is about model size and the conclusion would be wrong.
+
+So the same measurement runs again with `qwen2.5:14b` and **one variable
+changed**: `OLLAMA_MODEL`. Same corpus, same rubric, same reference, same script,
+same three passes. No dimension converted, no anchor touched, no prompt adjusted
+for the larger model — adjusting the prompt would change two things at once and
+forfeit the comparison.
+
+### Registered predictions and decision thresholds, before running
+
+**Model-scored exact-match on the three judged dimensions.** The 7B gave 5%
+exact, 21% within ±1 pooled. Thresholds, adopted as briefed because they are
+reasonable and pre-committing to someone else's line is stronger than inventing
+my own:
+
+| Outcome | Reading |
+|---|---|
+| **above 50% exact** | the mechanism finding is **refuted** — it was about model size |
+| **25–50% exact** | **qualified** — mechanism matters, but so does capability |
+| **below 25% exact** | **confirmed** |
+
+My expectation: **10–20% exact, 35–50% within ±1.** Reasoning, so the guess is
+falsifiable rather than vague. The three judged dimensions ask for things the
+request text mostly does not contain — whether users were consulted, what
+happened to the last tool, how many quarters an integration takes. ADR-021
+measured that directly: those dimensions came back unknown on almost every
+request *because the free text does not carry them*. A larger model reads the
+same absent information. What I expect it to buy is fewer refusals and better
+±1 banding, not exact agreement.
+
+**Self-consistency, and it is the number that matters most.** The 7B gave 50% of
+verdicts and 33% of judged slots identical across three passes. **A larger model
+that is accurate but still unstable does not rescue the system**, because a
+verdict that changes between runs cannot be defended to a requester whatever its
+average accuracy. Expectation: **55–70% verdicts, 40–55% judged slots** — better,
+because a stronger model has less reason to flip a marginal judgement, and still
+far from usable. If self-consistency stays near 50% while exact-match rises, the
+right conclusion is that accuracy figures for this system are not meaningful at
+all, and that is a worse outcome than a low score.
+
+**Latency, on a 12 GB card.** 14B at Q4_K_M is about 9 GB of weights against
+~10.2 GB free, so the KV cache will be tight and some layers may spill to CPU.
+The 7B ran at a 4.3 s median. Expectation: **12–25 s median, and I do expect
+timeouts at the shipped 30 s setting — 2 to 8 of 90 requests.** If spill is worse
+than expected the median could exceed 30 s and most of the run would time out,
+which is itself a reportable result about the shipped default on this hardware.
+
+**Refusal rate.** The 7B declined `adoption_risk` on 19–24 of 30 cases per pass
+and `data_readiness` on 16–18; that, not wrong answers, drove the spurious
+incompletes. Expectation: **refusals roughly halve** and spurious incompletes
+fall with them. This is the prediction I hold most confidently, because refusing
+is the behaviour most likely to be capability-bound rather than
+information-bound.
+
+### Rules
+
+Nothing is tuned in response to the result. If the model does not fit or the run
+is impractical, the run **stops and says so** rather than reducing the corpus or
+the passes — a partial run is not comparable to the 7B numbers and would be worse
+than no run at all.
+
+### The result: qualified, not refuted, and not confirmed
+
+**25% exact on the three judged dimensions** — 5% → 25% on the same corpus, same
+rubric, same reference, one variable changed. That lands **exactly on the boundary
+between "qualified" and "confirmed"**, and the honest reading of a threshold hit on
+its edge is the weaker of the two claims: **qualified.**
+
+| Registered | Expected | 7B | 14B | Verdict on the prediction |
+|---|---|---|---|---|
+| Model-scored exact, three judged dims | 10–20% | 5% | **25%** | above my range; on the qualify/confirm line |
+| Model-scored within ±1 | 35–50% | 22% | **67%** | well above; I underestimated banding |
+| Self-consistency, verdicts | 55–70% | 50% | **77%** | held, top of range |
+| Self-consistency, judged slots | 40–55% | 33% | **34%** | **failed — no movement at all** |
+| Latency median | 12–25 s | 4.3 s | **8.6 s** | below my range; the card held it |
+| Timeouts at 30 s | 2–8 of 90 | 0 | **0 of 90** | failed; no spill penalty materialised |
+| Refusals roughly halve | — | 19–24/30 | **0/30** | held far beyond the prediction |
+
+**What a 3× larger model bought, precisely.** Refusals on `adoption_risk` went
+19–24 of 30 to **zero**. Spurious incompletes went 41 to **3**. Verdict matches
+went 25 of 84 to **52**. That is a real and large improvement, and every part of
+it is the model *answering* rather than the model being *right*: within-±1 tripled
+to 67% while exact match reached only 25%.
+
+**What it did not buy, and this is the finding.** Slot-level self-consistency on
+the judged dimensions is **34%, against the 7B's 33%.** Identical. The larger model
+answers far more often and agrees with itself on those answers no more than the
+small one did. Derived slots stayed at 94–95% for both. Two models a generation
+apart in capability produce the same instability on the same three dimensions,
+and near-perfect stability on the four that are computed.
+
+**So the mechanism claim survives in a narrower form.** It cannot be stated as
+"judgement does not reproduce, computation does" — 5% to 25% is too big a move to
+attribute to mechanism alone, and capability clearly matters for whether the model
+engages at all. It can be stated as: **a dimension resolved by computation is
+stable across models and across runs; a dimension resolved by judgement is not,
+and scaling the model 3× does not make it so.** The instability is in the
+construct, not in the parameter count.
+
+**One cost the improvement carried, and it is in the worst class.** False `go`
+went 1 to **7** — 2, 3, 2 per pass, against 0, 0, 1 for the 7B. Under the stated
+cost ordering that is the most expensive error type in the system, and it got
+worse as the model got better. The reason is the same as the improvement: the 7B
+mostly refused and fell into `incomplete`, which is the *cheapest* error class. A
+model that answers can be wrong in the expensive direction. **This is the
+clearest demonstration yet of why ADR-024 forbids the scalar** — collapse this to
+one accuracy number and it reads as an unambiguous 2× improvement, when the worst
+error class multiplied by seven.
+
+Nothing was tuned in response to any of this, and the 7B remains the shipped
+default: `DEFAULT_OLLAMA_MODEL` is untouched.

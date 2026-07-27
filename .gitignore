@@ -1,5 +1,23 @@
-.venv/
+# Secrets. .env.example is the tracked template; .env itself never is.
 .env
+.env.*
+!.env.example
+
+# Environments
+.venv/
+venv/
+
+# Python
 __pycache__/
 *.pyc
 .pytest_cache/
+
+# Local model caches — gigabytes, and re-downloadable
+.ollama/
+models/
+*.gguf
+*.safetensors
+
+# OS
+.DS_Store
+Thumbs.db

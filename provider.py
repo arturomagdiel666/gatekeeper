@@ -481,16 +481,36 @@ class MockProvider(LLMProvider):
     }
     CANNED_JSON: dict = {"mock": True}
 
-    def __init__(self, canned_json: dict | None = None) -> None:
+    def __init__(self, canned_json: dict | list[dict] | None = None) -> None:
         """Initialize the mock.
 
         Args:
             canned_json: Object returned (JSON-encoded in ``text``) when a
                 call passes ``response_schema``. Defaults to ``CANNED_JSON``.
+
+                A **list** scripts a multi-turn conversation: successive calls
+                consume successive entries, and the last entry repeats once the
+                script runs out rather than raising. Repeating is deliberate —
+                a loop that outlives its script should be stopped by its own
+                stopping conditions, not by the mock, so that a test of those
+                conditions tests them rather than the fixture.
         """
-        self.canned_json = (
-            dict(self.CANNED_JSON) if canned_json is None else canned_json
-        )
+        if canned_json is None:
+            self.script: list[dict] = [dict(self.CANNED_JSON)]
+        elif isinstance(canned_json, list):
+            if not canned_json:
+                raise ValueError("canned_json list must not be empty")
+            self.script = [dict(entry) for entry in canned_json]
+        else:
+            self.script = [dict(canned_json)]
+        #: How many schema-constrained calls have been served. Readable by tests
+        #: that need to assert how many turns a loop actually took.
+        self.calls = 0
+
+    @property
+    def canned_json(self) -> dict:
+        """The object the next constrained call will return."""
+        return self.script[min(self.calls, len(self.script) - 1)]
 
     def chat(
         self,
@@ -516,11 +536,11 @@ class MockProvider(LLMProvider):
         """
         _reject_conflicting_output_modes(tools, response_schema)
         tool_calls = [dict(self.CANNED_TOOL_CALL)] if tools else []
-        text = (
-            json.dumps(self.canned_json)
-            if response_schema is not None
-            else self.CANNED_TEXT
-        )
+        if response_schema is not None:
+            text = json.dumps(self.canned_json)
+            self.calls += 1
+        else:
+            text = self.CANNED_TEXT
         return ChatResponse(
             text=text,
             tool_calls=tool_calls,

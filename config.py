@@ -810,8 +810,81 @@ class IntakeFieldCondition(GateConditionBase):
         return f"intake field {self.field} {wording}"
 
 
+class AdoptionProfileCondition(GateConditionBase):
+    """A gate condition on the adoption evidence, and the only conjunctive one.
+
+    **Why it is not a `dimension_threshold`.** The obvious gate would be
+    ``adoption_risk >= 5``, and it is wrong. The derivation maps
+    ``users_consulted: nobody`` straight to 5 on its own, so a threshold gate
+    would fire on a requester who simply declined to name anyone they had
+    spoken to — ending most interviews at turn one on the weakest signal in the
+    dimension. Phase 10 already found and fixed that shape of mistake with
+    premature gates.
+
+    Anchor 5 is itself a conjunction — *"not consulted AND have not been told.
+    It replaces or overrides a way of working they chose themselves"* — so the
+    condition is too. All three facts must hold, and each is a form field rather
+    than a reading of prose.
+
+    Attributes:
+        max_consultation: The consultation levels this fires on. Anything above
+            them means somebody was actually asked.
+        workflow_fit: The fit that counts as displacing a chosen practice.
+        min_people_who_must_change: Fires only above this count. Set to the
+            boundary the rubric already declares — the headcount band reads
+            ``<=20 -> 1``, so below 21 the rubric itself treats the number as
+            immaterial, and reusing that beats inventing a second threshold.
+    """
+
+    type: Literal["adoption_profile"]
+    max_consultation: list[str] = Field(min_length=1)
+    workflow_fit: str
+    min_people_who_must_change: int
+
+    @classmethod
+    def default_requires_confirmation(cls) -> bool:
+        """True. A refusal resting on a self-report is a recommendation.
+
+        Every input here is a form field, so the condition is deterministic —
+        and ADR-028 is precisely the finding that deterministic is not the same
+        as reliable. ``workflow_fit`` is the requester's own reading of where
+        their output lands, and `docs/RELOCATION.md` names it the field most
+        likely to be answered optimistically. A `no_go` that refuses somebody on
+        their own answer to that question is a recommendation for a human to
+        confirm, on the same rule as every other judgement-borne refusal in this
+        rubric (ADR-020).
+        """
+        return True
+
+    def is_met(self, evidence: object) -> bool:
+        """Whether this evidence shows all three facts at once."""
+        if evidence is None:
+            return False
+        consultation = getattr(
+            getattr(evidence, "users_consulted", None), "value", None
+        )
+        fit = getattr(getattr(evidence, "workflow_fit", None), "value", None)
+        people = getattr(evidence, "people_who_must_change", 0)
+        return (
+            consultation in self.max_consultation
+            and fit == self.workflow_fit
+            and people > self.min_people_who_must_change
+        )
+
+    def describe(self, evidence: object) -> str:
+        """Explain, for the outcome, which three facts fired it."""
+        return (
+            f"the intended users were {getattr(evidence.users_consulted, 'value', '?')}, "
+            f"the change {self.workflow_fit.replace('_', ' ')}, and "
+            f"{evidence.people_who_must_change} people must change what they do"
+        )
+
+
 GateCondition = Annotated[
-    DimensionThresholdCondition | AntiPatternCondition | IntakeFieldCondition,
+    DimensionThresholdCondition
+    | AntiPatternCondition
+    | IntakeFieldCondition
+    | AdoptionProfileCondition,
     Field(discriminator="type"),
 ]
 

@@ -44,7 +44,7 @@
 #   agree on. Keep levels mutually exclusive.
 # =============================================================================
 
-version: "3.0.0"
+version: "3.1.0"
 
 # The integer scale every dimension is scored on. Normalization of
 # `lower_is_better` dimensions derives from these two numbers.
@@ -715,7 +715,7 @@ verdict_bands:
 # knowing "the company already licenses this" is enough to stop, even when half
 # the assessment is unknown.
 #
-# A gate fires when ANY of its conditions is met (`any_of`). Three condition
+# A gate fires when ANY of its conditions is met (`any_of`). Four condition
 # types exist:
 #
 #   type: dimension_threshold  — a raw score on `dimension`, compared with
@@ -876,6 +876,58 @@ blocking_gates:
         dimension: data_governance
         comparison: at_least
         threshold: 5
+
+  # ---------------------------------------------------------------------------
+  # v3.1.0. The principle at the top of this section — a weighted sum cannot
+  # express a prohibition — was never applied to the dimension this rubric's own
+  # weight rationale calls the reason internal tools fail. A demonstration, on
+  # the same pattern as the two above:
+  #
+  #   adoption_risk = 5  -> weighted total 3.68, which bands as `go`
+  #
+  # Nobody consulted, the change replacing a way of working the users chose for
+  # themselves, nine hundred people to change — the worst reading the dimension
+  # has — and at weight 0.17 the other six outvote it. A live interview produced
+  # exactly that within an hour of the dimension becoming derivable.
+  #
+  # WHY THIS IS NOT A `dimension_threshold` AT 5. Because the derivation maps
+  # `users_consulted: nobody` straight to 5 on its own, a threshold gate would
+  # fire on a requester who merely declined to name anyone they had spoken to.
+  # That is the weakest signal in the dimension, it is true of most requests at
+  # the start of an interview, and gating on it would end the conversation at
+  # turn one — the mistake Phase 10 already found in premature gates.
+  #
+  # So the condition is conjunctive, and so is the anchor it comes from. Anchor 5
+  # reads "not consulted AND have not been told. It replaces or overrides a way
+  # of working they chose themselves". All three facts must hold together, and
+  # each is a form field rather than a reading of prose.
+  #
+  # THE HEADCOUNT THRESHOLD IS NOT NEW. `adoption_risk`'s own derivation bands
+  # `<=20 -> 1`, meaning the rubric already declares that below 21 people the
+  # number is immaterial. This gate reuses that boundary rather than inventing a
+  # second one for the same quantity.
+  - id: unacceptable_adoption_risk
+    verdict: no_go
+    precedence: 60
+    reason: >-
+      Nobody whose work this changes was asked about it, it replaces a way of
+      working they chose for themselves, and it reaches enough people that
+      adoption cannot depend on individuals choosing it. An agent nobody opens
+      returns nothing however well it works. Consult the people who would use
+      it, and resubmit with what they said.
+    any_of:
+      # Confirmation: YES. Every input is a form field, so the condition is
+      # deterministic — and ADR-028 is exactly the finding that deterministic is
+      # not the same as reliable. `workflow_fit` is the requester's own reading
+      # of where their output lands, and docs/RELOCATION.md names it the field
+      # most likely to be answered optimistically. A `no_go` refusing somebody on
+      # their own answer to that question is a recommendation for a human to
+      # confirm, on the same rule as every other judgement-borne refusal here.
+      - type: adoption_profile
+        requires_human_confirmation: true
+        max_consultation: [nobody, told_not_asked]
+        workflow_fit: replaces_chosen_way
+        min_people_who_must_change: 20
 
 # =============================================================================
 # COMPLETENESS

@@ -267,7 +267,7 @@ class TestTheMeasuredCorpusIsUntouched:
         assert len(reference.verdicts) == 28
 
     def test_the_rubric_records_the_version_this_shipped_under(self):
-        assert RUBRIC.version == "3.0.0"
+        assert RUBRIC.version == "3.1.0"
 
 
 class TestGoIsNowReachable:
@@ -343,24 +343,19 @@ class TestGoIsNowReachable:
         )
         assert score_and_gate(intake).verdict is not Verdict.GO
 
-    def test_the_worst_possible_adoption_profile_still_reaches_go(self):
-        """A finding, not an assertion that this is right.
+    def test_the_worst_possible_adoption_profile_is_gated(self):
+        """Flipped in v3.1.0. It used to assert the opposite, and said so.
 
         Nobody consulted, replacing a way of working the users chose themselves,
-        900 people to change, and `adoption_risk` derives to its maximum of 5 —
-        and the request is still approved at 3.68, because **adoption_risk has no
-        blocking gate.** At weight 0.17 the other six dimensions outvote it.
+        900 people to change. `adoption_risk` derives to its maximum of 5 and
+        used to be **approved at 3.68**, because at weight 0.17 the other six
+        dimensions outvoted it and the dimension had no gate. Phase 11 pinned
+        that as a finding and left the decision to the owner; Phase 12 took it.
 
-        This is pre-existing rubric behaviour, not something the conversion
-        introduced: under v2.0.0 a model scoring this dimension 5 produced the
-        same result. What the conversion changed is that it is now reachable
-        deterministically and therefore visible. The rubric's own reasoning about
-        gates — "a weight small enough to be fair to a normal case is too small
-        to stop an extreme one" — applies here and no gate was ever written.
-
-        Adding one would change verdicts, so it is recorded in docs/RELOCATION.md
-        as an open question for the owner rather than decided inside a phase whose
-        brief forbids altering published numbers.
+        Nothing about the arithmetic changed — the weighted total is still 3.68
+        and would still band as `go`. The gate overrides it, which is the whole
+        argument for gates: a weight small enough to be fair to an ordinary
+        request is too small to stop an extreme one.
         """
         intake = self.full_intake(
             adoption_evidence=AdoptionEvidence(
@@ -372,10 +367,18 @@ class TestGoIsNowReachable:
         )
         outcome = score_and_gate(intake)
         assert outcome.resolved_scores["adoption_risk"] == 5
-        assert outcome.verdict is Verdict.GO
-        assert not any(
-            g.gate_id == "unacceptable_adoption_risk" for g in outcome.triggered_gates
+        assert outcome.verdict is Verdict.NO_GO
+        gate = next(
+            g for g in outcome.triggered_gates
+            if g.gate_id == "unacceptable_adoption_risk"
         )
+        assert gate.verdict is Verdict.NO_GO
+        # The band would still have said `go`. The gate is what overrides it.
+        assert outcome.weighted_total == 3.68
+        # A refusal resting on the requester's own reading of workflow_fit is a
+        # recommendation for a human to confirm, not a decision (ADR-020, -028).
+        assert outcome.requires_human_confirmation
+
 
     def test_data_in_nobodys_system_fires_the_no_usable_data_gate(self):
         """Availability 1 propagates through `min` and the gate does fire —
@@ -392,6 +395,83 @@ class TestGoIsNowReachable:
         outcome = score_and_gate(intake)
         assert "no_usable_data" in [g.gate_id for g in outcome.triggered_gates]
 
+
+class TestTheAdoptionGateFiresOnlyOnTheConjunction:
+    """It must not fire on the weak signal alone.
+
+    `users_consulted: nobody` derives `adoption_risk = 5` by itself, so a
+    `dimension_threshold` gate at 5 would refuse every requester who declined to
+    name someone they had spoken to — true of most requests at the start of an
+    interview. Gating on that would end conversations at turn one, which is the
+    premature-gate mistake Phase 10 found and fixed.
+    """
+
+    def intake(self, consulted, fit, people) -> RequestIntake:
+        return RequestIntake(
+            request_text=REQUEST,
+            business_owner="Ana Ruiz",
+            times_per_period=4000,
+            period=Period.MONTH,
+            data_sensitivity=DataSensitivity.INTERNAL,
+            existing_deterministic_artefacts=[],
+            adoption_evidence=AdoptionEvidence(
+                users_consulted=consulted,
+                user_quote=None,
+                workflow_fit=fit,
+                people_who_must_change=people,
+            ),
+        )
+
+    def fired(self, consulted, fit, people) -> bool:
+        outcome = score_and_gate(self.intake(consulted, fit, people))
+        return any(
+            g.gate_id == "unacceptable_adoption_risk" for g in outcome.triggered_gates
+        )
+
+    def test_all_three_facts_together_fire_it(self):
+        assert self.fired(
+            UserConsultation.NOBODY, WorkflowFit.REPLACES_CHOSEN_WAY, 900
+        )
+
+    def test_nobody_consulted_alone_does_not(self):
+        """The signal that would have ended every interview at turn one."""
+        assert not self.fired(UserConsultation.NOBODY, WorkflowFit.EXISTING_STEP, 4)
+
+    def test_no_scale_does_not(self):
+        assert not self.fired(
+            UserConsultation.NOBODY, WorkflowFit.REPLACES_CHOSEN_WAY, 4
+        )
+
+    def test_not_displacing_a_chosen_practice_does_not(self):
+        """A new step is anchor 3's territory, not a prohibition."""
+        assert not self.fired(UserConsultation.NOBODY, WorkflowFit.NEW_STEP, 900)
+
+    def test_having_actually_asked_the_users_does_not(self):
+        assert not self.fired(
+            UserConsultation.CONSULTED, WorkflowFit.REPLACES_CHOSEN_WAY, 900
+        )
+
+    def test_the_headcount_boundary_is_the_one_the_rubric_already_declares(self):
+        """`adoption_risk`'s own band reads `<=20 -> 1`: below 21 the rubric
+        treats the number as immaterial. The gate reuses that rather than
+        inventing a second threshold for the same quantity."""
+        assert not self.fired(
+            UserConsultation.TOLD_NOT_ASKED, WorkflowFit.REPLACES_CHOSEN_WAY, 20
+        )
+        assert self.fired(
+            UserConsultation.TOLD_NOT_ASKED, WorkflowFit.REPLACES_CHOSEN_WAY, 21
+        )
+
+    def test_it_cannot_fire_when_nobody_was_asked_about_adoption_at_all(self):
+        """A gate never fires on silence — the rule every other gate follows.
+
+        This is also why no exemplar's verdict changed: they predate the field.
+        """
+        bare = RequestIntake(request_text=REQUEST, business_owner="Ana Ruiz")
+        assert not any(
+            g.gate_id == "unacceptable_adoption_risk"
+            for g in score_and_gate(bare).triggered_gates
+        )
 
 class TestTheQuoteIsVerified:
     """R1 has to bite here or it does not bite at all."""

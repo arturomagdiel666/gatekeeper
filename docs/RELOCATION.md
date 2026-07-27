@@ -115,8 +115,9 @@ where it used to be an unverified guess by a model. **Neither is evidence.**
 
 ## 3 · `adoption_risk`
 
-**Weight 0.17 — the second-heaviest dimension. No gate. The hardest of the three
-and the one most likely to smuggle a judgement through.**
+**Weight 0.17 — the second-heaviest dimension. Gated since v3.1.0, on a
+conjunction rather than a threshold (§4). The hardest of the three and the one
+most likely to smuggle a judgement through.**
 
 **The judgement that used to sit with the scorer.** Whether the intended users
 will actually change how they work — inferred from prose, on a dimension where
@@ -172,7 +173,14 @@ a hopeless project to `adoption_risk = 1` by typing a sentence.
 
 ## 4 · Two things this exposed, neither of them a conversion
 
-**`adoption_risk` has no gate, and at weight 0.17 it cannot stop anything.** A
+> **Resolved in v3.1.0.** The owner took the decision this section left open and
+> `unacceptable_adoption_risk` now gates the conjunction — nobody consulted, a
+> chosen way of working displaced, more than twenty people affected. The section
+> below is left as written because it is the argument that produced the gate, and
+> because the reasoning matters more than the outcome. What changed is the last
+> paragraph: the question is no longer open.
+
+**`adoption_risk` had no gate, and at weight 0.17 it could not stop anything.** A
 request where nobody was consulted, which replaces a way of working the users
 chose themselves, affecting 900 people, derives `adoption_risk = 5` — and is
 still approved, at a weighted total of 3.68. The other six dimensions outvote it.
@@ -185,11 +193,18 @@ weight small enough to be fair to a normal case is too small to stop an extreme
 one"* — and no gate was ever written for the dimension the whole system says
 decides whether an internal tool succeeds.
 
-Adding one would change verdicts, so it is left here as an open question for the
-owner rather than decided inside a phase whose brief forbids altering published
-numbers. `tests/test_conversion.py::test_the_worst_possible_adoption_profile_still_reaches_go`
-pins the current behaviour so the decision is made deliberately rather than
-discovered.
+It is now gated. The gate is deliberately **conjunctive** rather than a threshold
+on the dimension, because `users_consulted: nobody` derives 5 on its own and a
+threshold gate would refuse every requester who declined to name someone they had
+spoken to — the weakest signal in the dimension, true of most requests at the
+start of an interview. All three facts must hold together, which is what anchor 5
+itself says. `tests/test_conversion.py::TestTheAdoptionGateFiresOnlyOnTheConjunction`
+pins each half of that boundary.
+
+The relocation this section describes is unchanged by the gate: the three facts
+are still the requester's own answers, and a requester who reports
+`workflow_fit: existing_step` walks past the gate entirely. **A gate on a
+self-reported field stops the honest bad request, not the dishonest one.**
 
 **`non_ai_alternative` still resists, exactly where ADR-030 said it would.** Its
 derivation settles the empty list, the nothing-completes case, and the absent
@@ -212,6 +227,11 @@ programme,** and it is left standing rather than papered over with a table.
 | `data_readiness` | Requester, plus whoever opened the data | Partly — systems and examples are falsifiable | Optimistic on quality |
 | `implementation_effort` | Requester | In principle by a delivery team; nobody does | **Low**, and lower means approve |
 | `adoption_risk` | Requester, with one quote from one user | Barely | Optimistic on fit and on consultation |
+
+The gate added in v3.1.0 narrows the worst case without touching any of that. It
+fires on three of the requester's own answers, so it stops the requester who
+honestly reports displacing a practice nobody asked about — and not the one who
+reports `existing_step` instead.
 
 Three judgements moved from a model at chance agreement to a requester with
 written rules. Two of the three are biased toward approval, and none of the three

@@ -41,6 +41,7 @@ extreme one. Categorical conditions are gates, evaluated before the bands:
 | `no_named_business_owner` | intake `business_owner` empty | `no_go` | 30 |
 | `no_usable_data` | `data_readiness` ≤ 1 | `no_go` | 40 |
 | `unacceptable_data_governance` | `data_governance` ≥ 5 | `no_go` | 50 |
+| `unacceptable_adoption_risk` | nobody consulted **and** it replaces a chosen way of working **and** >20 people must change | `no_go` | 60 |
 
 With every other dimension at its best, `data_readiness = 1` totals 4.40 and
 `data_governance = 5` totals 4.60 — both inside the `go` band, both stopped by

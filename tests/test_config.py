@@ -109,7 +109,10 @@ class TestShippedConfigLoads:
     def test_bands_only_produce_go_and_no_go(self):
         assert {b.verdict for b in load_rubric().verdict_bands} == {"go", "no_go"}
 
-    def test_the_five_shipped_gates_are_present_in_precedence_order(self):
+    def test_the_shipped_gates_are_present_in_precedence_order(self):
+        """Six since v3.1.0 gated adoption_risk — the dimension this rubric's own
+        weight rationale calls the reason internal tools fail, and the last one
+        left compensable."""
         rubric = load_rubric()
         assert [(g.id, g.verdict) for g in rubric.gates_by_precedence] == [
             ("existing_capability_covers_it", "not_ai"),
@@ -117,6 +120,7 @@ class TestShippedConfigLoads:
             ("no_named_business_owner", "no_go"),
             ("no_usable_data", "no_go"),
             ("unacceptable_data_governance", "no_go"),
+            ("unacceptable_adoption_risk", "no_go"),
         ]
 
     def test_patterns_load_with_archetypes_and_anti_patterns(self):

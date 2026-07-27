@@ -37,6 +37,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from config import (
     AdoptionDerivation,
+    AdoptionProfileCondition,
     AntiPatternCondition,
     ArtefactDerivation,
     DimensionThresholdCondition,
@@ -635,6 +636,12 @@ def _evaluate_gates(
                     continue
                 if condition.is_met(getattr(intake, condition.field, None)):
                     detail = condition.describe()
+                    deterministic_basis = True
+            elif isinstance(condition, AdoptionProfileCondition):
+                if intake is None or intake.adoption_evidence is None:
+                    continue  # nobody was asked: a gate never fires on silence
+                if condition.is_met(intake.adoption_evidence):
+                    detail = condition.describe(intake.adoption_evidence)
                     deterministic_basis = True
             if detail is not None:
                 fired.append(

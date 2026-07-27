@@ -59,6 +59,12 @@ verbatim span out of the reply. `score_and_gate()` takes a `RequestIntake` and
 has no parameter a model-produced number could arrive through, and a test fails
 if one ever does.
 
+Six blocking gates override the weighted bands, the last of them added because
+the measurement demanded it: **`unacceptable_adoption_risk`** stops a request
+where nobody whose work changes was consulted, it replaces a way of working they
+chose, and more than twenty people must change — a combination that used to be
+approved at 3.68 because a weight of 0.17 cannot express a prohibition.
+
 It asks gate-deciding questions first, because one answer can end the
 conversation. It stops when a gate fires, when no remaining question can change
 the verdict, when two answers in a row add nothing, or when the budget runs out —
